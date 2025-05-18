@@ -106,21 +106,34 @@ export default function BudgetOptimizer() {
   // Run budget optimization
   const optimizeBudgetMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest("POST", `/api/models/${selectedModelId}/optimize-budget`, data);
+      console.log("Sending optimization request with data:", data);
+      const response = await apiRequest("POST", `/api/models/${selectedModelId}/optimize-budget`, data);
+      console.log("RAW API Response from Optimizer:", response);
+      return response;
     },
     onSuccess: (data) => {
-      console.log("Budget optimization response:", data);
-      setOptimizedSpends(data.optimized_allocation || {});
-      setOptimizationResults(data);
+      console.log("Budget optimization response (detailed):", JSON.stringify(data, null, 2));
       
-      // Force a re-render by setting state twice
+      if (data && Object.keys(data).length > 0) {
+        console.log("Setting optimized spends:", data.optimized_allocation);
+        setOptimizedSpends(data.optimized_allocation || {});
+        setOptimizationResults(data);
+        
+        toast({
+          title: "Budget optimization complete",
+          description: "Your optimized budget allocation has been calculated.",
+        });
+      } else {
+        console.error("Received empty or invalid response from budget optimizer API");
+        toast({
+          variant: "destructive",
+          title: "Optimization error",
+          description: "Received invalid data from the server. Please try again.",
+        });
+      }
+      
+      // Set loading state to false
       setLoading(false);
-      
-      // Show success toast
-      toast({
-        title: "Budget optimization complete",
-        description: "Your optimized budget allocation has been calculated.",
-      });
     },
     onError: (error: any) => {
       toast({
