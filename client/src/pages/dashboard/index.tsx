@@ -1,116 +1,191 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
-import DashboardLayout from "@/layouts/DashboardLayout";
-import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
+import { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import StatCard from "@/components/dashboard/StatCard";
-import ProjectCard from "@/components/dashboard/ProjectCard";
-import { PlusIcon, Activity, LineChart, DollarSign } from "lucide-react";
-import api from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DashboardLayout from "@/layouts/DashboardLayout";
+import { apiRequest } from "@/lib/queryClient";
+import { CalendarDays, BarChart3, PieChart, AlertTriangle, TrendingUp } from "lucide-react";
 
 export default function Dashboard() {
-  const { user, isLoading: authLoading } = useAuth();
-  const [, navigate] = useLocation();
-
+  const [location, navigate] = useLocation();
+  
+  // Fetch the current user
+  const { data: user, isLoading: userLoading, error: userError } = useQuery({
+    queryKey: ["/api/auth/user"],
+    retry: false,
+  });
+  
   // Fetch projects
   const { data: projects, isLoading: projectsLoading } = useQuery({
     queryKey: ["/api/projects"],
     enabled: !!user,
   });
 
-  // Stats for dashboard (these would come from real data in a full implementation)
-  const stats = [
-    {
-      title: "Active Projects",
-      value: projects?.length || 0,
-      icon: <Activity className="text-xl" />,
-      color: "primary",
-    },
-    {
-      title: "Models Completed",
-      value: projects?.filter(p => p.status === "completed")?.length || 0,
-      icon: <LineChart className="text-xl" />,
-      color: "secondary",
-    },
-    {
-      title: "Budget Optimized",
-      value: "$0",
-      icon: <DollarSign className="text-xl" />,
-      color: "accent",
-    },
-  ];
+  // Handle authentication check
+  useEffect(() => {
+    if (userError) {
+      navigate("/login");
+    }
+  }, [userError, navigate]);
 
-  // Get recent projects (up to 3)
-  const recentProjects = projects?.slice(0, 3) || [];
-
-  // Greeting based on time of day
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 18) return "Good afternoon";
-    return "Good evening";
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+      navigate("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
-  const greeting = `${getGreeting()}, ${user?.firstName || user?.username || "there"}`;
+  if (userLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="space-y-4 w-full max-w-7xl px-4">
+          <Skeleton className="h-12 w-48" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <DashboardLayout
-      title={greeting}
-      subtitle="Here's what's happening with your marketing projects"
-    >
-      <div className="flex justify-end mb-6">
-        <Button onClick={() => navigate("/projects/create")}>
-          <PlusIcon className="mr-2 h-4 w-4" />
-          New Project
-        </Button>
-      </div>
-
-      {/* Stats Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        {stats.map((stat, index) => (
-          <StatCard
-            key={index}
-            title={stat.title}
-            value={stat.value}
-            icon={stat.icon}
-            color={stat.color}
-          />
-        ))}
-      </div>
-
-      {/* Recent Projects Section */}
-      <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Projects</h3>
-
-      {projectsLoading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
-          <p className="text-slate-500">Loading your projects...</p>
-        </div>
-      ) : recentProjects.length > 0 ? (
-        <div className="space-y-6">
-          {recentProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-          
-          {projects?.length > 3 && (
-            <div className="text-center mt-6">
-              <Button variant="outline" asChild>
-                <Link href="/projects">
-                  <a>View All Projects</a>
-                </Link>
-              </Button>
+    <DashboardLayout title="Dashboard" subtitle="Welcome to your marketing mix modelling dashboard">
+      <div className="grid gap-6">
+        {/* Welcome card */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Welcome back, {user?.firstName || user?.username || "Marketer"}</CardTitle>
+            <CardDescription>
+              {new Date().toLocaleDateString("en-US", { 
+                weekday: "long", 
+                year: "numeric", 
+                month: "long", 
+                day: "numeric" 
+              })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2">
+              <p className="text-sm text-slate-600">
+                Track your marketing performance and optimize your budget allocation with our marketing mix modelling platform.
+              </p>
+              
+              {!projects?.length && (
+                <div className="bg-amber-50 text-amber-800 p-4 my-4 rounded-md border border-amber-200 flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">You don't have any projects yet</p>
+                    <p className="text-sm mt-1">Create your first project to start analyzing your marketing performance.</p>
+                    <Button 
+                      className="mt-3" 
+                      onClick={() => navigate("/projects/create")}
+                      size="sm"
+                    >
+                      Create your first project
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </CardContent>
+        </Card>
+
+        {/* Quick stats */}
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Projects</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">{projectsLoading ? "..." : projects?.length || 0}</div>
+                <BarChart3 className="h-4 w-4 text-slate-600" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Channels Analyzed</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">0</div>
+                <PieChart className="h-4 w-4 text-slate-600" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Avg. ROI Improvement</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">-</div>
+                <TrendingUp className="h-4 w-4 text-slate-600" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
-          <h4 className="text-lg font-semibold mb-2">No Projects Yet</h4>
-          <p className="text-slate-500 mb-6">Create your first marketing analysis project to get started.</p>
-          <Button onClick={() => navigate("/projects/create")}>
-            <PlusIcon className="mr-2 h-4 w-4" />
-            Create Project
-          </Button>
-        </div>
-      )}
+
+        {/* Activity tabs */}
+        <Tabs defaultValue="recent">
+          <div className="flex justify-between items-center">
+            <TabsList>
+              <TabsTrigger value="recent">Recent Activity</TabsTrigger>
+              <TabsTrigger value="upcoming">Recommended Actions</TabsTrigger>
+            </TabsList>
+          </div>
+          
+          <TabsContent value="recent" className="mt-6">
+            {projectsLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Card>
+                  <CardContent className="p-6">
+                    <p className="text-slate-500 text-sm">
+                      No recent activity to display. Start by creating a project.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+          
+          <TabsContent value="upcoming" className="mt-6">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-start gap-4">
+                  <CalendarDays className="h-6 w-6 text-primary" />
+                  <div>
+                    <h4 className="font-medium">Create your first marketing mix model</h4>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Upload your marketing data and create a model to analyze channel effectiveness
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-4"
+                      onClick={() => navigate("/projects/create")}
+                    >
+                      Get started
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
     </DashboardLayout>
   );
 }

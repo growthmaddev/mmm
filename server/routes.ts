@@ -12,7 +12,7 @@ import path from "path";
 import cookieParser from "cookie-parser";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Add middleware
+  // Add middleware for parsing cookies and JSON
   app.use(cookieParser());
   app.use(express.json());
   
@@ -141,7 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Models routes
-  apiRouter.get('/models/:id', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/models/:id', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const modelId = parseInt(req.params.id);
       const model = await storage.getModel(modelId);
@@ -157,12 +157,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.post('/models', isAuthenticated, async (req: any, res) => {
+  apiRouter.post('/models', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
       const model = await storage.createModel({
         ...req.body,
-        createdById: userId
+        createdById: req.userId
       });
       
       res.status(201).json(model);
@@ -172,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.get('/models/:id/status', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/models/:id/status', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const modelId = parseInt(req.params.id);
       const model = await storage.getModel(modelId);
@@ -191,7 +194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.get('/models/:id/budget-scenarios', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/models/:id/budget-scenarios', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const modelId = parseInt(req.params.id);
       const scenarios = await storage.getBudgetScenariosByModel(modelId);
@@ -202,15 +205,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.post('/models/:id/budget-scenarios', isAuthenticated, async (req: any, res) => {
+  apiRouter.post('/models/:id/budget-scenarios', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const modelId = parseInt(req.params.id);
-      const userId = req.user.claims.sub;
+      
+      if (!req.userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
       
       const scenario = await storage.createBudgetScenario({
         ...req.body,
         modelId,
-        createdById: userId
+        createdById: req.userId
       });
       
       res.status(201).json(scenario);
