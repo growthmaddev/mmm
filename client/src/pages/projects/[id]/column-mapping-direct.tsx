@@ -113,7 +113,7 @@ export default function ColumnMappingDirect() {
       });
       
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/data-sources`] });
-      navigate(`/projects/${projectId}`);
+      navigate(`/projects/${projectId}/model-setup`);
     },
     onError: (error) => {
       toast({

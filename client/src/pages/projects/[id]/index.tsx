@@ -391,7 +391,7 @@ export default function ProjectDetails() {
                         <BarChart className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-lg font-medium mb-1">3. View Results</h3>
+                        <h3 className="text-lg font-medium mb-1">4. View Results</h3>
                         <p className="text-slate-500 mb-2">
                           Explore ROI metrics, channel contributions, and marketing effectiveness insights.
                         </p>
