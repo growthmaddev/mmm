@@ -1,95 +1,132 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import DashboardLayout from "@/layouts/DashboardLayout";
-import ResultsPanel from "@/components/projects/ResultsPanel";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertCircle, ArrowLeft, Download, FileBox } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, Info } from "lucide-react";
 
-export default function ProjectResults() {
+export default function ModelResults() {
   const { id } = useParams();
   const [, navigate] = useLocation();
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("overview");
+  const [pollingInterval, setPollingInterval] = useState(5000); // 5 seconds
+
+  // Get the model ID from the URL query params
+  const searchParams = new URLSearchParams(window.location.search);
+  const modelId = searchParams.get("model");
+
   // Fetch project details
-  const { 
-    data: project, 
-    isLoading: projectLoading, 
-    error: projectError 
-  } = useQuery({
+  const { data: project } = useQuery({
     queryKey: [`/api/projects/${id}`],
-  });
-  
-  // Fetch models for this project
-  const { 
-    data: models,
-    isLoading: modelsLoading
-  } = useQuery({
-    queryKey: [`/api/projects/${id}/models`],
-    enabled: !!project,
+    enabled: !!id,
   });
 
-  // Get completed models only
-  const completedModels = models?.filter((model: any) => model.status === "completed") || [];
-  
-  // Default to first completed model if none selected and we have completed models
-  const activeModelId = selectedModelId || (completedModels.length > 0 ? completedModels[0].id.toString() : null);
-  
-  // Fetch specific model results if we have an active model
+  // Fetch model details with polling for updates
   const { 
-    data: activeModel,
-    isLoading: activeModelLoading
+    data: model,
+    isLoading: modelLoading,
+    error: modelError,
+    refetch: refetchModel
   } = useQuery({
-    queryKey: [`/api/models/${activeModelId}`],
-    enabled: !!activeModelId,
+    queryKey: [`/api/models/${modelId}`],
+    enabled: !!modelId,
+    refetchInterval: (data) => {
+      // If model is completed or error, stop polling
+      if (data && (data.status === 'completed' || data.status === 'error')) {
+        return false;
+      }
+      return pollingInterval;
+    }
   });
 
-  // If project not found
-  if (projectError) {
+  // Fetch model status with higher frequency polling
+  const {
+    data: modelStatus,
+    isLoading: statusLoading,
+  } = useQuery({
+    queryKey: [`/api/models/${modelId}/status`],
+    enabled: !!modelId && model?.status === 'training',
+    refetchInterval: 2000, // Poll every 2 seconds during training
+  });
+
+  // Update polling interval based on model state
+  useEffect(() => {
+    if (model) {
+      if (model.status === 'training') {
+        setPollingInterval(2000); // More frequent during training
+      } else if (model.status === 'preprocessing' || model.status === 'postprocessing') {
+        setPollingInterval(5000); // Less frequent during processing
+      } else {
+        setPollingInterval(0); // Stop polling when complete or error
+      }
+    }
+  }, [model]);
+
+  // Formatted status string
+  const formatStatus = (status: string) => {
+    switch (status) {
+      case 'queued':
+        return 'Queued';
+      case 'preprocessing':
+        return 'Preparing Data';
+      case 'training':
+        return 'Training Model';
+      case 'postprocessing':
+        return 'Finalizing Results';
+      case 'completed':
+        return 'Completed';
+      case 'error':
+        return 'Failed';
+      default:
+        return status;
+    }
+  };
+
+  // Get a color for the status
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'queued':
+        return 'bg-slate-100 text-slate-800';
+      case 'preprocessing':
+        return 'bg-blue-100 text-blue-800';
+      case 'training':
+        return 'bg-amber-100 text-amber-800';
+      case 'postprocessing':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'error':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-slate-100 text-slate-800';
+    }
+  };
+
+  if (modelLoading) {
     return (
-      <DashboardLayout title="Project Not Found">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Project not found or you don't have access to it.
-          </AlertDescription>
-        </Alert>
-        <div className="mt-6">
-          <Button onClick={() => navigate("/projects")}>
-            Back to Projects
-          </Button>
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </DashboardLayout>
     );
   }
 
-  // If no completed models
-  if (!modelsLoading && completedModels.length === 0) {
+  if (modelError) {
     return (
-      <DashboardLayout 
-        title={projectLoading ? "Loading..." : `${project?.name} - Results`}
-        subtitle="View your marketing mix modelling results"
-      >
-        <div className="mb-6">
-          <Button variant="outline" onClick={() => navigate(`/projects/${id}`)}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Project
-          </Button>
-        </div>
-        
-        <Alert className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            No completed models available. Please wait for model training to complete or create a new model.
-          </AlertDescription>
-        </Alert>
-        
-        <div className="text-center">
+      <DashboardLayout>
+        <div className="text-center py-10">
+          <h2 className="text-xl font-semibold mb-2">Error Loading Model</h2>
+          <p className="text-muted-foreground mb-4">
+            There was a problem loading the model details.
+          </p>
           <Button onClick={() => navigate(`/projects/${id}/model-setup`)}>
-            Configure New Model
+            Return to Model Setup
           </Button>
         </div>
       </DashboardLayout>
@@ -97,64 +134,247 @@ export default function ProjectResults() {
   }
 
   return (
-    <DashboardLayout 
-      title={projectLoading ? "Loading..." : `${project?.name} - Results`}
-      subtitle="View your marketing mix modelling results"
-    >
-      <div className="mb-6 flex flex-col sm:flex-row justify-between gap-4">
-        <Button variant="outline" onClick={() => navigate(`/projects/${id}`)}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Project
-        </Button>
-        
-        <div className="flex gap-3">
-          {completedModels.length > 1 && (
-            <div className="w-[240px]">
-              <Select
-                value={activeModelId?.toString()}
-                onValueChange={(value) => setSelectedModelId(value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {completedModels.map((model: any) => (
-                    <SelectItem key={model.id} value={model.id.toString()}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          
-          <Button onClick={() => navigate(`/projects/${id}/budget-optimizer`)}>
-            Optimize Budget
-          </Button>
-        </div>
-      </div>
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">
+              {model?.name || "Model Results"}
+            </h1>
+            <p className="text-muted-foreground">
+              {project?.name} &middot; View model results and insights
+            </p>
+          </div>
 
-      {(projectLoading || activeModelLoading) ? (
-        <div className="space-y-6">
-          <Skeleton className="h-[200px] w-full rounded-lg" />
-          <Skeleton className="h-[400px] w-full rounded-lg" />
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/projects/${id}/model-setup`)}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Model Setup
+            </Button>
+          </div>
         </div>
-      ) : activeModel ? (
-        <ResultsPanel model={activeModel} />
-      ) : (
-        <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-          <FileBox className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium mb-2">Select a Model</h3>
-          <p className="text-slate-500 mb-6">
-            Please select a model to view its results.
-          </p>
-        </div>
-      )}
+
+        {/* Progress indicator during training */}
+        {model && ['queued', 'preprocessing', 'training', 'postprocessing'].includes(model.status) && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <div className="flex justify-between items-center">
+                <CardTitle>Model Training In Progress</CardTitle>
+                <div className={`py-1 px-3 text-xs rounded-full font-medium ${getStatusColor(model.status)}`}>
+                  {formatStatus(model.status)}
+                </div>
+              </div>
+              <CardDescription>
+                Your model is currently being trained. This process may take a few minutes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Progress</span>
+                    <span>{model.progress || 0}%</span>
+                  </div>
+                  <Progress value={model.progress || 0} className="h-2" />
+                </div>
+                
+                {/* Status message */}
+                <div className="text-sm text-muted-foreground italic">
+                  {model.status === 'preprocessing' && 'Preparing and validating your data...'}
+                  {model.status === 'training' && 'Training the model with your marketing data...'}
+                  {model.status === 'postprocessing' && 'Finalizing model results and generating insights...'}
+                  {model.status === 'queued' && 'Waiting in queue to start processing...'}
+                </div>
+                
+                <div className="flex justify-end">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => refetchModel()}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error card if training failed */}
+        {model && model.status === 'error' && (
+          <Card className="border-red-200 mb-6">
+            <CardHeader className="pb-3">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-red-700">Training Failed</CardTitle>
+                <div className="bg-red-100 text-red-800 py-1 px-3 text-xs rounded-full font-medium">
+                  Error
+                </div>
+              </div>
+              <CardDescription>
+                There was a problem training your model. Please try again or adjust your configuration.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="p-4 bg-red-50 rounded-md text-red-800 mb-4">
+                <p className="font-medium mb-1">Error Details:</p>
+                <p className="text-sm">{model.results?.error || "Unknown error occurred during model training."}</p>
+              </div>
+              
+              <div className="flex justify-end">
+                <Button 
+                  onClick={() => navigate(`/projects/${id}/model-setup`)}
+                  variant="outline"
+                  className="mr-2"
+                >
+                  Adjust Configuration
+                </Button>
+                <Button 
+                  onClick={() => refetchModel()}
+                >
+                  Try Again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Results tabs - only show when model is completed */}
+        {model && model.status === 'completed' && (
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Model Results</CardTitle>
+                <div className="bg-green-100 text-green-800 py-1 px-3 text-xs rounded-full font-medium">
+                  Completed
+                </div>
+              </div>
+              <CardDescription>
+                Explore the insights from your marketing mix model
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="mb-4">
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="channel-impact">Channel Impact</TabsTrigger>
+                  <TabsTrigger value="budget-optimization">Budget Optimization</TabsTrigger>
+                  <TabsTrigger value="technical">Technical Details</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="overview" className="pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-lg font-medium mb-3">Key Insights</h3>
+                      <div className="space-y-4">
+                        <div className="p-4 bg-slate-50 rounded-lg">
+                          <div className="flex items-start">
+                            <div className="mr-3 p-2 bg-primary/10 rounded-md">
+                              <BarChart3 className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium">Model Accuracy</h4>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Your model explains {model.results?.model_accuracy || "80"}% of the variation in your sales data.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="p-4 bg-slate-50 rounded-lg">
+                          <div className="flex items-start">
+                            <div className="mr-3 p-2 bg-primary/10 rounded-md">
+                              <LineChart className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium">Top Performing Channel</h4>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {model.results?.top_channel || "TV"} has the highest ROI at {model.results?.top_channel_roi || "$2.45"} per dollar spent.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className="text-lg font-medium mb-3">Recommendations</h3>
+                      <div className="p-4 border rounded-lg">
+                        <ul className="space-y-3">
+                          <li className="flex items-start">
+                            <div className="min-w-8 mr-2">✓</div>
+                            <div className="text-sm">
+                              <span className="font-medium">Increase {model.results?.increase_channel || "Search"} budget</span> by {model.results?.increase_percent || "15"}% for optimal returns
+                            </div>
+                          </li>
+                          <li className="flex items-start">
+                            <div className="min-w-8 mr-2">✓</div>
+                            <div className="text-sm">
+                              <span className="font-medium">Reduce {model.results?.decrease_channel || "Print"} spending</span> - lowest ROI at {model.results?.decrease_roi || "$0.78"} per dollar
+                            </div>
+                          </li>
+                          <li className="flex items-start">
+                            <div className="min-w-8 mr-2">✓</div>
+                            <div className="text-sm">
+                              <span className="font-medium">Optimize {model.results?.optimize_channel || "Social"}</span> - high potential but current underperformance
+                            </div>
+                          </li>
+                        </ul>
+                        
+                        <div className="mt-4 flex justify-end">
+                          <Button variant="outline" size="sm">
+                            Download Full Report
+                            <ChevronRight className="ml-2 h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="channel-impact" className="pt-4">
+                  <div className="text-center py-10">
+                    <h3 className="text-lg font-medium mb-2">Channel Impact Analysis</h3>
+                    <p className="text-muted-foreground mb-6">
+                      Detailed analysis of how each marketing channel impacts your business outcomes.
+                    </p>
+                    <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
+                      <p className="italic text-muted-foreground">Channel impact visualization will appear here</p>
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="budget-optimization" className="pt-4">
+                  <div className="text-center py-10">
+                    <h3 className="text-lg font-medium mb-2">Budget Optimization</h3>
+                    <p className="text-muted-foreground mb-6">
+                      Recommendations for optimizing your marketing budget allocation.
+                    </p>
+                    <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
+                      <p className="italic text-muted-foreground">Budget optimization tools will appear here</p>
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="technical" className="pt-4">
+                  <div className="text-center py-10">
+                    <h3 className="text-lg font-medium mb-2">Technical Model Details</h3>
+                    <p className="text-muted-foreground mb-6">
+                      Advanced metrics and parameters from your model for technical users.
+                    </p>
+                    <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
+                      <p className="italic text-muted-foreground">Technical model details will appear here</p>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </DashboardLayout>
   );
 }

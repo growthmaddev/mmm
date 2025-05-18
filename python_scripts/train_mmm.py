@@ -177,24 +177,60 @@ def main():
         }))
         sys.exit(1)
     
-    # Load data
-    print(json.dumps({"status": "preprocessing_data", "progress": 10}), flush=True)
-    df = load_data(data_file_path)
-    
-    # Parse configuration
-    print(json.dumps({"status": "configuring_model", "progress": 20}), flush=True)
-    config = parse_config(config_json)
-    
-    # Train model
-    print(json.dumps({"status": "training_model", "progress": 30}), flush=True)
-    results = train_model(df, config)
-    
-    # Return results as JSON
-    print(json.dumps({"status": "saving_results", "progress": 90}), flush=True)
-    print(json.dumps(results), flush=True)
-    
-    # Final status update
-    print(json.dumps({"status": "completed", "progress": 100}), flush=True)
+    try:
+        # Update status to preprocessing
+        print(json.dumps({"status": "preprocessing", "progress": 5}), flush=True)
+        import time  # For simulating steps in development
+        time.sleep(1)  # Simulate processing time
+        
+        # Load data
+        print(json.dumps({"status": "preprocessing", "progress": 15}), flush=True)
+        df = load_data(data_file_path)
+        time.sleep(1)
+        
+        # Parse configuration
+        print(json.dumps({"status": "preprocessing", "progress": 25}), flush=True)
+        config = parse_config(config_json)
+        time.sleep(1)
+        
+        # Start training
+        print(json.dumps({"status": "training", "progress": 35}), flush=True)
+        time.sleep(1)
+        
+        # Simulate training progress steps
+        print(json.dumps({"status": "training", "progress": 45}), flush=True)
+        time.sleep(2)
+        
+        print(json.dumps({"status": "training", "progress": 55}), flush=True)
+        time.sleep(1)
+        
+        print(json.dumps({"status": "training", "progress": 65}), flush=True)
+        time.sleep(1)
+        
+        # Train model (actual training)
+        print(json.dumps({"status": "training", "progress": 75}), flush=True)
+        results = train_model(df, config)
+        
+        # Post-processing 
+        print(json.dumps({"status": "postprocessing", "progress": 85}), flush=True)
+        time.sleep(1)
+        
+        # Return results as JSON
+        print(json.dumps({"status": "postprocessing", "progress": 95}), flush=True)
+        print(json.dumps(results), flush=True)
+        time.sleep(1)
+        
+        # Final status update
+        print(json.dumps({"status": "completed", "progress": 100}), flush=True)
+        
+    except Exception as e:
+        print(json.dumps({
+            "status": "error",
+            "progress": 0,
+            "success": False,
+            "error": f"Training failed: {str(e)}"
+        }), flush=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
