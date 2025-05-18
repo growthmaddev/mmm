@@ -328,7 +328,7 @@ export default function ProjectDetails() {
                 <CardContent>
                   <div className="space-y-6">
                     <div className="flex items-start space-x-4">
-                      <div className={`p-3 rounded-full ${project.status === "uploading_data" || project.status === "configuring_model" || project.status === "training" || project.status === "completed" ? "bg-green-100 text-green-600" : "bg-primary-100 text-primary-600"}`}>
+                      <div className={`p-3 rounded-full ${project.status === "uploading_data" || project.status === "mapping_columns" || project.status === "configuring_model" || project.status === "training" || project.status === "completed" ? "bg-green-100 text-green-600" : "bg-primary-100 text-primary-600"}`}>
                         <Upload className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
@@ -347,21 +347,41 @@ export default function ProjectDetails() {
                     </div>
                     
                     <div className="flex items-start space-x-4">
-                      <div className={`p-3 rounded-full ${project.status === "configuring_model" || project.status === "training" || project.status === "completed" ? "bg-green-100 text-green-600" : "bg-primary-100 text-primary-600"}`}>
-                        <Settings className="h-5 w-5" />
+                      <div className={`p-3 rounded-full ${project.status === "mapping_columns" || project.status === "configuring_model" || project.status === "training" || project.status === "completed" ? "bg-green-100 text-green-600" : "bg-primary-100 text-primary-600"}`}>
+                        <Table className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-lg font-medium mb-1">2. Configure Model</h3>
+                        <h3 className="text-lg font-medium mb-1">2. Map Data Columns</h3>
                         <p className="text-slate-500 mb-2">
-                          Set up your MMM analysis by answering simple business questions that determine the model parameters.
+                          Identify which columns in your data represent dates, sales metrics, and marketing channels.
                         </p>
                         <Button 
                           variant={project.status === "uploading_data" ? "default" : "outline"} 
                           size="sm"
+                          onClick={() => navigate(`/projects/${id}/column-mapping-direct`)}
+                          disabled={project.status === "draft"}
+                        >
+                          {project.status === "uploading_data" ? "Start Column Mapping" : "View/Edit Column Mapping"}
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start space-x-4">
+                      <div className={`p-3 rounded-full ${project.status === "configuring_model" || project.status === "training" || project.status === "completed" ? "bg-green-100 text-green-600" : "bg-primary-100 text-primary-600"}`}>
+                        <Settings className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-medium mb-1">3. Configure Model</h3>
+                        <p className="text-slate-500 mb-2">
+                          Set up your MMM analysis by answering simple business questions that determine the model parameters.
+                        </p>
+                        <Button 
+                          variant={project.status === "mapping_columns" ? "default" : "outline"} 
+                          size="sm"
                           onClick={() => navigate(`/projects/${id}/model-setup`)}
                           disabled={project.status === "draft"}
                         >
-                          {project.status === "uploading_data" ? "Start Configuration" : "View/Edit Configuration"}
+                          {project.status === "mapping_columns" ? "Start Configuration" : "View/Edit Configuration"}
                         </Button>
                       </div>
                     </div>
