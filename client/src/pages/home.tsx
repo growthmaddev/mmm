@@ -1,9 +1,7 @@
-import { useAuth } from "../hooks/useAuth";
 import { Link } from "wouter";
 import { Button } from "../components/ui/button";
 
 export default function HomePage() {
-  const { isLoading } = useAuth();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -13,13 +11,15 @@ export default function HomePage() {
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-bold text-primary">MMM Platform</h1>
           </div>
-          <div>
+          <div className="flex space-x-4">
             <Button 
               variant="outline" 
-              onClick={() => window.location.href = "/api/login"}
-              disabled={isLoading}
+              asChild
             >
-              {isLoading ? "Loading..." : "Sign In"}
+              <Link href="/login">Sign In</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/register">Sign Up</Link>
             </Button>
           </div>
         </header>
@@ -35,11 +35,10 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Button 
               size="lg"
-              onClick={() => window.location.href = "/api/login"}
-              disabled={isLoading}
+              asChild
               className="px-8 py-6 text-lg"
             >
-              {isLoading ? "Loading..." : "Get Started"}
+              <Link href="/register">Get Started</Link>
             </Button>
             <Button 
               variant="outline" 

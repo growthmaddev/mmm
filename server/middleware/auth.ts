@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { User } from "@shared/schema";
+import { db } from "../db";
+import * as schema from "@shared/schema";
+import { eq, and, gt } from "drizzle-orm";
 
-// Extended Request type that includes the authenticated user
+// Extended Request type that includes the authenticated user ID
 export interface AuthRequest extends Request {
-  user?: any;
+  userId?: number;
 }
 
 // Handle validation errors gracefully
@@ -27,32 +29,61 @@ export const validateRequest = (schema: any) => {
   };
 };
 
+// Authentication middleware - verify token from cookies
+export const isAuthenticated = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const token = req.cookies?.auth_token;
+    
+    if (!token) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    // Find valid session
+    const [session] = await db
+      .select()
+      .from(schema.sessions)
+      .where(
+        and(
+          eq(schema.sessions.token, token),
+          gt(schema.sessions.expiresAt, new Date())
+        )
+      );
+      
+    if (!session) {
+      return res.status(401).json({ message: "Session expired or invalid" });
+    }
+    
+    // Add userId to request
+    req.userId = session.userId;
+    next();
+  } catch (error) {
+    console.error("Authentication error:", error);
+    res.status(500).json({ message: "Authentication error" });
+  }
+};
+
 // Create audit logs for important actions
 export const auditLog = (action: string) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     const originalEnd = res.end;
     res.end = function(this: Response, ...args: any[]) {
       // Only log successful requests
-      if (res.statusCode >= 200 && res.statusCode < 300 && req.user) {
+      if (res.statusCode >= 200 && res.statusCode < 300 && req.userId) {
         try {
-          const userId = req.user.claims?.sub;
-          if (userId) {
-            import("../storage").then(({ storage }) => {
-              storage.createAuditLog({
-                userId,
-                organizationId: req.user.organizationId || undefined,
-                action,
-                details: {
-                  method: req.method,
-                  path: req.path,
-                  params: req.params,
-                  body: req.body
-                },
-                ipAddress: req.ip,
-                userAgent: req.headers["user-agent"] || ""
-              }).catch(err => console.error("Error creating audit log:", err));
-            }).catch(err => console.error("Error importing storage:", err));
-          }
+          import("../storage").then(({ storage }) => {
+            storage.createAuditLog({
+              userId: req.userId!,
+              action,
+              details: {
+                method: req.method,
+                path: req.path,
+                params: req.params,
+                body: req.body
+              },
+              ipAddress: req.ip,
+              userAgent: req.headers["user-agent"] || ""
+            }).catch(err => console.error("Error creating audit log:", err));
+          }).catch(err => console.error("Error importing storage:", err));
         } catch (error) {
           console.error("Error in audit logging:", error);
         }

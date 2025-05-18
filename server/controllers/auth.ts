@@ -1,158 +1,145 @@
-import { Request, Response } from 'express';
-import { compare, hash } from 'bcryptjs';
-import { storage } from '../storage';
-import { insertUserSchema } from '@shared/schema';
-import { z } from 'zod';
-import { validateRequest, AuthRequest } from '../middleware/auth';
+import { Request, Response } from "express";
+import { db } from "../db";
+import * as schema from "@shared/schema";
+import { storage } from "../storage";
+import bcrypt from "bcryptjs";
+import { eq } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
+import { AuthRequest } from "../middleware/auth";
 
-// Login schema
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-});
-
-// Register schema with additional validation
-const registerSchema = insertUserSchema.extend({
-  email: z.string().email(),
-  password: z.string().min(8),
-  organizationName: z.string().min(2).optional(),
-});
-
-// Registration handler
+// Register a new user
 export const register = async (req: Request, res: Response) => {
   try {
-    const { username, email, password, firstName, lastName, organizationName } = registerSchema.parse(req.body);
+    const { email, password, username, firstName, lastName } = schema.registerUserSchema.parse(req.body);
     
-    // Check if user already exists
+    // Check if email already exists
     const existingUser = await storage.getUserByEmail(email);
     if (existingUser) {
-      return res.status(409).json({ message: 'Email already registered' });
+      return res.status(400).json({ message: "Email already in use" });
     }
     
     // Hash password
-    const hashedPassword = await hash(password, 10);
-    
-    // Create organization if name provided
-    let organizationId: number | undefined;
-    if (organizationName) {
-      const organization = await storage.createOrganization({ name: organizationName });
-      organizationId = organization.id;
-    }
+    const hashedPassword = await bcrypt.hash(password, 10);
     
     // Create user
     const user = await storage.createUser({
-      username,
       email,
       password: hashedPassword,
+      username,
       firstName,
       lastName,
-      organizationId: organizationId,
-      role: organizationId ? 'admin' : 'user' // First user in org is admin
+      role: "user"
     });
     
-    // Create audit log
-    await storage.createAuditLog({
+    // Create a session for the user
+    const token = uuidv4();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+    
+    await db.insert(schema.sessions).values({
       userId: user.id,
-      organizationId: organizationId,
-      action: 'user.register',
-      details: { email: user.email },
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'] || ''
+      token,
+      expiresAt
     });
     
-    // Create session
-    req.session.userId = user.id;
+    // Set token as cookie
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
     
-    // Remove password from response
+    // Return user info (without password)
     const { password: _, ...userWithoutPassword } = user;
+    res.status(201).json(userWithoutPassword);
     
-    return res.status(201).json({
-      message: 'User registered successfully',
-      user: userWithoutPassword
-    });
   } catch (error) {
-    console.error('Registration error:', error);
-    return res.status(500).json({ message: 'Error during registration' });
+    console.error("Registration error:", error);
+    res.status(500).json({ message: "Failed to register user" });
   }
 };
 
-// Login handler
+// Login user
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    const { email, password } = schema.loginUserSchema.parse(req.body);
     
-    // Find user
+    // Find user by email
     const user = await storage.getUserByEmail(email);
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
     
-    // Check password
-    const passwordValid = await compare(password, user.password);
-    if (!passwordValid) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+    // Validate password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Invalid credentials" });
     }
     
-    // Create session
-    req.session.userId = user.id;
+    // Create a session for the user
+    const token = uuidv4();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
     
-    // Create audit log
-    await storage.createAuditLog({
+    await db.insert(schema.sessions).values({
       userId: user.id,
-      organizationId: user.organizationId,
-      action: 'user.login',
-      details: { email: user.email },
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'] || ''
+      token,
+      expiresAt
     });
     
-    // Remove password from response
+    // Set token as cookie
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    
+    // Return user info (without password)
     const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
     
-    return res.json({
-      message: 'Login successful',
-      user: userWithoutPassword
-    });
   } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({ message: 'Error during login' });
+    console.error("Login error:", error);
+    res.status(500).json({ message: "Failed to login" });
   }
 };
 
-// Logout handler
+// Logout
 export const logout = (req: Request, res: Response) => {
-  req.session.destroy(() => {
-    res.clearCookie('connect.sid');
-    return res.json({ message: 'Logout successful' });
-  });
+  try {
+    // Clear auth cookie
+    res.clearCookie("auth_token");
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Failed to logout" });
+  }
 };
 
 // Get current user
 export const getCurrentUser = async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ message: 'Not authenticated' });
-  }
-  
   try {
-    const user = await storage.getUser(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    if (!req.userId) {
+      return res.status(401).json({ message: "Not authenticated" });
     }
     
-    // Remove password from response
-    const { password, ...userWithoutPassword } = user;
+    const user = await storage.getUser(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
     
-    return res.json(userWithoutPassword);
+    // Return user without password
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
   } catch (error) {
-    console.error('Get current user error:', error);
-    return res.status(500).json({ message: 'Error fetching user data' });
+    console.error("Get current user error:", error);
+    res.status(500).json({ message: "Failed to get current user" });
   }
 };
 
-// Auth controller routes
 export const authRoutes = {
-  register: [validateRequest(registerSchema), register],
-  login: [validateRequest(loginSchema), login],
+  register,
+  login,
   logout,
   getCurrentUser
 };

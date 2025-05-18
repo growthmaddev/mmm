@@ -4,9 +4,9 @@ import * as schema from "@shared/schema";
 
 export interface IStorage {
   // User operations
-  getUser(id: string): Promise<schema.User | undefined>;
+  getUser(id: number): Promise<schema.User | undefined>;
   getUserByEmail(email: string): Promise<schema.User | undefined>;
-  upsertUser(user: schema.UpsertUser): Promise<schema.User>;
+  createUser(user: schema.RegisterUser): Promise<schema.User>;
   
   // Organization operations
   getOrganization(id: number): Promise<schema.Organization | undefined>;
@@ -46,7 +46,7 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // User operations
-  async getUser(id: string): Promise<schema.User | undefined> {
+  async getUser(id: number): Promise<schema.User | undefined> {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
     return user;
   }
@@ -57,16 +57,16 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async upsertUser(userData: schema.UpsertUser): Promise<schema.User> {
+  async createUser(userData: schema.RegisterUser): Promise<schema.User> {
     const [user] = await db
       .insert(schema.users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: schema.users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
+      .values({
+        email: userData.email,
+        password: userData.password,
+        username: userData.username,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: 'user'
       })
       .returning();
     return user;
