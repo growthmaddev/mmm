@@ -12,7 +12,7 @@ import Projects from "./pages/projects";
 import CreateProject from "./pages/projects/create";
 import ProjectDetails from "./pages/projects/[id]/index";
 import ProjectDataUpload from "./pages/projects/[id]/data-upload";
-import ColumnMapping from "./pages/projects/[id]/column-mapping-new";
+import ColumnMapping from "./pages/projects/[id]/column-mapping-direct";
 import ProjectModelSetup from "./pages/projects/[id]/model-setup";
 import ProjectResults from "./pages/projects/[id]/results";
 import ProjectBudgetOptimizer from "./pages/projects/[id]/budget-optimizer";
