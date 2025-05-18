@@ -278,7 +278,13 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       current_allocation: current_allocation
     })}' http://localhost:3000/api/models/${modelId}/optimize-budget`);
     
-    return res.status(200).json(result);
+    // Debug what's being sent to the client
+    const resultStr = JSON.stringify(result);
+    console.log(`Result string length: ${resultStr.length}`);
+    console.log(`First 100 chars: ${resultStr.substring(0, 100)}`);
+    
+    // Use the simplest response method to ensure data is sent
+    return res.json(result);
     
   } catch (error) {
     console.error('Budget optimization error:', error);

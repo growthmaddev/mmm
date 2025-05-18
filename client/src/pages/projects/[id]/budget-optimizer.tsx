@@ -107,9 +107,46 @@ export default function BudgetOptimizer() {
   const optimizeBudgetMutation = useMutation({
     mutationFn: async (data: any) => {
       console.log("Sending optimization request with data:", data);
-      const response = await apiRequest("POST", `/api/models/${selectedModelId}/optimize-budget`, data);
-      console.log("RAW API Response from Optimizer:", response);
-      return response;
+      
+      try {
+        // Direct fetch approach for better debugging
+        const url = `/api/models/${selectedModelId}/optimize-budget`;
+        const options = {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+          credentials: 'include'
+        };
+        
+        console.log(`Fetching ${url} with options:`, options);
+        const fetchResponse = await fetch(url, options);
+        console.log(`Fetch status: ${fetchResponse.status}`);
+        
+        if (!fetchResponse.ok) {
+          throw new Error(`API request failed with status ${fetchResponse.status}`);
+        }
+        
+        // First try to get the text response for debugging
+        const rawText = await fetchResponse.text();
+        console.log("Raw response text:", rawText);
+        
+        // Try to parse it as JSON
+        let jsonData;
+        try {
+          jsonData = rawText ? JSON.parse(rawText) : {};
+          console.log("Parsed JSON data:", jsonData);
+        } catch (e) {
+          console.error("Failed to parse JSON:", e);
+          throw new Error("Invalid JSON response");
+        }
+        
+        return jsonData;
+      } catch (error) {
+        console.error("Error during optimization request:", error);
+        throw error;
+      }
     },
     onSuccess: (data) => {
       console.log("Budget optimization response (detailed):", JSON.stringify(data, null, 2));
