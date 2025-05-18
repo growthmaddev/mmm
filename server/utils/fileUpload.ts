@@ -149,15 +149,14 @@ export const handleFileUpload = async (req: AuthRequest, res: Response) => {
     const dataSource = await storage.createDataSource({
       projectId,
       type: 'csv_upload',
-      name: req.file.originalname,
       fileName: req.file.originalname,
-      filePath: req.file.path,
-      fileSize: req.file.size,
-      metadata: {
+      fileUrl: req.file.path,
+      connectionInfo: {
         columns: validationResult.columns,
         sampleData: validationResult.sampleData,
         errors: validationResult.errors,
-        status: validationResult.isValid ? 'ready' : 'error'
+        status: validationResult.isValid ? 'ready' : 'error',
+        fileSize: req.file.size
       },
       createdById: req.userId
     });
@@ -169,13 +168,14 @@ export const handleFileUpload = async (req: AuthRequest, res: Response) => {
       fileUrl: req.file.path,
       fileSize: req.file.size,
       validation: validationResult,
-      status: dataSource.metadata?.status || 'ready'
+      status: validationResult.isValid ? 'ready' : 'error'
     });
   } catch (error) {
     console.error('File upload error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(500).json({
       message: 'Error processing the uploaded file',
-      error: error.message,
+      error: errorMessage,
     });
   }
 };
