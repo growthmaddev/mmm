@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { Link } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import React from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +8,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LogOut, User, Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "../hooks/useAuth";
+import { User } from '@/lib/types';
 
 interface UserProfileDropdownProps {
   mobileView?: boolean;
@@ -19,89 +19,52 @@ interface UserProfileDropdownProps {
 export default function UserProfileDropdown({
   mobileView = false,
 }: UserProfileDropdownProps) {
-  const { user, logout } = useAuth();
-  const [open, setOpen] = useState(false);
+  const { user, isAuthenticated } = useAuth();
+  const userData = user as User | undefined;
 
-  if (!user) {
-    return null;
-  }
-
-  const initials = user.firstName && user.lastName
-    ? `${user.firstName[0]}${user.lastName[0]}`
-    : user.username?.substring(0, 2).toUpperCase() || "U";
-
-  const handleLogout = async () => {
-    await logout.mutateAsync();
-  };
-
-  // For mobile view, we show just the avatar without text
-  if (mobileView) {
+  if (!isAuthenticated || !userData) {
     return (
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <button className="outline-none">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src="" />
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>My Account</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/settings/account">
-              <a className="flex items-center cursor-pointer">
-                <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
-              </a>
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/settings">
-              <a className="flex items-center cursor-pointer">
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </a>
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout} disabled={logout.isPending}>
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>{logout.isPending ? "Logging out..." : "Log out"}</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button 
+        className={mobileView ? "w-full justify-start" : ""} 
+        onClick={() => window.location.href = "/api/login"}
+      >
+        Log in
+      </Button>
     );
   }
 
-  // For desktop view, show the full profile section
+  const initials = userData?.firstName && userData?.lastName 
+    ? `${userData.firstName[0]}${userData.lastName[0]}`
+    : userData?.email 
+      ? userData.email[0].toUpperCase() 
+      : "U";
+
   return (
-    <div className="flex items-center">
-      <Avatar className="h-8 w-8">
-        <AvatarImage src="" />
-        <AvatarFallback>{initials}</AvatarFallback>
-      </Avatar>
-      <div className="ml-3">
-        <p className="text-sm font-medium">
-          {user.firstName
-            ? `${user.firstName} ${user.lastName || ""}`
-            : user.username}
-        </p>
-        <p className="text-xs text-slate-500">{user.email}</p>
-      </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="ml-auto text-slate-400 hover:text-slate-500">
-            <LogOut className="h-4 w-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={handleLogout} disabled={logout.isPending}>
-            {logout.isPending ? "Logging out..." : "Log out"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+          <Avatar>
+            {userData.profileImageUrl ? (
+              <AvatarImage src={userData.profileImageUrl} alt={userData.firstName || "User"} />
+            ) : null}
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>
+          {userData.firstName && userData.lastName 
+            ? `${userData.firstName} ${userData.lastName}` 
+            : userData.email}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => window.location.href = "/dashboard"}>
+          Dashboard
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => window.location.href = "/api/logout"}>
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -93,7 +93,7 @@ export const projects = pgTable("projects", {
   name: text("name").notNull(),
   description: text("description"),
   organizationId: integer("organization_id").notNull().references(() => organizations.id),
-  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
   status: projectStatusEnum("status").default("draft").notNull(),
   dateRange: json("date_range").$type<{startDate: string, endDate: string}>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -112,7 +112,7 @@ export const dataSources = pgTable("data_sources", {
   metricColumns: json("metric_columns").$type<string[]>(),
   channelColumns: json("channel_columns").$type<{[key: string]: string}>(),
   controlColumns: json("control_columns").$type<{[key: string]: string}>(),
-  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -129,7 +129,7 @@ export const models = pgTable("models", {
   controlVariables: json("control_variables"),
   responseVariables: json("response_variables"),
   results: json("results"),
-  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -157,7 +157,7 @@ export const budgetScenarios = pgTable("budget_scenarios", {
   totalBudget: integer("total_budget").notNull(),
   allocations: json("allocations").$type<{[channelId: string]: number}>(),
   projectedResults: json("projected_results"),
-  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -165,7 +165,7 @@ export const budgetScenarios = pgTable("budget_scenarios", {
 // Audit Logs
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  userId: varchar("user_id").references(() => users.id),
   organizationId: integer("organization_id").references(() => organizations.id),
   action: text("action").notNull(),
   details: json("details"),
