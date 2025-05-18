@@ -39,9 +39,9 @@ interface MappingConfig {
 
 export default function ColumnMapping() {
   const { id: projectId } = useParams();
-  const [, params] = useLocation();
+  const [location] = useLocation();
   // Extract dataSourceId from URL query parameters
-  const searchParams = new URLSearchParams(params.split('?')[1] || '');
+  const searchParams = new URLSearchParams(location.split('?')[1] || '');
   const dataSourceId = searchParams.get('dataSource');
   const [, navigate] = useLocation();
   const { toast } = useToast();
