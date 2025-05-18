@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import express from "express";
 import { storage } from "./storage";
-import { isAuthenticated } from "./middleware/auth";
+import { isAuthenticated, AuthRequest } from "./middleware/auth";
 import { authRoutes } from "./controllers/auth";
 import { projectRoutes } from "./controllers/projects";
 import { modelRoutes } from "./controllers/models";
@@ -14,6 +14,7 @@ import cookieParser from "cookie-parser";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Add middleware
   app.use(cookieParser());
+  app.use(express.json());
   
   // API routes with /api prefix
   const apiRouter = express.Router();
@@ -25,13 +26,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   apiRouter.get('/auth/user', isAuthenticated, authRoutes.getCurrentUser);
   
   // Projects routes
-  apiRouter.get('/projects', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/projects', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       // If user has an organization, fetch projects for that org
       // Otherwise, return an empty array - they'll need to create an org first
-      if (req.user && req.user.claims) {
-        const userId = req.user.claims.sub;
-        const user = await storage.getUser(userId);
+      if (req.userId) {
+        const user = await storage.getUser(req.userId);
         
         if (user?.organizationId) {
           const projects = await storage.getProjectsByOrganization(user.organizationId);
@@ -46,10 +46,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.post('/projects', isAuthenticated, async (req: any, res) => {
+  apiRouter.post('/projects', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      if (!req.userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(req.userId);
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
@@ -62,7 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const project = await storage.createProject({
         ...req.body,
         organizationId: user.organizationId,
-        createdById: userId
+        createdById: req.userId
       });
       
       res.status(201).json(project);
@@ -72,7 +75,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.get('/projects/:id', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/projects/:id', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const projectId = parseInt(req.params.id);
       const project = await storage.getProject(projectId);
@@ -88,7 +91,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.put('/projects/:id', isAuthenticated, async (req: any, res) => {
+  apiRouter.put('/projects/:id', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const projectId = parseInt(req.params.id);
       const project = await storage.updateProject(projectId, req.body);
@@ -104,7 +107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.get('/projects/:id/data-sources', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/projects/:id/data-sources', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const projectId = parseInt(req.params.id);
       const dataSources = await storage.getDataSourcesByProject(projectId);
@@ -115,7 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.get('/projects/:id/models', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/projects/:id/models', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const projectId = parseInt(req.params.id);
       const models = await storage.getModelsByProject(projectId);
@@ -126,7 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  apiRouter.get('/projects/:id/channels', isAuthenticated, async (req: any, res) => {
+  apiRouter.get('/projects/:id/channels', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const projectId = parseInt(req.params.id);
       const channels = await storage.getChannelsByProject(projectId);
