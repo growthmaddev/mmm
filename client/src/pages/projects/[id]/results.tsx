@@ -18,7 +18,50 @@ export default function ModelResults() {
 
   // Get the model ID from the URL query params
   const searchParams = new URLSearchParams(window.location.search);
-  const modelId = searchParams.get("model");
+  const modelIdFromUrl = searchParams.get("model");
+  
+  // State to store model ID
+  const [modelId, setModelId] = useState<string | null>(modelIdFromUrl);
+  
+  // Effect to handle model loading when page is refreshed or accessed directly
+  useEffect(() => {
+    // Try to get model ID from URL first
+    if (modelIdFromUrl) {
+      setModelId(modelIdFromUrl);
+      return;
+    }
+    
+    // If no model ID in URL, try to get the latest model for this project
+    if (id && !modelId) {
+      const fetchLatestModel = async () => {
+        try {
+          const response = await fetch(`/api/projects/${id}/models`);
+          if (response.ok) {
+            const models = await response.json();
+            if (models && models.length > 0) {
+              // Sort models by ID (newest first, assuming IDs are incremental)
+              const sortedModels = [...models].sort((a, b) => b.id - a.id);
+              // Find the first completed or training model
+              const latestModel = sortedModels.find(m => 
+                m.status === 'completed' || m.status === 'training'
+              );
+              if (latestModel) {
+                setModelId(latestModel.id.toString());
+                // Update URL to include model ID without navigating
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.set('model', latestModel.id.toString());
+                window.history.replaceState({}, '', newUrl.toString());
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching models:", error);
+        }
+      };
+      
+      fetchLatestModel();
+    }
+  }, [id, modelIdFromUrl]);
 
   // Fetch project details
   const { data: project } = useQuery({
