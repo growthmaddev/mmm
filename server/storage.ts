@@ -133,7 +133,18 @@ export class DatabaseStorage implements IStorage {
   async createDataSource(dataSource: schema.InsertDataSource): Promise<schema.DataSource> {
     const [newDataSource] = await db
       .insert(schema.dataSources)
-      .values(dataSource)
+      .values([{
+        projectId: dataSource.projectId,
+        type: dataSource.type,
+        fileName: dataSource.fileName,
+        fileUrl: dataSource.fileUrl,
+        connectionInfo: dataSource.connectionInfo,
+        dateColumn: dataSource.dateColumn,
+        metricColumns: dataSource.metricColumns,
+        channelColumns: dataSource.channelColumns,
+        controlColumns: dataSource.controlColumns,
+        createdById: dataSource.createdById,
+      }])
       .returning();
     return newDataSource;
   }
