@@ -48,36 +48,30 @@ export default function ProjectDataUpload() {
       formData.append("file", file);
       formData.append("projectId", id || "");
       
-      // Simulate progress since we're using regular fetch
-      const simulateProgress = () => {
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 5;
-          if (progress > 95) {
-            clearInterval(interval);
-            return;
-          }
-          setUploadProgress(progress);
-        }, 100);
-        
-        return () => clearInterval(interval);
-      };
-      
-      const cleanup = simulateProgress();
+      // Use a more reliable progress tracking with a maximum that will complete
+      let progressInterval: NodeJS.Timeout;
       
       try {
-        // Use the standard fetch API which should be more reliable
+        // Start progress simulation - simpler approach
+        setUploadProgress(10);
+        
+        // Use the standard fetch API with credentials
         const response = await fetch("/api/upload", {
           method: "POST",
           body: formData,
-          // Important: don't set Content-Type header as browser will set it with boundary
+          credentials: "include" // Important for authentication cookies
         });
         
-        // Set progress to 100% when fetch completes
+        // Manually set progress to 100% to show completion
         setUploadProgress(100);
         
-        // Clear the progress simulation
-        cleanup();
+        // Force success state immediately after upload
+        setTimeout(() => {
+          if (response.ok) {
+            // Force the success state
+            setUploadState("success");
+          }
+        }, 500);
         
         if (!response.ok) {
           const errorText = await response.text();
