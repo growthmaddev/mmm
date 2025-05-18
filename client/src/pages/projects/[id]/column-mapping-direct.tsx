@@ -74,24 +74,7 @@ export default function ColumnMappingDirect() {
   });
 
   // Get columns from data source or use fallback while loading
-  const columns = dataSource?.connectionInfo?.columns || [];
-  
-  // Filter columns by type and naming patterns
-  const dateColumns = columns.filter(col => 
-    col.name.toLowerCase().includes('date') || 
-    col.type === 'date'
-  );
-  
-  const numericColumns = columns.filter(col => col.type === 'number');
-  
-  // Auto-detect marketing channel columns (looking for _Spend suffix)
-  const marketingChannelColumns = columns.filter(col => 
-    col.type === 'number' && (
-      col.name.endsWith('_Spend') || 
-      col.name.includes('_Spend') ||
-      col.name.includes('Spend')
-    )
-  );
+  const marketingColumns = dataSource?.connectionInfo?.columns || [];
   
   // State for column mapping
   const [mappingConfig, setMappingConfig] = useState<MappingConfig>({
@@ -100,49 +83,6 @@ export default function ColumnMappingDirect() {
     channelColumns: dataSource?.channelColumns || {},
     controlColumns: dataSource?.controlColumns || {},
   });
-  
-  // Auto-select the marketing channel columns on load
-  useEffect(() => {
-    // Only run this effect once when columns are loaded and if no channels are already mapped
-    if (marketingChannelColumns.length > 0 && 
-        Object.keys(mappingConfig.channelColumns).length === 0 &&
-        dataSource?.connectionInfo?.columns?.length > 0) {
-      
-      console.log("Auto-detecting marketing channel columns:", marketingChannelColumns.map(c => c.name));
-      
-      // Create initial channel mappings for all _Spend columns
-      const channelMappings = {};
-      
-      // Process each marketing channel column
-      marketingChannelColumns.forEach(column => {
-        // Create a friendly name by removing _Spend suffix and replacing underscores with spaces
-        let friendlyName = column.name;
-        
-        // Remove _Spend suffix if present
-        if (friendlyName.endsWith('_Spend')) {
-          friendlyName = friendlyName.replace('_Spend', '');
-        } else if (friendlyName.includes('_Spend')) {
-          friendlyName = friendlyName.replace('_Spend', '');
-        } else if (friendlyName.includes('Spend')) {
-          friendlyName = friendlyName.replace('Spend', '');
-        }
-        
-        // Replace underscores with spaces
-        friendlyName = friendlyName.replace(/_/g, ' ').trim();
-        
-        // Add to mappings
-        channelMappings[column.name] = friendlyName;
-      });
-      
-      console.log("Created channel mappings:", channelMappings);
-      
-      // Update state with the new channel mappings
-      setMappingConfig(prev => ({
-        ...prev,
-        channelColumns: channelMappings
-      }));
-    }
-  }, [marketingChannelColumns, dataSource?.connectionInfo?.columns]);
   
   // Update mapping config when data source is loaded
   useEffect(() => {
@@ -303,8 +243,9 @@ export default function ColumnMappingDirect() {
     );
   }
   
-  // These variables are already defined at the top of the component
-  // No need to redefine them here
+  // Filter columns by type
+  const dateColumns = marketingColumns.filter(col => col.type === 'date');
+  const numericColumns = marketingColumns.filter(col => col.type === 'number');
   
   // Loading state
   if (isLoading) {
