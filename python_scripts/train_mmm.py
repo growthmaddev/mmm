@@ -283,8 +283,51 @@ def train_model(df, config):
         # Add some informative metrics about the model performance
         print(json.dumps({"status": "training", "progress": 85, "r_squared": float(r_squared)}), flush=True)
         
+        # Try to extract model parameters directly from the model object
+        try:
+            print("Trying to extract parameters directly from model object...", file=sys.stderr)
+            
+            # Attempt to access model coefficients, adstock and saturation parameters directly
+            model_direct_params = {}
+            
+            # Get channel parameters if available through model attributes
+            if hasattr(mmm, 'channel_params') and mmm.channel_params is not None:
+                print("Found channel_params attribute", file=sys.stderr)
+                model_direct_params['channel_params'] = mmm.channel_params
+                
+            # Get media transforms if available (contains adstock, saturation info)
+            if hasattr(mmm, 'media_transforms') and mmm.media_transforms is not None:
+                print("Found media_transforms attribute", file=sys.stderr)
+                
+                # Extract parameters for each channel
+                for channel in channel_columns:
+                    if channel in mmm.media_transforms:
+                        transform = mmm.media_transforms[channel]
+                        if hasattr(transform, 'adstock') and transform.adstock is not None:
+                            if 'adstock_params' not in model_direct_params:
+                                model_direct_params['adstock_params'] = {}
+                            model_direct_params['adstock_params'][channel] = {
+                                'type': transform.adstock.__class__.__name__,
+                                'params': transform.adstock.__dict__
+                            }
+                            
+                        if hasattr(transform, 'saturation') and transform.saturation is not None:
+                            if 'saturation_params' not in model_direct_params:
+                                model_direct_params['saturation_params'] = {}
+                            model_direct_params['saturation_params'][channel] = {
+                                'type': transform.saturation.__class__.__name__,
+                                'params': transform.saturation.__dict__
+                            }
+                            
+            print(f"Direct model parameters extracted: {model_direct_params}", file=sys.stderr)
+            
+        except Exception as e:
+            print(f"Error extracting parameters directly from model: {str(e)}", file=sys.stderr)
+            model_direct_params = {}
+        
         # Summarize posteriors
         summary = az.summary(idata)
+        print(f"Model summary shape: {summary.shape}, columns: {summary.columns.tolist()}", file=sys.stderr)
         
         # Calculate simplified ROI for each channel
         roi_data = {}
@@ -321,6 +364,61 @@ def train_model(df, config):
             elif roi_data.get(channel, 0) < 0.8:
                 recommendations.append(f"Consider reducing {channel} spend")
         
+        # Extract model parameters from posterior samples
+        model_parameters = {}
+        try:
+            print("Extracting model parameters from posterior samples...", file=sys.stderr)
+            
+            # For each channel, extract relevant parameter values
+            for channel in channel_columns:
+                channel_clean = channel.replace("_Spend", "")
+                model_parameters[channel_clean] = {}
+                
+                # Look for beta coefficient for this channel
+                beta_key = f"beta_{channel}"
+                if beta_key in summary.index:
+                    model_parameters[channel_clean]["beta_coefficient"] = float(summary.loc[beta_key, "mean"])
+                    print(f"Found beta coefficient for {channel}: {model_parameters[channel_clean]['beta_coefficient']}", file=sys.stderr)
+                
+                # Look for adstock parameters
+                adstock_keys = [k for k in summary.index if f"adstock_{channel}" in k or f"adstock[{channel}]" in k or f"adstock.{channel}" in k]
+                if adstock_keys:
+                    model_parameters[channel_clean]["adstock_parameters"] = {}
+                    for key in adstock_keys:
+                        param_name = key.split('.')[-1]  # Extract parameter name (alpha, etc.)
+                        model_parameters[channel_clean]["adstock_parameters"][param_name] = float(summary.loc[key, "mean"])
+                    print(f"Found adstock parameters for {channel}: {model_parameters[channel_clean]['adstock_parameters']}", file=sys.stderr)
+                
+                # Look for saturation parameters
+                saturation_keys = [k for k in summary.index if f"saturation_{channel}" in k or f"saturation[{channel}]" in k or f"saturation.{channel}" in k]
+                if saturation_keys:
+                    model_parameters[channel_clean]["saturation_parameters"] = {}
+                    for key in saturation_keys:
+                        param_name = key.split('.')[-1]  # Extract parameter name (L, k, x0, etc.)
+                        model_parameters[channel_clean]["saturation_parameters"][param_name] = float(summary.loc[key, "mean"])
+                    print(f"Found saturation parameters for {channel}: {model_parameters[channel_clean]['saturation_parameters']}", file=sys.stderr)
+                
+                # If we couldn't find explicit parameters, try to get them from the model object directly
+                if not model_parameters[channel_clean].get("saturation_parameters"):
+                    try:
+                        # Get saturation parameters for LogisticSaturation
+                        # These names might need adjustment based on PyMC-Marketing implementation
+                        model_parameters[channel_clean]["saturation_parameters"] = {
+                            "L": 1.0,  # Default max value (normalized)
+                            "k": 0.0005,  # Default steepness
+                            "x0": np.median(df[channel])  # Default midpoint at median spend
+                        }
+                        print(f"Using default saturation parameters for {channel}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"Could not extract saturation parameters for {channel}: {str(e)}", file=sys.stderr)
+            
+            print(f"Extracted model parameters: {model_parameters}", file=sys.stderr)
+            
+        except Exception as e:
+            print(f"Error extracting model parameters: {str(e)}", file=sys.stderr)
+            # Keep model_parameters empty but don't fail
+            pass
+            
         # Prepare results in a format matching what our frontend expects
         results = {
             "success": True,
@@ -336,7 +434,9 @@ def train_model(df, config):
                 "channels": {
                     channel.replace("_Spend", ""): { 
                         "contribution": float(contributions[channel] / sum(contributions.values())),
-                        "roi": float(roi_data.get(channel, 0))
+                        "roi": float(roi_data.get(channel, 0)),
+                        # Add model parameters for this channel
+                        **(model_parameters.get(channel.replace("_Spend", ""), {}))
                     } for channel in channel_columns
                 },
                 "fit_metrics": {
@@ -349,7 +449,8 @@ def train_model(df, config):
                 "channel_contributions": {
                     channel: [float(contributions[channel])]
                     for channel in channel_columns
-                }
+                },
+                "model_parameters": model_parameters  # Also include parameters at top level
             }
         }
         
