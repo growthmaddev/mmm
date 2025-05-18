@@ -10,6 +10,7 @@ import { formatDistanceToNow } from "date-fns";
 const statusConfig = {
   draft: { label: "Draft", variant: "outline" as const },
   uploading_data: { label: "Data Upload", variant: "outline" as const },
+  mapping_columns: { label: "Column Mapping", variant: "outline" as const },
   configuring_model: { label: "Setup", variant: "outline" as const },
   training: { label: "Training", variant: "warning" as const },
   completed: { label: "Complete", variant: "success" as const },

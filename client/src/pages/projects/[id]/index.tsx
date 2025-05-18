@@ -150,7 +150,8 @@ function DataSourcesList({ projectId }: { projectId: string }) {
 // Status mapping for display
 const statusConfig = {
   draft: { label: "Draft", variant: "outline" as const, icon: FileText, nextStep: "data-upload" },
-  uploading_data: { label: "Data Upload", variant: "outline" as const, icon: Upload, nextStep: "model-setup" },
+  uploading_data: { label: "Data Upload", variant: "outline" as const, icon: Upload, nextStep: "column-mapping" },
+  mapping_columns: { label: "Column Mapping", variant: "outline" as const, icon: Table, nextStep: "model-setup" },
   configuring_model: { label: "Model Setup", variant: "outline" as const, icon: Settings, nextStep: "results" },
   training: { label: "Training", variant: "warning" as const, icon: Clock, nextStep: "results" },
   completed: { label: "Complete", variant: "success" as const, icon: BarChart, nextStep: "budget-optimizer" },
