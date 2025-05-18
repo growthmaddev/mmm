@@ -12,6 +12,7 @@ import Projects from "./pages/projects";
 import CreateProject from "./pages/projects/create";
 import ProjectDetails from "./pages/projects/[id]/index";
 import ProjectDataUpload from "./pages/projects/[id]/data-upload";
+import ColumnMapping from "./pages/projects/[id]/column-mapping";
 import ProjectModelSetup from "./pages/projects/[id]/model-setup";
 import ProjectResults from "./pages/projects/[id]/results";
 import ProjectBudgetOptimizer from "./pages/projects/[id]/budget-optimizer";
@@ -35,6 +36,7 @@ function App() {
           <Route path="/projects/create" component={CreateProject} />
           <Route path="/projects/:id" component={ProjectDetails} />
           <Route path="/projects/:id/data-upload" component={ProjectDataUpload} />
+          <Route path="/projects/:id/column-mapping/:dataSourceId" component={ColumnMapping} />
           <Route path="/projects/:id/model-setup" component={ProjectModelSetup} />
           <Route path="/projects/:id/results" component={ProjectResults} />
           <Route path="/projects/:id/budget-optimizer" component={ProjectBudgetOptimizer} />

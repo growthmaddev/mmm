@@ -17,9 +17,130 @@ import {
   Clock,
   Calendar,
   User,
-  FileText
+  FileText,
+  Database,
+  Table,
+  MoreHorizontal
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
+
+// DataSourcesList component to display data sources and provide column mapping links
+function DataSourcesList({ projectId }: { projectId: string }) {
+  const [, navigate] = useLocation();
+  
+  // Fetch data sources for this project
+  const { 
+    data: dataSources, 
+    isLoading, 
+    error 
+  } = useQuery({
+    queryKey: [`/api/projects/${projectId}/data-sources`],
+  });
+  
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          Failed to load data sources. Please try again.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  if (!dataSources || dataSources.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Database className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+        <h3 className="text-lg font-medium text-slate-700 mb-2">No Data Sources</h3>
+        <p className="text-slate-500 mb-4">
+          You haven't added any data sources to this project yet.
+        </p>
+        <Button onClick={() => navigate(`/projects/${projectId}/data-upload`)}>
+          Upload Data
+        </Button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      {dataSources.map((dataSource: any) => {
+        // Determine data source status
+        const connectionInfo = dataSource.connectionInfo || {};
+        const status = connectionInfo.status || 'pending';
+        const hasColumnMapping = !!dataSource.dateColumn && 
+          dataSource.metricColumns && 
+          dataSource.metricColumns.length > 0;
+        
+        return (
+          <div 
+            key={dataSource.id} 
+            className="border border-slate-200 rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between"
+          >
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-primary" />
+                <h3 className="font-medium text-slate-800">{dataSource.fileName || `Data Source #${dataSource.id}`}</h3>
+                <Badge variant={hasColumnMapping ? "success" : "outline"}>
+                  {hasColumnMapping ? "Mapped" : "Not Mapped"}
+                </Badge>
+              </div>
+              
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm text-slate-500">
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>Added {formatDistanceToNow(new Date(dataSource.createdAt), { addSuffix: true })}</span>
+                </div>
+                
+                {connectionInfo.fileSize && (
+                  <div className="flex items-center gap-1">
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>{Math.round(connectionInfo.fileSize / 1024)} KB</span>
+                  </div>
+                )}
+                
+                {hasColumnMapping && (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>Date: <span className="font-medium text-slate-700">{dataSource.dateColumn}</span></span>
+                    </div>
+                    
+                    <div className="flex items-center gap-1">
+                      <BarChart className="h-3.5 w-3.5" />
+                      <span>Target: <span className="font-medium text-slate-700">{dataSource.metricColumns[0]}</span></span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 mt-4 md:mt-0">
+              <Button 
+                size="sm" 
+                variant={hasColumnMapping ? "outline" : "default"}
+                onClick={() => navigate(`/projects/${projectId}/column-mapping/${dataSource.id}`)}
+              >
+                <Table className="h-4 w-4 mr-1" />
+                {hasColumnMapping ? "Edit Column Mapping" : "Map Columns"}
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // Status mapping for display
 const statusConfig = {
@@ -286,17 +407,21 @@ export default function ProjectDetails() {
             <TabsContent value="data">
               <Card>
                 <CardHeader>
-                  <CardTitle>Data Sources</CardTitle>
-                  <CardDescription>
-                    Manage the data sources for this project
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-12">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Data Sources</CardTitle>
+                      <CardDescription>
+                        Manage the data sources for this project
+                      </CardDescription>
+                    </div>
                     <Button onClick={() => navigate(`/projects/${id}/data-upload`)}>
-                      Manage Data Sources
+                      Add Data Source
                     </Button>
                   </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Data sources list */}
+                  <DataSourcesList projectId={id} />
                 </CardContent>
               </Card>
             </TabsContent>
