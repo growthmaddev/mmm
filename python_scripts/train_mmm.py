@@ -25,6 +25,12 @@ def load_data(file_path):
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values('Date')
         
+        # Reduce dataset size for faster testing
+        # This is only for initial integration testing, should be removed in production
+        if len(df) > 100:
+            print(f"Reducing dataset from {len(df)} rows to 100 for faster integration testing", file=sys.stderr)
+            df = df.head(100)
+        
         return df
     except Exception as e:
         print(json.dumps({
@@ -111,29 +117,49 @@ def train_model(df, config):
         saturation = LogisticSaturation()    # Default logistic saturation
             
         # Create PyMC-Marketing MMM object with simplified settings
-        # Different platforms may have different API configurations, so handle both
-        # Create a simplified MMM model
+        # Create adstock and saturation objects for each channel
+        channel_adstocks = {}
+        channel_saturations = {}
+        
+        # Apply adstock and saturation settings from config if available, or use defaults
+        for channel in channel_columns:
+            # Get adstock value from config or use default
+            adstock_value = config['adstock_settings'].get(channel, 2)
+            channel_adstocks[channel] = GeometricAdstock(l_max=int(adstock_value))
+            
+            # Get saturation value from config or use default
+            saturation_value = config['saturation_settings'].get(channel, 0.5)
+            channel_saturations[channel] = LogisticSaturation(lam=float(saturation_value))
+        
+        print(f"Created adstock and saturation settings for each channel", file=sys.stderr)
+        
+        # Create the MMM model with required parameters
         try:
-            # First attempt with basic parameters - most recent API
+            # Always use explicit adstock and saturation parameters since they're required now
             mmm = MMM(
                 date_column=date_column,
-                channel_columns=channel_columns
+                channel_columns=channel_columns,
+                adstock=channel_adstocks,
+                saturation=channel_saturations
             )
-        except TypeError as e:
-            # Fallback to most compatible parameters
+            print("Successfully created MMM model with adstock and saturation", file=sys.stderr)
+        except Exception as e:
+            print(f"Error creating MMM model: {str(e)}", file=sys.stderr)
+            # Try a more basic version as a fallback
             try:
+                # Create a simplified version with default adstock/saturation
+                default_adstock = {channel: GeometricAdstock(l_max=2) for channel in channel_columns}
+                default_saturation = {channel: LogisticSaturation() for channel in channel_columns}
+                
                 mmm = MMM(
-                    date_column=date_column,
                     channel_columns=channel_columns,
-                    adstock=adstock,
-                    saturation=saturation
+                    adstock=default_adstock,
+                    saturation=default_saturation
                 )
+                print("Created MMM model with fallback configuration", file=sys.stderr)
             except Exception as inner_e:
-                # Last resort - minimal parameters
-                print(f"Falling back to minimal params due to: {str(inner_e)}")
-                mmm = MMM(
-                    channel_columns=channel_columns
-                )
+                print(f"Failed to create MMM model with fallback: {str(inner_e)}", file=sys.stderr)
+                raise Exception(f"Could not initialize MMM model: {str(e)}, fallback error: {str(inner_e)}")
             
         # Sample with extremely reduced parameters for fast prototype
         try:
@@ -141,11 +167,12 @@ def train_model(df, config):
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=50,       # Extremely reduced for testing/speed
-                tune=25,        # Extremely reduced for testing/speed
+                draws=20,       # Ultra-minimal for initial integration testing
+                tune=10,        # Ultra-minimal for initial integration testing
                 chains=1,       # Single chain for speed
                 cores=1,        # Single core for compatibility
-                progressbar=False  # No progress bar in API mode
+                progressbar=False,  # No progress bar in API mode
+                target_accept=0.9   # Higher acceptance rate for faster convergence
             )
         except Exception as e:
             print(f"Fit method error: {str(e)}", file=sys.stderr)
@@ -279,6 +306,9 @@ def main():
     data_file_path = sys.argv[1]
     config_json = sys.argv[2]
     
+    # Print debug information for troubleshooting
+    print(f"Starting MMM training with data: {data_file_path}, config: {config_json}", file=sys.stderr)
+    
     # Check if file exists
     if not os.path.exists(data_file_path):
         print(json.dumps({
@@ -291,49 +321,56 @@ def main():
         # Update status to preprocessing
         print(json.dumps({"status": "preprocessing", "progress": 5}), flush=True)
         import time  # For simulating steps in development
-        time.sleep(1)  # Simulate processing time
+        time.sleep(0.5)  # Reduced sleep time for faster testing
         
         # Load data
         print(json.dumps({"status": "preprocessing", "progress": 15}), flush=True)
         df = load_data(data_file_path)
-        time.sleep(1)
+        
+        # Print dataset info for debugging
+        print(f"Dataset loaded with {len(df)} rows and columns: {df.columns.tolist()}", file=sys.stderr)
         
         # Parse configuration
         print(json.dumps({"status": "preprocessing", "progress": 25}), flush=True)
         config = parse_config(config_json)
-        time.sleep(1)
+        
+        # Print key config elements for debugging
+        print(f"Target column: {config['target_column']}, Channels: {list(config['channel_columns'].keys())}", file=sys.stderr)
         
         # Start training
         print(json.dumps({"status": "training", "progress": 35}), flush=True)
-        time.sleep(1)
         
-        # Simulate training progress steps
+        # Simulate training progress steps (with faster timings)
         print(json.dumps({"status": "training", "progress": 45}), flush=True)
-        time.sleep(2)
+        time.sleep(0.5)
         
         print(json.dumps({"status": "training", "progress": 55}), flush=True)
-        time.sleep(1)
+        time.sleep(0.5)
         
         print(json.dumps({"status": "training", "progress": 65}), flush=True)
-        time.sleep(1)
+        time.sleep(0.5)
         
         # Train model (actual training)
         print(json.dumps({"status": "training", "progress": 75}), flush=True)
+        print("Starting model training with PyMC-Marketing...", file=sys.stderr)
         results = train_model(df, config)
+        print("Model training completed successfully!", file=sys.stderr)
         
         # Post-processing 
         print(json.dumps({"status": "postprocessing", "progress": 85}), flush=True)
-        time.sleep(1)
+        time.sleep(0.5)
         
         # Return results as JSON
         print(json.dumps({"status": "postprocessing", "progress": 95}), flush=True)
         print(json.dumps(results), flush=True)
-        time.sleep(1)
         
         # Final status update
         print(json.dumps({"status": "completed", "progress": 100}), flush=True)
         
     except Exception as e:
+        import traceback
+        print(f"Exception during model training: {str(e)}", file=sys.stderr)
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
         print(json.dumps({
             "status": "error",
             "progress": 0,
