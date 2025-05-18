@@ -25,11 +25,8 @@ def load_data(file_path):
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values('Date')
         
-        # Reduce dataset size for faster testing
-        # This is only for initial integration testing, should be removed in production
-        if len(df) > 100:
-            print(f"Reducing dataset from {len(df)} rows to 100 for faster integration testing", file=sys.stderr)
-            df = df.head(100)
+        # Use the full dataset for more accurate model training
+        print(f"Using full dataset with {len(df)} rows for more accurate model training", file=sys.stderr)
         
         return df
     except Exception as e:
@@ -203,9 +200,9 @@ def train_model(df, config):
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=200,      # Increased from 20 for better accuracy
-                tune=100,       # Increased from 10 for better convergence
-                chains=2,       # Using 2 chains for minimal convergence diagnostics
+                draws=1000,     # Increased for more stable estimates
+                tune=500,       # Increased for better adaptation
+                chains=4,       # Using 4 chains as recommended for robust convergence diagnostics
                 cores=1,        # Single core for compatibility
                 progressbar=False,  # No progress bar in API mode
                 target_accept=0.9   # Higher acceptance rate for faster convergence
