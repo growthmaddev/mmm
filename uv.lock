@@ -830,6 +830,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pymc" },
     { name = "pymc-marketing" },
+    { name = "scikit-learn" },
     { name = "scipy" },
 ]
 
@@ -841,6 +842,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pymc", specifier = ">=5.22.0" },
     { name = "pymc-marketing", specifier = ">=0.13.1" },
+    { name = "scikit-learn", specifier = ">=1.6.1" },
     { name = "scipy", specifier = ">=1.15.3" },
 ]
 
