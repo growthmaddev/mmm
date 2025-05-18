@@ -59,18 +59,16 @@ export default function ColumnMappingDirect() {
     }
   }, []);
   
-  // Hard-coded columns based on marketing_data_template.csv 
+  // Columns based on the actual uploaded CSV file
   const marketingColumns = [
-    { name: 'Date', type: 'date', examples: ['2023-01-01', '2023-01-02'] },
-    { name: 'Sales', type: 'number', examples: ['100000', '105000'] },
-    { name: 'TV_Spend', type: 'number', examples: ['15000', '15000'] },
-    { name: 'Radio_Spend', type: 'number', examples: ['5000', '5000'] },
-    { name: 'Social_Spend', type: 'number', examples: ['8000', '8500'] },
-    { name: 'Search_Spend', type: 'number', examples: ['10000', '10500'] },
-    { name: 'Display_Spend', type: 'number', examples: ['7000', '7500'] },
-    { name: 'Temperature', type: 'number', examples: ['45', '46'] },
-    { name: 'Holiday', type: 'number', examples: ['0', '0'] },
-    { name: 'Promotion', type: 'number', examples: ['0', '0'] }
+    { name: 'Date', type: 'date', examples: ['1/07/2018', '1/14/2018'] },
+    { name: 'Sales', type: 'number', examples: ['9779.8', '13245.19'] },
+    { name: 'TV_Spend', type: 'number', examples: ['611.61', '617.64'] },
+    { name: 'Radio_Spend', type: 'number', examples: ['267.75', '269.41'] },
+    { name: 'Social_Spend', type: 'number', examples: ['506.63', '502.69'] },
+    { name: 'Search_Spend', type: 'number', examples: ['349.33', '388.37'] },
+    { name: 'Email_Spend', type: 'number', examples: ['150.79', '170.38'] },
+    { name: 'Print_Spend', type: 'number', examples: ['324.64', '330.12'] }
   ];
   
   // State for column mapping
@@ -335,7 +333,8 @@ export default function ColumnMappingDirect() {
           <CardContent>
             <div className="space-y-4">
               {numericColumns
-                .filter(col => col.name !== mappingConfig.targetColumn && col.name.includes('_Spend'))
+                .filter(col => col.name !== mappingConfig.targetColumn && 
+                              ['TV_Spend', 'Radio_Spend', 'Social_Spend', 'Search_Spend', 'Email_Spend', 'Print_Spend'].includes(col.name))
                 .map((column) => (
                   <div key={column.name} className="flex items-start space-x-3 p-3 rounded-md border">
                     <Checkbox 
