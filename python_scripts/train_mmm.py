@@ -364,7 +364,7 @@ def train_model(df, config):
             elif roi_data.get(channel, 0) < 0.8:
                 recommendations.append(f"Consider reducing {channel} spend")
         
-        # Extract model parameters from posterior samples
+        # Extract model parameters from posterior samples and direct model object
         model_parameters = {}
         try:
             print("Extracting model parameters from posterior samples...", file=sys.stderr)
@@ -377,7 +377,7 @@ def train_model(df, config):
                 # Look for beta coefficient for this channel
                 beta_key = f"beta_{channel}"
                 if beta_key in summary.index:
-                    model_parameters[channel_clean]["beta_coefficient"] = float(summary.loc[beta_key, "mean"])
+                    model_parameters[channel_clean]["beta_coefficient"] = float(summary.loc[beta_key]["mean"])
                     print(f"Found beta coefficient for {channel}: {model_parameters[channel_clean]['beta_coefficient']}", file=sys.stderr)
                 
                 # Look for adstock parameters
@@ -386,7 +386,7 @@ def train_model(df, config):
                     model_parameters[channel_clean]["adstock_parameters"] = {}
                     for key in adstock_keys:
                         param_name = key.split('.')[-1]  # Extract parameter name (alpha, etc.)
-                        model_parameters[channel_clean]["adstock_parameters"][param_name] = float(summary.loc[key, "mean"])
+                        model_parameters[channel_clean]["adstock_parameters"][param_name] = float(summary.loc[key]["mean"])
                     print(f"Found adstock parameters for {channel}: {model_parameters[channel_clean]['adstock_parameters']}", file=sys.stderr)
                 
                 # Look for saturation parameters
@@ -395,24 +395,79 @@ def train_model(df, config):
                     model_parameters[channel_clean]["saturation_parameters"] = {}
                     for key in saturation_keys:
                         param_name = key.split('.')[-1]  # Extract parameter name (L, k, x0, etc.)
-                        model_parameters[channel_clean]["saturation_parameters"][param_name] = float(summary.loc[key, "mean"])
+                        model_parameters[channel_clean]["saturation_parameters"][param_name] = float(summary.loc[key]["mean"])
                     print(f"Found saturation parameters for {channel}: {model_parameters[channel_clean]['saturation_parameters']}", file=sys.stderr)
                 
-                # If we couldn't find explicit parameters, try to get them from the model object directly
+                # Try to find parameters from the direct model extraction if available
+                if model_direct_params:
+                    # Check for adstock parameters from direct model extraction
+                    if 'adstock_params' in model_direct_params and channel in model_direct_params['adstock_params']:
+                        if not model_parameters[channel_clean].get("adstock_parameters"):
+                            model_parameters[channel_clean]["adstock_parameters"] = {}
+                        
+                        # Add all parameters found in the direct extraction
+                        direct_adstock = model_direct_params['adstock_params'][channel]['params']
+                        for param_name, param_value in direct_adstock.items():
+                            if isinstance(param_value, (int, float)):
+                                model_parameters[channel_clean]["adstock_parameters"][param_name] = float(param_value)
+                        
+                        # Add adstock type information
+                        adstock_type = model_direct_params['adstock_params'][channel]['type']
+                        model_parameters[channel_clean]["adstock_type"] = adstock_type
+                        print(f"Found direct adstock parameters for {channel}: {adstock_type}", file=sys.stderr)
+                        
+                    # Check for saturation parameters from direct model extraction
+                    if 'saturation_params' in model_direct_params and channel in model_direct_params['saturation_params']:
+                        if not model_parameters[channel_clean].get("saturation_parameters"):
+                            model_parameters[channel_clean]["saturation_parameters"] = {}
+                        
+                        # Add all parameters found in the direct extraction
+                        direct_saturation = model_direct_params['saturation_params'][channel]['params']
+                        for param_name, param_value in direct_saturation.items():
+                            if isinstance(param_value, (int, float)):
+                                model_parameters[channel_clean]["saturation_parameters"][param_name] = float(param_value)
+                        
+                        # Add saturation type information
+                        saturation_type = model_direct_params['saturation_params'][channel]['type']
+                        model_parameters[channel_clean]["saturation_type"] = saturation_type
+                        print(f"Found direct saturation parameters for {channel}: {saturation_type}", file=sys.stderr)
+                
+                # If we still couldn't find saturation parameters, use defaults
                 if not model_parameters[channel_clean].get("saturation_parameters"):
                     try:
-                        # Get saturation parameters for LogisticSaturation
-                        # These names might need adjustment based on PyMC-Marketing implementation
+                        # Default parameters for LogisticSaturation
                         model_parameters[channel_clean]["saturation_parameters"] = {
                             "L": 1.0,  # Default max value (normalized)
                             "k": 0.0005,  # Default steepness
                             "x0": np.median(df[channel])  # Default midpoint at median spend
                         }
+                        model_parameters[channel_clean]["saturation_type"] = "LogisticSaturation"
                         print(f"Using default saturation parameters for {channel}", file=sys.stderr)
                     except Exception as e:
                         print(f"Could not extract saturation parameters for {channel}: {str(e)}", file=sys.stderr)
+                
+                # If we still couldn't find adstock parameters, use defaults
+                if not model_parameters[channel_clean].get("adstock_parameters"):
+                    try:
+                        # Default parameters for GeometricAdstock
+                        model_parameters[channel_clean]["adstock_parameters"] = {
+                            "alpha": 0.3,  # Default decay rate
+                            "l_max": 3  # Default max lag
+                        }
+                        model_parameters[channel_clean]["adstock_type"] = "GeometricAdstock"
+                        print(f"Using default adstock parameters for {channel}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"Could not extract adstock parameters for {channel}: {str(e)}", file=sys.stderr)
+                
+                # If we couldn't find beta coefficient, use a reasonable default based on ROI
+                if not model_parameters[channel_clean].get("beta_coefficient"):
+                    default_beta = roi_data.get(channel, 1.0) * np.mean(df[channel]) / np.mean(y) if np.mean(df[channel]) > 0 else 1.0
+                    model_parameters[channel_clean]["beta_coefficient"] = float(default_beta)
+                    print(f"Using default beta coefficient for {channel}: {default_beta}", file=sys.stderr)
             
-            print(f"Extracted model parameters: {model_parameters}", file=sys.stderr)
+            print(f"Final model parameters extracted:", file=sys.stderr)
+            for channel, params in model_parameters.items():
+                print(f"  - {channel}: {params.keys()}", file=sys.stderr)
             
         except Exception as e:
             print(f"Error extracting model parameters: {str(e)}", file=sys.stderr)
