@@ -2,31 +2,27 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import express from "express";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { isAuthenticated } from "./middleware/auth";
+import { authRoutes } from "./controllers/auth";
 import { projectRoutes } from "./controllers/projects";
 import { modelRoutes } from "./controllers/models";
 import { upload, handleFileUpload, getFileTemplate } from "./utils/fileUpload";
 import { initializeOAuth, handleOAuthCallback } from "./utils/oauthConnectors";
 import path from "path";
+import cookieParser from "cookie-parser";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Set up Replit Auth middleware
-  await setupAuth(app);
-
+  // Add middleware
+  app.use(cookieParser());
+  
   // API routes with /api prefix
   const apiRouter = express.Router();
   
-  // Auth routes - handled by Replit Auth
-  apiRouter.get('/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
+  // Auth routes
+  apiRouter.post('/auth/register', authRoutes.register);
+  apiRouter.post('/auth/login', authRoutes.login);
+  apiRouter.post('/auth/logout', authRoutes.logout);
+  apiRouter.get('/auth/user', isAuthenticated, authRoutes.getCurrentUser);
   
   // Projects routes
   apiRouter.get('/projects', isAuthenticated, async (req: any, res) => {

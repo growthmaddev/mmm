@@ -27,8 +27,7 @@ export const register = async (req: Request, res: Response) => {
       password: hashedPassword,
       username,
       firstName,
-      lastName,
-      role: "user"
+      lastName
     });
     
     // Create a session for the user
