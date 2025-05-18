@@ -38,7 +38,12 @@ interface OptimizationResult {
 export const optimizeBudget = async (req: Request, res: Response) => {
   try {
     const modelId = parseInt(req.params.modelId);
+    console.log('=== BUDGET OPTIMIZER START ===');
+    console.log('modelId:', modelId);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
     if (isNaN(modelId)) {
+      console.log('ERROR: Invalid model ID');
       return res.status(400).json({ 
         success: false, 
         message: 'Invalid model ID' 
@@ -47,11 +52,23 @@ export const optimizeBudget = async (req: Request, res: Response) => {
 
     // Get the model data
     const model = await storage.getModel(modelId);
+    console.log('Model found:', model ? 'Yes' : 'No');
+    
     if (!model) {
+      console.log('ERROR: Model not found');
       return res.status(404).json({ 
         success: false, 
         message: 'Model not found' 
       });
+    }
+    
+    console.log('Model status:', model.status);
+    console.log('Model results type:', typeof model.results);
+    console.log('Model results structure:', model.results ? 
+      (typeof model.results === 'string' ? 'JSON string' : 'Object') : 'null');
+    
+    if (model.results && typeof model.results === 'object') {
+      console.log('Model results keys:', Object.keys(model.results));
     }
 
     // Check if model is completed
@@ -249,7 +266,18 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       target_variable: targetVariable
     };
     
-    console.log("Sending optimization result:", JSON.stringify(result, null, 2));
+    console.log("=== OPTIMIZATION RESULT ===");
+    console.log(JSON.stringify(result, null, 2));
+    console.log("=== END OPTIMIZATION RESULT ===");
+    
+    // For direct API testing with curl
+    console.log('To test directly with curl:');
+    console.log(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify({
+      current_budget: current_budget,
+      desired_budget: desired_budget,
+      current_allocation: current_allocation
+    })}' http://localhost:3000/api/models/${modelId}/optimize-budget`);
+    
     return res.status(200).json(result);
     
   } catch (error) {
