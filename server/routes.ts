@@ -7,6 +7,7 @@ import { authRoutes } from "./controllers/auth";
 import { projectRoutes } from "./controllers/projects";
 import { modelRoutes } from "./controllers/models";
 import { dataSourceRoutes } from "./controllers/dataSources";
+import { budgetOptimizationRoutes } from "./controllers/budgetOptimization";
 import { getFileTemplate } from "./utils/fileUpload";
 import { uploadMiddleware, uploadFile } from "./controllers/uploads";
 import { initializeOAuth, handleOAuthCallback } from "./utils/oauthConnectors";
@@ -261,6 +262,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Data source routes
   apiRouter.get('/data-sources/:id', isAuthenticated, dataSourceRoutes.getDataSource);
   apiRouter.put('/data-sources/:id/mapping', isAuthenticated, dataSourceRoutes.updateColumnMapping);
+  
+  // Budget optimization routes
+  apiRouter.post('/models/:modelId/optimize-budget', isAuthenticated, budgetOptimizationRoutes.optimizeBudget);
   
   // OAuth connector routes
   apiRouter.get('/oauth/:provider/:projectId', isAuthenticated, initializeOAuth);
