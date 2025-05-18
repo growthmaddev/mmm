@@ -173,14 +173,20 @@ export default function ModelSetup() {
                 <div className="ml-3 text-slate-500">Upload Data</div>
               </div>
               <div className="flex items-center">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary">
+                  ✓
+                </div>
+                <div className="ml-3 text-slate-500">Map Columns</div>
+              </div>
+              <div className="flex items-center">
                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white">
-                  2
+                  3
                 </div>
                 <div className="ml-3 font-medium">Configure Model</div>
               </div>
               <div className="flex items-center">
                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
-                  3
+                  4
                 </div>
                 <div className="ml-3 text-slate-500">View Results</div>
               </div>
@@ -356,10 +362,10 @@ export default function ModelSetup() {
               <CardFooter className="flex justify-between">
                 <Button 
                   variant="outline" 
-                  onClick={() => navigate(`/projects/${id}/data-upload`)}
+                  onClick={() => navigate(`/projects/${id}/column-mapping-direct`)}
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Data Upload
+                  Back to Column Mapping
                 </Button>
                 
                 <Button 
