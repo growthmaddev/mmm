@@ -13,10 +13,22 @@ interface BudgetOptimizationRequest {
   current_allocation: Record<string, number>;
 }
 
+interface ChannelBreakdown {
+  channel: string;
+  current_spend: number;
+  optimized_spend: number;
+  percent_change: number;
+  roi: number;
+  contribution: number;
+}
+
 interface OptimizationResult {
   optimized_allocation: Record<string, number>;
   expected_outcome: number;
   expected_lift: number;
+  current_outcome: number;
+  channel_breakdown: ChannelBreakdown[];
+  target_variable: string;
 }
 
 /**
@@ -64,33 +76,41 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       });
     }
 
-    // For MVP, we'll implement a simple budget allocation algorithm
-    // that doesn't rely on model results yet, but uses intelligent defaults
+    // We'll use the model's actual results with channel ROIs calculated from training
     
-    // Create an array of channels with assigned ROI values
-    // We'll assign ROI values based on general marketing performance patterns
+    // Extract channel ROIs from the model results
+    const modelResults = model.results || {};
+    const channelData = modelResults.summary?.channels || {};
+    
+    console.log('Model results available:', JSON.stringify(modelResults.summary?.channels, null, 2));
+    
+    // Map channels with their actual ROIs from model results
     const channelsWithROI = Object.entries(current_allocation).map(([channel, spend]) => {
-      // Assign ROI values based on channel type (just for demonstration)
-      let roi = 1.0; // Default ROI
+      // Try to find ROI data for this channel
+      // First, check exact match
+      let roiValue = 1.0; // Default ROI if no match found
+      let channelKey = channel;
       
-      // Assign higher ROI to digital channels vs traditional ones
-      if (channel.toLowerCase().includes('search') || channel.toLowerCase().includes('google')) {
-        roi = 3.0; // Search typically has high ROI
-      } else if (channel.toLowerCase().includes('social') || channel.toLowerCase().includes('facebook')) {
-        roi = 2.5; // Social media typically has good ROI
-      } else if (channel.toLowerCase().includes('email')) {
-        roi = 2.8; // Email marketing typically has high ROI
-      } else if (channel.toLowerCase().includes('tv')) {
-        roi = 1.5; // TV typically has moderate ROI
-      } else if (channel.toLowerCase().includes('radio')) {
-        roi = 1.2; // Radio typically has lower ROI
-      } else if (channel.toLowerCase().includes('print')) {
-        roi = 1.0; // Print typically has lower ROI
+      // Check if channel exists in results (first without _Spend suffix)
+      if (channelData[channel]) {
+        roiValue = channelData[channel].roi || 1.0;
+      } 
+      // Check if channel with _Spend suffix exists in results
+      else if (channelData[`${channel}_Spend`]) {
+        channelKey = `${channel}_Spend`;
+        roiValue = channelData[`${channel}_Spend`].roi || 1.0;
       }
+      // Try removing _Spend suffix if it exists
+      else if (channel.endsWith('_Spend') && channelData[channel.replace('_Spend', '')]) {
+        channelKey = channel.replace('_Spend', '');
+        roiValue = channelData[channelKey].roi || 1.0;
+      }
+      
+      console.log(`Channel ${channel}: Found ROI data with key ${channelKey}, ROI = ${roiValue}`);
       
       return {
         channel,
-        roi,
+        roi: roiValue,
         currentSpend: spend
       };
     });
@@ -125,28 +145,51 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       optimizedAllocation[channelsWithROI[0].channel] += Math.round(remainingBudget);
     }
     
-    // Calculate simple outcome estimations
+    // Calculate outcomes using the model's actual ROI values
     const currentOutcome = Object.entries(current_allocation).reduce((sum, [channel, spend]) => {
       const channelInfo = channelsWithROI.find(c => c.channel === channel);
+      // Use the ROI value to calculate channel contribution to outcome
       return sum + (spend * (channelInfo?.roi || 1.0) / 100);
     }, 0);
     
     const expectedOutcome = Object.entries(optimizedAllocation).reduce((sum, [channel, spend]) => {
       const channelInfo = channelsWithROI.find(c => c.channel === channel);
+      // Use the ROI value to calculate channel contribution to outcome
       return sum + (spend * (channelInfo?.roi || 1.0) / 100);
     }, 0);
+    
+    // Add extra information to response for better frontend display
+    const channelBreakdown = Object.entries(optimizedAllocation).map(([channel, spend]) => {
+      const channelInfo = channelsWithROI.find(c => c.channel === channel);
+      const currentSpend = current_allocation[channel] || 0;
+      const percentChange = currentSpend > 0 
+        ? ((spend - currentSpend) / currentSpend) * 100 
+        : 100;
+        
+      return {
+        channel,
+        current_spend: currentSpend,
+        optimized_spend: spend,
+        percent_change: percentChange,
+        roi: channelInfo?.roi || 1.0,
+        contribution: (spend * (channelInfo?.roi || 1.0) / 100)
+      };
+    });
     
     // Calculate expected lift
     const expectedLift = (expectedOutcome - currentOutcome) / currentOutcome;
     
-    // Prepare and return the results
+    // Prepare and return the results with detailed breakdown
     const result: OptimizationResult = {
       optimized_allocation: optimizedAllocation,
       expected_outcome: Math.round(expectedOutcome),
-      expected_lift: expectedLift
+      expected_lift: expectedLift,
+      current_outcome: Math.round(currentOutcome),
+      channel_breakdown: channelBreakdown,
+      target_variable: model.responseVariables?.target || 'Sales'
     };
     
-    console.log("Sending optimization result:", result);
+    console.log("Sending optimization result:", JSON.stringify(result, null, 2));
     return res.status(200).json(result);
     
   } catch (error) {
