@@ -2,8 +2,10 @@ import { Switch, Route } from "wouter";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
+import { useAuth } from "./hooks/useAuth";
 
 // Import pages
+import HomePage from "./pages/home";
 import Dashboard from "./pages/dashboard";
 import Projects from "./pages/projects";
 import CreateProject from "./pages/projects/create";
@@ -15,14 +17,18 @@ import ProjectBudgetOptimizer from "./pages/projects/[id]/budget-optimizer";
 import NotFound from "./pages/not-found";
 
 function App() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show home page to non-authenticated users
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Switch>
-          {/* Dashboard */}
-          <Route path="/" component={Dashboard} />
+          {/* Public route */}
+          <Route path="/" component={isAuthenticated ? Dashboard : HomePage} />
           
-          {/* Projects */}
+          {/* Protected routes */}
+          <Route path="/dashboard" component={Dashboard} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/create" component={CreateProject} />
           <Route path="/projects/:id" component={ProjectDetails} />
