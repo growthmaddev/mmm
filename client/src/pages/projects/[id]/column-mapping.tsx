@@ -95,7 +95,7 @@ export default function ColumnMapping() {
       return apiRequest("PUT", `/api/data-sources/${dataSourceId}/mapping`, mapping);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/data-sources/${dataSourceId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/data-sources`] });
       toast({
         title: "Success",
         description: "Column mapping saved successfully",
