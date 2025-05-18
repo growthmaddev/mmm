@@ -60,12 +60,23 @@ export default function ProjectDataUpload() {
       
       return new Promise((resolve, reject) => {
         xhr.open("POST", "/api/upload");
+        xhr.setRequestHeader("Accept", "application/json");
         
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(JSON.parse(xhr.responseText));
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (e) {
+              reject(new Error("Invalid response format"));
+            }
           } else {
-            reject(new Error(xhr.statusText || "Upload failed"));
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              reject(new Error(errorResponse.message || "Upload failed"));
+            } catch (e) {
+              reject(new Error(xhr.statusText || "Upload failed"));
+            }
           }
         };
         
@@ -76,15 +87,26 @@ export default function ProjectDataUpload() {
         xhr.send(formData);
       });
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${id}/data-sources`] });
       setUploadState("success");
-      toast({
-        title: "Upload complete",
-        description: "Your data has been successfully uploaded",
-      });
+      
+      // Check validation results
+      if (data.validation && !data.validation.isValid) {
+        toast({
+          variant: "warning",
+          title: "Upload complete with warnings",
+          description: "Your data has been uploaded but there may be issues with the format.",
+        });
+      } else {
+        toast({
+          title: "Upload complete",
+          description: "Your data has been successfully uploaded and is ready for analysis",
+        });
+      }
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error("Upload error:", error);
       setUploadState("error");
       toast({
         variant: "destructive",

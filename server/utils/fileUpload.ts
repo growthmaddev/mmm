@@ -136,15 +136,40 @@ export const handleFileUpload = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Project ID is required' });
     }
 
+    if (!req.userId) {
+      return res.status(401).json({ message: 'User authentication required' });
+    }
+
     // Validate the file
     const validationResult = await validateCsvData(req.file.path);
     
-    // Return validation results
+    // Create a data source record in the database
+    const { storage } = await import('../storage');
+    
+    const dataSource = await storage.createDataSource({
+      projectId,
+      type: 'csv_upload',
+      name: req.file.originalname,
+      fileName: req.file.originalname,
+      filePath: req.file.path,
+      fileSize: req.file.size,
+      metadata: {
+        columns: validationResult.columns,
+        sampleData: validationResult.sampleData,
+        errors: validationResult.errors,
+        status: validationResult.isValid ? 'ready' : 'error'
+      },
+      createdById: req.userId
+    });
+    
+    // Return validation results and the new data source
     return res.json({
+      id: dataSource.id,
       fileName: req.file.originalname,
       fileUrl: req.file.path,
       fileSize: req.file.size,
-      validation: validationResult
+      validation: validationResult,
+      status: dataSource.metadata?.status || 'ready'
     });
   } catch (error) {
     console.error('File upload error:', error);
