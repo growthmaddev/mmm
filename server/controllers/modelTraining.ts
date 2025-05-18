@@ -116,6 +116,7 @@ function generateMockResults() {
 export const startModelTraining = async (req: AuthRequest, res: Response) => {
   try {
     const { modelId } = req.params;
+    const USE_REAL_PYMC = true; // Set to true to use the real PyMC-Marketing integration
     
     if (!modelId) {
       return res.status(400).json({ 
@@ -181,20 +182,29 @@ export const startModelTraining = async (req: AuthRequest, res: Response) => {
       controlVariables: model.controlVariables || {}
     };
     
-    // Start the real PyMC training process
-    executeModelTraining(model.id, dataSource.fileUrl, modelConfig)
-      .catch(err => {
-        console.error('Error during model training:', err);
-        storage.updateModel(model.id, {
-          status: 'error',
-          progress: 0
+    // Choose between real PyMC-Marketing or simulation
+    if (USE_REAL_PYMC) {
+      console.log(`Starting REAL PyMC-Marketing training for model ${model.id}`);
+      
+      // Start the real PyMC training process
+      executeModelTraining(model.id, dataSource.fileUrl, modelConfig)
+        .catch(err => {
+          console.error('Error during model training:', err);
+          storage.updateModel(model.id, {
+            status: 'error',
+            progress: 0
+          });
         });
-      });
+    } else {
+      console.log(`Starting simulated training for model ${model.id}`);
+      // For development testing - simulate training
+      simulateModelTraining(model.id);
+    }
     
     // Return success response without waiting for training to complete
     return res.status(200).json({
       success: true,
-      message: 'Model training started',
+      message: USE_REAL_PYMC ? 'Real PyMC-Marketing model training started' : 'Simulated model training started',
       model: {
         id: model.id,
         status: 'training',
