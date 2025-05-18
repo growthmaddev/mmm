@@ -1,34 +1,28 @@
 import { useState } from "react";
-import { Link } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Link, useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address" }),
-  password: z.string().min(8, {
-    message: "Password must be at least 8 characters long",
-  }),
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export default function Login() {
-  const { login } = useAuth();
+export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [, navigate] = useLocation();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -38,37 +32,39 @@ export default function Login() {
     },
   });
 
-  const onSubmit = async (values: LoginFormValues) => {
+  const onSubmit = async (data: LoginFormValues) => {
+    setLoading(true);
     setError(null);
+    
     try {
-      await login.mutateAsync(values);
+      await apiRequest("POST", "/api/auth/login", data);
+      navigate("/dashboard");
     } catch (err: any) {
-      setError(err.message || "Failed to log in. Please check your credentials.");
+      setError(err.message || "Failed to login. Please check your credentials.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">
-            MMM Platform
-          </h1>
-          <p className="text-slate-600 mt-2">
-            Log in to your account to continue
-          </p>
-        </div>
-
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <div className="bg-white p-8 rounded-lg shadow-sm border border-slate-200">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="space-y-1 text-center">
+          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+          <CardDescription>
+            Enter your credentials to access your account
+          </CardDescription>
+        </CardHeader>
+        
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
                 name="email"
@@ -76,12 +72,13 @@ export default function Login() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="your@email.com" {...field} type="email" autoComplete="email" />
+                      <Input placeholder="name@example.com" type="email" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={form.control}
                 name="password"
@@ -89,34 +86,44 @@ export default function Login() {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input placeholder="••••••••" {...field} type="password" autoComplete="current-password" />
+                      <Input placeholder="••••••••" type="password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={login.isPending}
-              >
-                {login.isPending ? "Logging in..." : "Log in"}
+              
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Logging in...
+                  </>
+                ) : (
+                  "Log in"
+                )}
               </Button>
             </form>
           </Form>
-
-          <div className="mt-6 text-center text-sm">
-            <p className="text-slate-600">
-              Don't have an account?{" "}
-              <Link href="/register">
-                <a className="text-primary font-medium hover:underline">
-                  Sign up
-                </a>
-              </Link>
-            </p>
+        </CardContent>
+        
+        <CardFooter className="flex flex-col space-y-4">
+          <div className="text-center text-sm text-slate-500">
+            Don't have an account?{" "}
+            <Link href="/register">
+              <a className="font-medium text-primary hover:text-primary/80 transition-colors">
+                Sign up
+              </a>
+            </Link>
           </div>
-        </div>
-      </div>
+          
+          <Link href="/">
+            <a className="text-center text-sm text-slate-500 hover:text-slate-700 transition-colors">
+              Back to home
+            </a>
+          </Link>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

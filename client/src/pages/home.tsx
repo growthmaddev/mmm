@@ -94,11 +94,10 @@ export default function HomePage() {
             </p>
             <Button 
               size="lg"
-              onClick={() => window.location.href = "/api/login"}
-              disabled={isLoading}
+              asChild
               className="px-8 py-6 text-lg"
             >
-              {isLoading ? "Loading..." : "Get Started for Free"}
+              <Link href="/register">Get Started for Free</Link>
             </Button>
           </div>
         </section>

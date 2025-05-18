@@ -1,11 +1,12 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Router, useLocation } from "wouter";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
-import { useAuth } from "./hooks/useAuth";
 
 // Import pages
 import HomePage from "./pages/home";
+import LoginPage from "./pages/auth/login";
+import RegisterPage from "./pages/auth/register";
 import Dashboard from "./pages/dashboard";
 import Projects from "./pages/projects";
 import CreateProject from "./pages/projects/create";
@@ -17,18 +18,19 @@ import ProjectBudgetOptimizer from "./pages/projects/[id]/budget-optimizer";
 import NotFound from "./pages/not-found";
 
 function App() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  // Show home page to non-authenticated users
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Switch>
-          {/* Public route */}
-          <Route path="/" component={isAuthenticated ? Dashboard : HomePage} />
+          {/* Public routes */}
+          <Route path="/" component={HomePage} />
+          <Route path="/login" component={LoginPage} />
+          <Route path="/register" component={RegisterPage} />
           
-          {/* Protected routes */}
+          {/* Dashboard routes */}
           <Route path="/dashboard" component={Dashboard} />
+          
+          {/* Projects routes */}
           <Route path="/projects" component={Projects} />
           <Route path="/projects/create" component={CreateProject} />
           <Route path="/projects/:id" component={ProjectDetails} />
