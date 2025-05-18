@@ -11,7 +11,8 @@ import pandas as pd
 import numpy as np
 import pymc as pm
 import arviz as az
-from pymc_marketing.mmm.models import DelayedSaturatedMMM
+# Using the standard MMM implementation from pymc-marketing
+from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
 
 def load_data(file_path):
     """Load and preprocess data for MMM"""
@@ -70,49 +71,60 @@ def train_model(df, config):
         # Extract configuration
         target_column = config['target_column']
         channel_columns = list(config['channel_columns'].keys())
+        date_column = config.get('date_column', 'Date')
         
-        # Prepare data for PyMC-Marketing
-        target = df[target_column].values
-        
-        # Prepare channel data - each channel's spend as a separate array
-        media_data = {}
-        for channel in channel_columns:
-            media_data[channel] = df[channel].values
-        
-        # Convert adstock and saturation settings to proper format
-        adstock = {}
-        saturation = {}
-        
-        for channel in channel_columns:
-            # Default values if settings not provided
-            adstock[channel] = config['adstock_settings'].get(channel, 1)
-            saturation[channel] = config['saturation_settings'].get(channel, 0.5)
-        
-        # For production deployment, significantly reduce model complexity to ensure it completes
-        with pm.Model() as model:
-            # Create the MMM model with appropriate priors
-            mmm = DelayedSaturatedMMM(
-                target=target,
-                media=media_data,
-                adstock=adstock,
-                ec_max=saturation,
-                normalize_media=True
-            )
+        # Ensure date is in datetime format
+        if date_column in df.columns:
+            df[date_column] = pd.to_datetime(df[date_column])
             
-            # Use extremely small number of samples for proof of concept
-            # This will complete much faster but with lower statistical validity
-            trace = pm.sample(
-                draws=50,       # Extremely reduced for testing/speed
-                tune=25,        # Extremely reduced for testing/speed
-                chains=1,       # Single chain for speed
-                cores=1,        # Single core for compatibility
-                return_inferencedata=True,
-                progressbar=False  # No progress bar in API mode
-            )
+        # Prepare data for PyMC-Marketing
+        # X should contain date and all media channels (and any control variables)
+        X = df.copy()
+        # y is just the target (e.g., Sales)
+        y = df[target_column]
         
-        # Calculate predictions and summary statistics
-        predictions = mmm.predict(media_data)
-        channel_contributions = mmm.decompose_by_channel(trace=trace)
+        # Configure the adstock (carryover effects)
+        adstock_settings = {}
+        for channel in channel_columns:
+            # Use configured value or default to geometric adstock with lag=1
+            adstock_value = config['adstock_settings'].get(channel, 1)
+            adstock_settings[channel] = GeometricAdstock(l_max=adstock_value)
+            
+        # Configure the saturation (diminishing returns)
+        saturation_settings = {}
+        for channel in channel_columns:
+            # Use configured value or default 
+            saturation_value = config['saturation_settings'].get(channel, 0.5)
+            saturation_settings[channel] = LogisticSaturation()
+            
+        # Create PyMC-Marketing MMM object
+        mmm = MMM(
+            date_column=date_column,
+            channel_columns=channel_columns,
+            adstock=adstock_settings,
+            saturation=saturation_settings,
+            # No controls for MVP implementation
+            normalize_media=True
+        )
+            
+        # Sample with extremely reduced parameters for fast prototype
+        trace = mmm.fit(
+            X=X, 
+            y=y,
+            draws=50,       # Extremely reduced for testing/speed
+            tune=25,        # Extremely reduced for testing/speed
+            chains=1,       # Single chain for speed
+            cores=1,        # Single core for compatibility
+            progressbar=False  # No progress bar in API mode
+        )
+        
+        # Calculate predictions 
+        predictions = mmm.predict(X)
+        
+        # Get contribution by channel
+        contributions = mmm.decompose_by_channel(X, trace)
+        
+        # Summarize posteriors
         summary = az.summary(trace)
         
         # Calculate simplified ROI for each channel
