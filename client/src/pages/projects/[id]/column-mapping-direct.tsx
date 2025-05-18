@@ -379,7 +379,7 @@ export default function ColumnMappingDirect() {
             <div className="space-y-4">
               {numericColumns
                 .filter(col => col.name !== mappingConfig.targetColumn && 
-                              ['TV_Spend', 'Radio_Spend', 'Social_Spend', 'Search_Spend', 'Email_Spend', 'Print_Spend'].includes(col.name))
+                              col.name.endsWith('_Spend'))
                 .map((column) => (
                   <div key={column.name} className="flex items-start space-x-3 p-3 rounded-md border">
                     <Checkbox 
