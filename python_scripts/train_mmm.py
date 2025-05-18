@@ -22,7 +22,23 @@ def load_data(file_path):
         
         # Parse dates if date column exists
         if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
+            # Try multiple date formats to handle international date formats
+            try:
+                # First try with dayfirst=True for DD/MM/YYYY format
+                df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
+                print(f"Successfully parsed dates with dayfirst=True format", file=sys.stderr)
+            except Exception as date_error:
+                print(f"Failed to parse dates with dayfirst=True, trying alternative formats: {str(date_error)}", file=sys.stderr)
+                try:
+                    # Then try with format='mixed' to let pandas infer the format
+                    df['Date'] = pd.to_datetime(df['Date'], format='mixed')
+                    print(f"Successfully parsed dates with format='mixed'", file=sys.stderr)
+                except:
+                    # Last resort, try without any special handling
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    print(f"Successfully parsed dates with default format", file=sys.stderr)
+            
+            # Sort by date
             df = df.sort_values('Date')
         
         # Use the full dataset for more accurate model training
