@@ -19,15 +19,18 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
     // Always update with default columns for now to ensure mapping works
     const connectionInfo = dataSource.connectionInfo || {};
     
-    // Generate default columns for demonstration
+    // Generate columns based on the marketing data template
     const defaultColumns = [
-      { name: 'Date', type: 'date', examples: ['2023-01-01', '2023-01-08'] },
-      { name: 'Sales', type: 'number', examples: ['1200', '1500'] },
-      { name: 'TV_Spend', type: 'number', examples: ['500', '600'] },
-      { name: 'Radio_Spend', type: 'number', examples: ['300', '200'] },
-      { name: 'Digital_Spend', type: 'number', examples: ['450', '500'] },
-      { name: 'Newspaper_Spend', type: 'number', examples: ['150', '100'] },
-      { name: 'Promotion', type: 'string', examples: ['Yes', 'No'] }
+      { name: 'Date', type: 'date', examples: ['2023-01-01', '2023-01-02'] },
+      { name: 'Sales', type: 'number', examples: ['100000', '105000'] },
+      { name: 'TV_Spend', type: 'number', examples: ['15000', '15000'] },
+      { name: 'Radio_Spend', type: 'number', examples: ['5000', '5000'] },
+      { name: 'Social_Spend', type: 'number', examples: ['8000', '8500'] },
+      { name: 'Search_Spend', type: 'number', examples: ['10000', '10500'] },
+      { name: 'Display_Spend', type: 'number', examples: ['7000', '7500'] },
+      { name: 'Temperature', type: 'number', examples: ['45', '46'] },
+      { name: 'Holiday', type: 'number', examples: ['0', '0'] },
+      { name: 'Promotion', type: 'number', examples: ['0', '0'] }
     ];
     
     // Update the data source with column information
