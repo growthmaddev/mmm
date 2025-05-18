@@ -14,32 +14,75 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "Data source not found" });
     }
     
-    console.log(`Getting data source ${dataSourceId}, fileUrl: ${dataSource.fileUrl}`);
+    console.log(`Processing data source ${dataSourceId}, fileUrl: ${dataSource.fileUrl}`);
     
-    // Always update with default columns for now to ensure mapping works
+    // Check if file exists
+    if (!dataSource.fileUrl || !fs.existsSync(dataSource.fileUrl)) {
+      console.error(`File not found at path: ${dataSource.fileUrl}`);
+      return res.status(404).json({ message: "Data source file not found" });
+    }
+    
+    // Read the first few lines of the CSV file to extract columns
+    const fileContent = fs.readFileSync(dataSource.fileUrl, 'utf-8');
+    const lines = fileContent.split('\n').slice(0, 5); // Get first 5 lines
+    
+    if (lines.length === 0) {
+      return res.status(400).json({ message: "Empty CSV file" });
+    }
+    
+    // Parse the header line to get column names
+    const headers = lines[0].split(',').map(h => h.trim());
+    console.log("Detected column headers:", headers);
+    
+    // Initialize columns array
+    const columns = [];
+    
+    // Get sample values from the first data row
+    const sampleValues = lines.length > 1 ? lines[1].split(',').map(v => v.trim()) : [];
+    const sampleValues2 = lines.length > 2 ? lines[2].split(',').map(v => v.trim()) : [];
+    
+    // Create column objects with names and examples
+    for (let i = 0; i < headers.length; i++) {
+      const name = headers[i];
+      const examples = [];
+      
+      if (i < sampleValues.length) {
+        examples.push(sampleValues[i]);
+      }
+      
+      if (i < sampleValues2.length) {
+        examples.push(sampleValues2[i]);
+      }
+      
+      // Determine column type
+      let type = 'string';
+      
+      if (name.toLowerCase().includes('date')) {
+        type = 'date';
+      } else if (
+        examples.length > 0 && 
+        examples.every(ex => !isNaN(Number(ex.replace(/,/g, ''))))
+      ) {
+        type = 'number';
+      }
+      
+      columns.push({
+        name,
+        type,
+        examples
+      });
+    }
+    
+    console.log(`Detected ${columns.length} columns in the CSV file`);
+    
+    // Update the data source with the extracted column information
     const connectionInfo = dataSource.connectionInfo || {};
-    
-    // Generate columns based on the marketing data template
-    const defaultColumns = [
-      { name: 'Date', type: 'date', examples: ['2023-01-01', '2023-01-02'] },
-      { name: 'Sales', type: 'number', examples: ['100000', '105000'] },
-      { name: 'TV_Spend', type: 'number', examples: ['15000', '15000'] },
-      { name: 'Radio_Spend', type: 'number', examples: ['5000', '5000'] },
-      { name: 'Social_Spend', type: 'number', examples: ['8000', '8500'] },
-      { name: 'Search_Spend', type: 'number', examples: ['10000', '10500'] },
-      { name: 'Display_Spend', type: 'number', examples: ['7000', '7500'] },
-      { name: 'Temperature', type: 'number', examples: ['45', '46'] },
-      { name: 'Holiday', type: 'number', examples: ['0', '0'] },
-      { name: 'Promotion', type: 'number', examples: ['0', '0'] }
-    ];
-    
-    // Update the data source with column information
     await storage.updateDataSource(dataSourceId, {
       connectionInfo: {
         ...connectionInfo,
-        columns: defaultColumns,
+        columns,
         status: 'ready',
-        fileSize: connectionInfo.fileSize || 10000,
+        fileSize: fs.statSync(dataSource.fileUrl).size,
       }
     });
     
@@ -48,8 +91,8 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
     return res.json(updatedDataSource);
     
   } catch (error) {
-    console.error("Error fetching data source:", error);
-    return res.status(500).json({ message: "Failed to fetch data source" });
+    console.error("Error processing data source:", error);
+    return res.status(500).json({ message: "Failed to process data source" });
   }
 };
 
