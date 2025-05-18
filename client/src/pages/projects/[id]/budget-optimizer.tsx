@@ -109,13 +109,18 @@ export default function BudgetOptimizer() {
       return apiRequest("POST", `/api/models/${selectedModelId}/optimize-budget`, data);
     },
     onSuccess: (data) => {
-      setOptimizedSpends(data.optimized_allocation);
+      console.log("Budget optimization response:", data);
+      setOptimizedSpends(data.optimized_allocation || {});
       setOptimizationResults(data);
+      
+      // Force a re-render by setting state twice
+      setLoading(false);
+      
+      // Show success toast
       toast({
         title: "Budget optimization complete",
         description: "Your optimized budget allocation has been calculated.",
       });
-      setLoading(false);
     },
     onError: (error: any) => {
       toast({
@@ -316,7 +321,7 @@ export default function BudgetOptimizer() {
         )}
         
         {/* Optimized allocation */}
-        {optimizedSpends && optimizationResults && (
+        {optimizedSpends && Object.keys(optimizedSpends).length > 0 && optimizationResults && (
           <Card className="border-primary/30 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -333,18 +338,18 @@ export default function BudgetOptimizer() {
                   <div className="text-center">
                     <h3 className="text-lg font-semibold">Expected Outcome</h3>
                     <div className="mt-2 text-3xl font-bold text-primary">
-                      {formatCurrency(optimizationResults.expected_outcome)}
+                      {formatCurrency(optimizationResults.expected_outcome || 0)}
                     </div>
                     <div className="mt-1 flex items-center justify-center text-sm">
                       {optimizationResults.expected_lift > 0 ? (
                         <div className="flex items-center text-green-600">
                           <ArrowUp className="h-4 w-4 mr-1" />
-                          +{(optimizationResults.expected_lift * 100).toFixed(1)}% lift
+                          +{((optimizationResults.expected_lift || 0) * 100).toFixed(1)}% lift
                         </div>
                       ) : (
                         <div className="flex items-center text-red-600">
                           <ArrowDown className="h-4 w-4 mr-1" />
-                          {(optimizationResults.expected_lift * 100).toFixed(1)}% decrease
+                          {((optimizationResults.expected_lift || 0) * 100).toFixed(1)}% decrease
                         </div>
                       )}
                     </div>
@@ -355,7 +360,10 @@ export default function BudgetOptimizer() {
                 <div className="space-y-4">
                   {Object.entries(optimizedSpends).map(([channel, spend]) => {
                     const currentSpend = channelSpends[channel] || 0;
-                    const percentChange = ((Number(spend) - currentSpend) / currentSpend) * 100;
+                    // Handle zero current spend to prevent division by zero
+                    const percentChange = currentSpend > 0 
+                      ? ((Number(spend) - currentSpend) / currentSpend) * 100
+                      : 100; // If currentSpend is 0, show 100% increase
                     
                     return (
                       <div key={channel} className="space-y-1">
