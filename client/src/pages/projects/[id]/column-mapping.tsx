@@ -41,8 +41,12 @@ export default function ColumnMapping() {
   const { id: projectId } = useParams();
   const [location] = useLocation();
   // Extract dataSourceId from URL query parameters
-  const searchParams = new URLSearchParams(location.split('?')[1] || '');
+  const searchPart = location.includes('?') ? location.split('?')[1] : '';
+  const searchParams = new URLSearchParams(searchPart);
   const dataSourceId = searchParams.get('dataSource');
+  console.log("URL location:", location);
+  console.log("Search parameters part:", searchPart);
+  console.log("Extracted dataSourceId:", dataSourceId);
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
