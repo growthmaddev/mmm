@@ -283,8 +283,9 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     console.log(`Result string length: ${resultStr.length}`);
     console.log(`First 100 chars: ${resultStr.substring(0, 100)}`);
     
-    // Use the simplest response method to ensure data is sent
-    return res.json(result);
+    // Explicitly set content type and send serialized JSON
+    res.setHeader('Content-Type', 'application/json');
+    return res.send(resultStr);
     
   } catch (error) {
     console.error('Budget optimization error:', error);
