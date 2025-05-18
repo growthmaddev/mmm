@@ -219,14 +219,20 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
       // Prepare the command to run the Python script
       const pythonScriptPath = path.join(process.cwd(), 'python_scripts', 'train_mmm.py');
       
-      // Convert the model configuration to a JSON string
+      // Properly escape the model configuration as a JSON string
       const configJson = JSON.stringify(modelConfig);
+      console.log(`Running MMM training with config: ${configJson.substring(0, 100)}...`);
       
-      // Spawn the Python process
+      // Create a temp file to pass the config to avoid command line argument issues
+      const fs = require('fs');
+      const tempConfigPath = path.join(process.cwd(), 'temp_config.json');
+      fs.writeFileSync(tempConfigPath, configJson, 'utf8');
+      
+      // Spawn the Python process with the temp config file path
       const pythonProcess = spawn('python3', [
         pythonScriptPath,
         dataFilePath,
-        configJson
+        tempConfigPath
       ]);
       
       let stdoutChunks: Buffer[] = [];
