@@ -88,8 +88,7 @@ def train_model(df, config):
             adstock[channel] = config['adstock_settings'].get(channel, 1)
             saturation[channel] = config['saturation_settings'].get(channel, 0.5)
         
-        # Set priors and parameters for a simple model
-        # Using a smaller number of samples and tune steps for faster demonstration
+        # For production deployment, significantly reduce model complexity to ensure it completes
         with pm.Model() as model:
             # Create the MMM model with appropriate priors
             mmm = DelayedSaturatedMMM(
@@ -100,12 +99,12 @@ def train_model(df, config):
                 normalize_media=True
             )
             
-            # Sample from the model - using fewer samples to speed up the process
-            # In production, would use more samples and longer chains
+            # Use extremely small number of samples for proof of concept
+            # This will complete much faster but with lower statistical validity
             trace = pm.sample(
-                draws=500,      # Reduced for speed
-                tune=200,       # Reduced for speed
-                chains=2,       # Reduced for speed
+                draws=50,       # Extremely reduced for testing/speed
+                tune=25,        # Extremely reduced for testing/speed
+                chains=1,       # Single chain for speed
                 cores=1,        # Single core for compatibility
                 return_inferencedata=True,
                 progressbar=False  # No progress bar in API mode

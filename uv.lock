@@ -828,6 +828,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pymc" },
     { name = "pymc-marketing" },
     { name = "scipy" },
 ]
@@ -838,6 +839,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.3" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pandas", specifier = ">=2.2.3" },
+    { name = "pymc", specifier = ">=5.22.0" },
     { name = "pymc-marketing", specifier = ">=0.13.1" },
     { name = "scipy", specifier = ">=1.15.3" },
 ]

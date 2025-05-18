@@ -180,9 +180,8 @@ export const startModelTraining = async (req: AuthRequest, res: Response) => {
       controlVariables: model.controlVariables || {}
     };
     
-    // Start the simulated training process asynchronously
-    // In production, this would call the actual Python model
-    simulateModelTraining(model.id)
+    // Start the real PyMC training process
+    executeModelTraining(model.id, dataSource.fileUrl, modelConfig)
       .catch(err => {
         console.error('Error during model training:', err);
         storage.updateModel(model.id, {

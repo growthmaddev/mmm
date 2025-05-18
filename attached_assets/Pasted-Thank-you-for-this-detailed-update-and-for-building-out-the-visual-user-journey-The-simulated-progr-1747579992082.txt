@@ -1,0 +1,46 @@
+Thank you for this detailed update and for building out the visual user journey. The simulated progress and results dashboard provide a great framework.
+
+Now, our number one priority is to replace the simulateModelTraining function and generateMockResults() with a real, working integration of the python_scripts/train_mmm.py script using PyMC-Marketing. All other 'What's Next' items depend on this core functionality.
+
+Let's break down how to tackle the Python script integration:
+
+Debug and Finalize python_scripts/train_mmm.py:
+
+Standalone Execution: First, ensure train_mmm.py can run successfully on its own from the Replit terminal.
+Can you manually execute it with a sample CSV data file (that's already processed/mapped) and sample model configuration parameters (e.g., target column, media columns, control columns, basic adstock/saturation settings)?
+What specific errors or issues is train_mmm.py encountering when trying to load data, define the PyMC model, run the sampler, or generate results? Please provide details on these errors so we can address them.
+The script must output its results (channel contributions, ROI, model fit statistics, etc.) in a structured JSON format to stdout when it completes successfully.
+It should also output any errors to stderr for easier debugging.
+Robust Node.js to Python Bridge (server/controllers/modelTraining.ts):
+
+Once train_mmm.py works standalone, focus on the child_process.spawn (or equivalent mechanism) in modelTraining.ts to call it.
+Data & Parameter Passing: How are the file path for the user's data and the model configuration parameters (currently used by simulateModelTraining) being passed to train_mmm.py? Ensure these are correctly received and interpreted by the Python script.
+Output Capturing: The Node.js controller must reliably capture the JSON string from train_mmm.py's stdout (for results) and any error messages from stderr.
+Replace Simulation: Modify the modelTraining.ts controller. Instead of calling simulateModelTraining, it should:
+Prepare the necessary inputs for train_mmm.py.
+Execute train_mmm.py.
+On successful completion, parse the captured JSON output and use this real data to update the models table (in the results field).
+If the Python script fails, capture the error, log it, and update the model status to 'error' with a relevant message.
+Real Progress Updates (Beyond Simulation):
+
+The current updateProgress calls in simulateModelTraining are for distinct phases.
+While granular MCMC progress from PyMC-Marketing might be complex to pipe through in real-time for an MVP, at a minimum, the Node.js controller should update the model status based on the actual stage of interaction with the Python script:
+e.g., status: 'preprocessing_script_called' before executing Python.
+status: 'training_script_running' while the Python process is active.
+status: 'postprocessing_results' after Python finishes and Node.js is saving results.
+status: 'completed' or status: 'error' based on the outcome.
+This will make the existing real-time progress visualization on the results.tsx page more meaningful.
+Address TypeScript Errors:
+
+Please also prioritize fixing the "Several type errors in the codebase." These can lead to runtime issues and make further development difficult.
+Postpone Other "What's Next" Items:
+Items like the "Budget Scenario Tool," "Enhanced Visualizations," "Export Functionality," "Model Version Control," and "External Data Connectors" are all important for the future, but they critically depend on having real model results. Let's defer work on these until the actual PyMC-Marketing training pipeline is operational and reliable.
+
+To summarize the immediate plan for the Replit AI Agent:
+
+Fix train_mmm.py so it runs standalone and produces JSON output.
+Integrate train_mmm.py into server/controllers/modelTraining.ts, replacing the simulation.
+Ensure real results are saved to the database.
+Reflect actual process stages in the model status for the frontend.
+Resolve existing TypeScript errors.
+Please provide an update once you've made progress on making train_mmm.py execute successfully and integrate with the Node.js backend. If the agent is hitting specific errors with the Python script or its dependencies in the Replit environment, those details will be very helpful.
