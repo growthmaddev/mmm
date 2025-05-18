@@ -15,15 +15,21 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
     }
     
     // If columns haven't been extracted yet, try to extract them
-    if (!dataSource.connectionInfo?.columns || dataSource.connectionInfo.columns.length === 0) {
-      if (dataSource.fileUrl && fs.existsSync(dataSource.fileUrl)) {
+    if (dataSource.fileUrl && fs.existsSync(dataSource.fileUrl)) {
+      // Check if we need to extract columns
+      const connectionInfo = dataSource.connectionInfo || {};
+      const hasColumns = connectionInfo.columns && Array.isArray(connectionInfo.columns) && connectionInfo.columns.length > 0;
+      
+      if (!hasColumns) {
         const columns = await extractColumnsFromCsv(dataSource.fileUrl);
         
         // Update the data source with column information
         await storage.updateDataSource(dataSourceId, {
           connectionInfo: {
-            ...dataSource.connectionInfo,
-            columns
+            ...connectionInfo,
+            columns,
+            status: 'ready',
+            fileSize: fs.statSync(dataSource.fileUrl).size,
           }
         });
         
@@ -56,12 +62,36 @@ export const updateColumnMapping = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "Data source not found" });
     }
     
+    // Validate that the columns exist in the data source
+    const connectionInfo = dataSource.connectionInfo || {};
+    const columns = connectionInfo.columns || [];
+    const columnNames = columns.map(col => col.name);
+    
+    // Check if date column exists
+    if (!columnNames.includes(mapping.dateColumn)) {
+      return res.status(400).json({ 
+        message: `Date column '${mapping.dateColumn}' does not exist in the data source` 
+      });
+    }
+    
+    // Check if target column exists
+    if (!columnNames.includes(mapping.targetColumn)) {
+      return res.status(400).json({ 
+        message: `Target column '${mapping.targetColumn}' does not exist in the data source` 
+      });
+    }
+    
     // Update the data source with mapping information
     const updatedDataSource = await storage.updateDataSource(dataSourceId, {
       dateColumn: mapping.dateColumn,
       metricColumns: [mapping.targetColumn],
       channelColumns: mapping.channelColumns,
-      controlColumns: mapping.controlColumns
+      controlColumns: mapping.controlColumns,
+      // Also update the connection info status
+      connectionInfo: {
+        ...connectionInfo,
+        status: 'mapped'
+      }
     });
     
     return res.json(updatedDataSource);

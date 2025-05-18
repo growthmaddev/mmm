@@ -150,6 +150,29 @@ export class DatabaseStorage implements IStorage {
     return newDataSource;
   }
   
+  async updateDataSource(id: number, dataSource: Partial<schema.UpdateDataSource>): Promise<schema.DataSource | undefined> {
+    const updateData: Record<string, any> = {
+      updatedAt: new Date()
+    };
+    
+    // Handle each property individually to avoid type errors
+    if (dataSource.fileName !== undefined) updateData.fileName = dataSource.fileName;
+    if (dataSource.fileUrl !== undefined) updateData.fileUrl = dataSource.fileUrl;
+    if (dataSource.connectionInfo !== undefined) updateData.connectionInfo = dataSource.connectionInfo;
+    if (dataSource.dateColumn !== undefined) updateData.dateColumn = dataSource.dateColumn;
+    if (dataSource.metricColumns !== undefined) updateData.metricColumns = dataSource.metricColumns;
+    if (dataSource.channelColumns !== undefined) updateData.channelColumns = dataSource.channelColumns;
+    if (dataSource.controlColumns !== undefined) updateData.controlColumns = dataSource.controlColumns;
+    
+    const [updatedDataSource] = await db
+      .update(schema.dataSources)
+      .set(updateData)
+      .where(eq(schema.dataSources.id, id))
+      .returning();
+    
+    return updatedDataSource;
+  }
+  
   // Model operations
   async getModel(id: number): Promise<schema.Model | undefined> {
     const [model] = await db.select().from(schema.models).where(eq(schema.models.id, id));
