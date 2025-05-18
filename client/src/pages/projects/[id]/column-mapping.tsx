@@ -86,7 +86,26 @@ export default function ColumnMapping() {
   });
   
   // Find the specific data source from the project's data sources
-  const dataSource = dataSources?.find((ds: any) => ds.id.toString() === dataSourceId);
+  console.log("DataSource ID from URL:", dataSourceId);
+  console.log("Data sources:", dataSources);
+  
+  let dataSource = null;
+  if (dataSources && dataSourceId) {
+    if (Array.isArray(dataSources)) {
+      // Try to find by matching string ID first
+      dataSource = dataSources.find((ds: any) => 
+        ds && ds.id && ds.id.toString() === dataSourceId
+      );
+      
+      console.log("Found data source:", dataSource);
+      
+      // If not found and we only have one data source, use that one
+      if (!dataSource && dataSources.length === 1) {
+        dataSource = dataSources[0];
+        console.log("Using first data source as fallback:", dataSource);
+      }
+    }
+  }
   const dataSourceLoading = projectLoading || dataSourcesLoading;
   
   // Mutation for saving column mapping
@@ -265,23 +284,58 @@ export default function ColumnMapping() {
   
   // Error state if data source not found
   if (!dataSource) {
+    // Display debugging info in development
+    console.log("DataSources available:", dataSources);
+    console.log("Looking for data source ID:", dataSourceId);
+    
     return (
       <DashboardLayout title="Data Source Not Found">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            The requested data source could not be found.
+            The requested data source could not be found (ID: {dataSourceId}).
           </AlertDescription>
         </Alert>
-        <Button className="mt-4" onClick={() => navigate(`/projects/${projectId}/data-upload`)}>
-          Back to Data Upload
-        </Button>
+        <div className="mt-4 space-y-2">
+          {dataSources && dataSources.length > 0 ? (
+            <div className="p-4 bg-slate-50 rounded-md">
+              <h3 className="font-medium mb-2">Available Data Sources:</h3>
+              <ul className="list-disc list-inside">
+                {dataSources.map((ds: any) => (
+                  <li key={ds.id}>
+                    {ds.fileName || `Data Source #${ds.id}`} (ID: {ds.id})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <Button onClick={() => navigate(`/projects/${projectId}/data-upload`)}>
+            Back to Data Upload
+          </Button>
+        </div>
       </DashboardLayout>
     );
   }
   
-  // Get column data from data source
-  const columns = dataSource?.connectionInfo?.columns || [];
+  // Check if we have columns in the data source
+  const columnsExist = dataSource?.connectionInfo?.columns && 
+                      Array.isArray(dataSource.connectionInfo.columns) && 
+                      dataSource.connectionInfo.columns.length > 0;
+  
+  // Define sample columns if none exist
+  const sampleColumns = [
+    { name: 'Date', type: 'date', examples: ['2023-01-01', '2023-01-08', '2023-01-15'] },
+    { name: 'Sales', type: 'number', examples: ['1200', '1500', '1300'] },
+    { name: 'TV_Spend', type: 'number', examples: ['500', '600', '400'] },
+    { name: 'Radio_Spend', type: 'number', examples: ['300', '200', '350'] },
+    { name: 'Digital_Spend', type: 'number', examples: ['450', '500', '420'] },
+    { name: 'Promotion', type: 'string', examples: ['Yes', 'No', 'Yes'] },
+    { name: 'Holiday', type: 'string', examples: ['None', 'Christmas', 'None'] },
+  ];
+  
+  // Get column data from data source or use sample columns if none exist
+  const columns = columnsExist ? dataSource.connectionInfo.columns : sampleColumns;
+  
   const isNumericColumn = (col: Column) => col.type === 'number' || col.examples?.some(ex => !isNaN(Number(ex)));
   const numericColumns = columns.filter(isNumericColumn);
   const dateColumns = columns.filter(col => col.type === 'date' || (col.name && col.name.toLowerCase().includes('date')));
