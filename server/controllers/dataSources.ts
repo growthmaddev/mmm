@@ -22,33 +22,7 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
     // Check if file exists
     if (!dataSource.fileUrl || !fs.existsSync(dataSource.fileUrl)) {
       console.error(`File not found at path: ${dataSource.fileUrl}`);
-      
-      // Since the file doesn't exist, provide some sample columns
-      const sampleColumns = [
-        { name: 'Date', type: 'date', examples: ['1/07/2018', '1/14/2018'] },
-        { name: 'Sales', type: 'number', examples: ['9779.8', '13245.19'] },
-        { name: 'TV_Spend', type: 'number', examples: ['611.61', '617.64'] },
-        { name: 'Radio_Spend', type: 'number', examples: ['267.75', '269.41'] },
-        { name: 'Social_Spend', type: 'number', examples: ['506.63', '502.69'] },
-        { name: 'Search_Spend', type: 'number', examples: ['349.33', '388.37'] },
-        { name: 'Email_Spend', type: 'number', examples: ['150.79', '170.38'] },
-        { name: 'Print_Spend', type: 'number', examples: ['324.64', '330.12'] }
-      ];
-      
-      // Update with sample columns
-      const connectionInfo = dataSource.connectionInfo || {};
-      await storage.updateDataSource(dataSourceId, {
-        connectionInfo: {
-          ...connectionInfo,
-          columns: sampleColumns,
-          status: 'ready'
-        }
-      });
-      
-      // Return the data source with sample columns
-      const updatedDataSource = await storage.getDataSource(dataSourceId);
-      console.log("Created sample columns since file doesn't exist");
-      return res.json(updatedDataSource);
+      return res.status(404).json({ message: "CSV file not found. Please upload a file first." });
     }
     
     console.log(`Reading file content from: ${dataSource.fileUrl}`);
@@ -59,45 +33,53 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
       const fileContent = fs.readFileSync(dataSource.fileUrl, 'utf-8');
       console.log("File content preview:", fileContent.substring(0, 200));
       
-      const lines = fileContent.split('\n').slice(0, 5); // Get first 5 lines
-      console.log(`Found ${lines.length} lines in the file`);
+      // Use proper CSV parser instead of manual splitting
+      const parser = csvParse({ 
+        delimiter: ',',
+        columns: true,
+        skip_empty_lines: true 
+      });
       
-      if (lines.length === 0) {
-        console.error("No lines found in CSV file");
-        return res.status(400).json({ message: "Empty CSV file" });
+      // Parse the CSV content
+      const records: any[] = [];
+      const parseStream = fs.createReadStream(dataSource.fileUrl).pipe(parser);
+      
+      for await (const record of parseStream) {
+        records.push(record);
+        if (records.length >= 3) break; // We only need a few rows for column detection
       }
       
-      // Parse the header line to get column names
-      const headers = lines[0].split(',').map(h => h.trim());
+      console.log(`Parsed ${records.length} records from CSV`);
+      
+      if (records.length === 0) {
+        console.error("No records found in CSV file");
+        return res.status(400).json({ message: "Empty or invalid CSV file" });
+      }
+      
+      // Get column names from the first record's keys
+      const headers = Object.keys(records[0]);
       console.log("Detected column headers:", headers);
       
       // Initialize columns array
       const columns = [];
       
-      // Get sample values from the first data row
-      const sampleValues = lines.length > 1 ? lines[1].split(',').map(v => v.trim()) : [];
-      const sampleValues2 = lines.length > 2 ? lines[2].split(',').map(v => v.trim()) : [];
-      
-      console.log("Sample values from line 1:", sampleValues);
-      console.log("Sample values from line 2:", sampleValues2);
-      
-      // Create column objects with names and examples
-      for (let i = 0; i < headers.length; i++) {
-        const name = headers[i];
+      // Process each header to create column objects
+      for (const header of headers) {
         const examples = [];
         
-        if (i < sampleValues.length) {
-          examples.push(sampleValues[i]);
+        // Get sample values from the first few records
+        for (let i = 0; i < Math.min(records.length, 2); i++) {
+          if (records[i][header] !== undefined) {
+            examples.push(String(records[i][header]));
+          }
         }
         
-        if (i < sampleValues2.length) {
-          examples.push(sampleValues2[i]);
-        }
+        console.log(`Column ${header} examples:`, examples);
         
         // Determine column type
         let type = 'string';
         
-        if (name.toLowerCase().includes('date')) {
+        if (header.toLowerCase().includes('date')) {
           type = 'date';
         } else if (
           examples.length > 0 && 
@@ -107,7 +89,7 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
         }
         
         columns.push({
-          name,
+          name: header,
           type,
           examples
         });
@@ -134,29 +116,9 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
       return res.json(updatedDataSource);
     } catch (err) {
       console.error("Error reading or parsing CSV file:", err);
-      
-      // Provide fallback columns
-      const fallbackColumns = [
-        { name: 'Date', type: 'date', examples: ['1/07/2018', '1/14/2018'] },
-        { name: 'Sales', type: 'number', examples: ['9779.8', '13245.19'] },
-        { name: 'TV_Spend', type: 'number', examples: ['611.61', '617.64'] },
-        { name: 'Radio_Spend', type: 'number', examples: ['267.75', '269.41'] },
-        { name: 'Social_Spend', type: 'number', examples: ['506.63', '502.69'] },
-        { name: 'Search_Spend', type: 'number', examples: ['349.33', '388.37'] }
-      ];
-      
-      // Update with fallback columns
-      const connectionInfo = dataSource.connectionInfo || {};
-      await storage.updateDataSource(dataSourceId, {
-        connectionInfo: {
-          ...connectionInfo,
-          columns: fallbackColumns,
-          status: 'ready'
-        }
+      return res.status(400).json({ 
+        message: "Error processing CSV file. Please ensure it's properly formatted." 
       });
-      
-      const updatedDataSource = await storage.getDataSource(dataSourceId);
-      return res.json(updatedDataSource);
     }
     
   } catch (error) {
