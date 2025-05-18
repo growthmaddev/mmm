@@ -324,24 +324,41 @@ export default function ColumnMapping() {
     );
   }
   
+  // Create a query to fetch fresh column data when a data source is found
+  const { data: refreshedDataSource, isLoading: refreshLoading } = useQuery({
+    queryKey: [`/api/data-sources/${dataSourceId}`],
+    enabled: !!dataSourceId && !!dataSource,
+  });
+  
+  // If we have refreshed data, use it instead of the initial data source
+  const activeDataSource = refreshedDataSource || dataSource;
+  
   // Check if we have columns in the data source
-  const columnsExist = dataSource?.connectionInfo?.columns && 
-                      Array.isArray(dataSource.connectionInfo.columns) && 
-                      dataSource.connectionInfo.columns.length > 0;
+  const columnsExist = activeDataSource?.connectionInfo?.columns && 
+                      Array.isArray(activeDataSource.connectionInfo.columns) && 
+                      activeDataSource.connectionInfo.columns.length > 0;
+
+  // Loading state for the column data
+  if (!columnsExist && refreshLoading) {
+    return (
+      <DashboardLayout title="Loading Data Columns">
+        <div className="flex flex-col items-center justify-center p-8">
+          <div className="w-full max-w-md">
+            <div className="space-y-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
   
-  // Define sample columns if none exist
-  const sampleColumns = [
-    { name: 'Date', type: 'date', examples: ['2023-01-01', '2023-01-08', '2023-01-15'] },
-    { name: 'Sales', type: 'number', examples: ['1200', '1500', '1300'] },
-    { name: 'TV_Spend', type: 'number', examples: ['500', '600', '400'] },
-    { name: 'Radio_Spend', type: 'number', examples: ['300', '200', '350'] },
-    { name: 'Digital_Spend', type: 'number', examples: ['450', '500', '420'] },
-    { name: 'Promotion', type: 'string', examples: ['Yes', 'No', 'Yes'] },
-    { name: 'Holiday', type: 'string', examples: ['None', 'Christmas', 'None'] },
-  ];
-  
-  // Get column data from data source or use sample columns if none exist
-  const columns = columnsExist ? dataSource.connectionInfo.columns : sampleColumns;
+  // Get column data from data source
+  const columns = columnsExist ? activeDataSource.connectionInfo.columns : [];
   
   const isNumericColumn = (col: Column) => col.type === 'number' || col.examples?.some(ex => !isNaN(Number(ex)));
   const numericColumns = columns.filter(isNumericColumn);
