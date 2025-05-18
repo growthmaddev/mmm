@@ -203,7 +203,13 @@ export default function ProjectDataUpload() {
   };
   
   const handleContinue = () => {
-    navigate(`/projects/${id}/model-setup`);
+    // Store the data source ID in session storage for the column mapping page
+    if (dataSources && dataSources.length > 0) {
+      const latestDataSource = dataSources[dataSources.length - 1];
+      sessionStorage.setItem('activeDataSourceId', latestDataSource.id.toString());
+      console.log("Storing data source ID in session:", latestDataSource.id);
+    }
+    navigate(`/projects/${id}/column-mapping-direct`);
   };
   
   // Handle error states
@@ -348,7 +354,7 @@ export default function ProjectDataUpload() {
                                 <span>Upload Complete</span>
                               </div>
                               <Button onClick={handleContinue}>
-                                Continue to Model Setup
+                                Continue to Column Mapping
                                 <ChevronRight className="ml-2 h-4 w-4" />
                               </Button>
                             </div>
@@ -486,7 +492,7 @@ export default function ProjectDataUpload() {
                     className="w-full"
                     onClick={handleContinue}
                   >
-                    Continue to Model Setup
+                    Continue to Column Mapping
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
                 )}
