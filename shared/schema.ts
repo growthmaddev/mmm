@@ -63,21 +63,12 @@ export const organizations = pgTable("organizations", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Session storage table for Replit Auth
-export const sessions = pgTable(
-  "sessions",
-  {
-    sid: varchar("sid").primaryKey(),
-    sess: jsonb("sess").notNull(),
-    expire: timestamp("expire").notNull(),
-  },
-  (table) => [index("IDX_session_expire").on(table.expire)],
-);
-
 // Users
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().notNull(),
-  email: varchar("email").unique(),
+  id: serial("id").primaryKey(),
+  email: varchar("email").notNull().unique(),
+  password: varchar("password").notNull(),
+  username: varchar("username").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -93,7 +84,7 @@ export const projects = pgTable("projects", {
   name: text("name").notNull(),
   description: text("description"),
   organizationId: integer("organization_id").notNull().references(() => organizations.id),
-  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
   status: projectStatusEnum("status").default("draft").notNull(),
   dateRange: json("date_range").$type<{startDate: string, endDate: string}>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -112,7 +103,7 @@ export const dataSources = pgTable("data_sources", {
   metricColumns: json("metric_columns").$type<string[]>(),
   channelColumns: json("channel_columns").$type<{[key: string]: string}>(),
   controlColumns: json("control_columns").$type<{[key: string]: string}>(),
-  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -129,7 +120,7 @@ export const models = pgTable("models", {
   controlVariables: json("control_variables"),
   responseVariables: json("response_variables"),
   results: json("results"),
-  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -157,7 +148,7 @@ export const budgetScenarios = pgTable("budget_scenarios", {
   totalBudget: integer("total_budget").notNull(),
   allocations: json("allocations").$type<{[channelId: string]: number}>(),
   projectedResults: json("projected_results"),
-  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -165,13 +156,22 @@ export const budgetScenarios = pgTable("budget_scenarios", {
 // Audit Logs
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id),
+  userId: integer("user_id").references(() => users.id),
   organizationId: integer("organization_id").references(() => organizations.id),
   action: text("action").notNull(),
   details: json("details"),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+// Sessions (for auth)
+export const sessions = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Schema insertion types
@@ -181,9 +181,17 @@ export const insertUserSchema = createInsertSchema(users).omit({
   updatedAt: true
 });
 
-export const upsertUserSchema = createInsertSchema(users).omit({
-  createdAt: true,
-  updatedAt: true
+export const loginUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+export const registerUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  username: z.string().min(3).optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
 });
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({
@@ -232,7 +240,8 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
 
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type UpsertUser = z.infer<typeof upsertUserSchema>;
+export type LoginUser = z.infer<typeof loginUserSchema>;
+export type RegisterUser = z.infer<typeof registerUserSchema>;
 export type User = typeof users.$inferSelect;
 
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
@@ -255,3 +264,5 @@ export type BudgetScenario = typeof budgetScenarios.$inferSelect;
 
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+export type Session = typeof sessions.$inferSelect;
