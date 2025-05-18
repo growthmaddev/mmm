@@ -235,6 +235,34 @@ export default function ColumnMappingDirect() {
   const dateColumns = marketingColumns.filter(col => col.type === 'date');
   const numericColumns = marketingColumns.filter(col => col.type === 'number');
   
+  // Loading state
+  if (isLoading) {
+    return (
+      <DashboardLayout title="Loading Column Data">
+        <div className="flex justify-center items-center p-12">
+          <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Error state if columns aren't available
+  if (!dataSource?.connectionInfo?.columns?.length) {
+    return (
+      <DashboardLayout title="Column Data Not Found">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            No column data found. Please try uploading your file again.
+          </AlertDescription>
+        </Alert>
+        <Button className="mt-4" onClick={() => navigate(`/projects/${projectId}/data-upload`)}>
+          Go to Data Upload
+        </Button>
+      </DashboardLayout>
+    );
+  }
+
   // Render UI
   return (
     <DashboardLayout 
