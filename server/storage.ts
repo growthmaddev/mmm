@@ -4,10 +4,9 @@ import * as schema from "@shared/schema";
 
 export interface IStorage {
   // User operations
-  getUser(id: number): Promise<schema.User | undefined>;
-  getUserByUsername(username: string): Promise<schema.User | undefined>;
+  getUser(id: string): Promise<schema.User | undefined>;
   getUserByEmail(email: string): Promise<schema.User | undefined>;
-  createUser(user: schema.InsertUser): Promise<schema.User>;
+  upsertUser(user: schema.UpsertUser): Promise<schema.User>;
   
   // Organization operations
   getOrganization(id: number): Promise<schema.Organization | undefined>;
@@ -47,25 +46,28 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // User operations
-  async getUser(id: number): Promise<schema.User | undefined> {
+  async getUser(id: string): Promise<schema.User | undefined> {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
-    return user;
-  }
-
-  async getUserByUsername(username: string): Promise<schema.User | undefined> {
-    const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username));
     return user;
   }
   
   async getUserByEmail(email: string): Promise<schema.User | undefined> {
+    if (!email) return undefined;
     const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
     return user;
   }
 
-  async createUser(insertUser: schema.InsertUser): Promise<schema.User> {
+  async upsertUser(userData: schema.UpsertUser): Promise<schema.User> {
     const [user] = await db
       .insert(schema.users)
-      .values(insertUser)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: schema.users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
       .returning();
     return user;
   }
