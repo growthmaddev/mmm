@@ -249,11 +249,17 @@ export default function ProjectDataUpload() {
                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
                   2
                 </div>
-                <div className="ml-3 text-slate-500">Configure Model</div>
+                <div className="ml-3 text-slate-500">Map Columns</div>
               </div>
               <div className="flex items-center">
                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
                   3
+                </div>
+                <div className="ml-3 text-slate-500">Configure Model</div>
+              </div>
+              <div className="flex items-center">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
+                  4
                 </div>
                 <div className="ml-3 text-slate-500">View Results</div>
               </div>
