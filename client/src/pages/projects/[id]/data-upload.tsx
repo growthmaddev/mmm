@@ -1,23 +1,26 @@
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import DashboardLayout from "@/layouts/DashboardLayout";
-import DataUploadForm from "@/components/projects/DataUploadForm";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { AlertCircle, ArrowLeft, Upload, Database, FileText, CheckCircle2 } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-import api from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, Upload, FileText, AlertCircle, CheckCircle2, Download, ChevronRight } from "lucide-react";
 
 export default function ProjectDataUpload() {
   const { id } = useParams();
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState("file-upload");
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const queryClient = useQueryClient();
-
+  
   // Fetch project details
   const { 
     data: project, 
@@ -25,269 +28,399 @@ export default function ProjectDataUpload() {
     error: projectError 
   } = useQuery({
     queryKey: [`/api/projects/${id}`],
+    enabled: !!id,
   });
-
-  // Fetch data sources for this project
+  
+  // Fetch data sources already connected to this project
   const { 
-    data: dataSources,
-    isLoading: dataSourcesLoading,
-    error: dataSourcesError
+    data: dataSources, 
+    isLoading: dataSourcesLoading 
   } = useQuery({
     queryKey: [`/api/projects/${id}/data-sources`],
-    enabled: !!project,
+    enabled: !!id,
   });
-
-  // Update project status when data is uploaded
-  const updateProjectStatus = useMutation({
-    mutationFn: () => {
-      return api.updateProject(Number(id), {
-        status: "configuring_model"
+  
+  // File upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectId", id || "");
+      
+      // Create a custom fetch implementation to track upload progress
+      const xhr = new XMLHttpRequest();
+      
+      // Set up our progress tracking
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(progress);
+        }
+      };
+      
+      return new Promise((resolve, reject) => {
+        xhr.open("POST", "/api/upload");
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(JSON.parse(xhr.responseText));
+          } else {
+            reject(new Error(xhr.statusText || "Upload failed"));
+          }
+        };
+        
+        xhr.onerror = () => {
+          reject(new Error("Network error occurred during upload"));
+        };
+        
+        xhr.send(formData);
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/projects/${id}`] });
-    }
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${id}/data-sources`] });
+      setUploadState("success");
+      toast({
+        title: "Upload complete",
+        description: "Your data has been successfully uploaded",
+      });
+    },
+    onError: (error) => {
+      setUploadState("error");
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error.message || "There was a problem uploading your file",
+      });
+    },
   });
-
-  // Handle continue to model setup
-  const handleContinue = () => {
-    if (project?.status === "draft") {
-      updateProjectStatus.mutate();
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setSelectedFile(files[0]);
+      setUploadState("idle");
+      setUploadProgress(0);
     }
+  };
+  
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+    
+    try {
+      setUploadState("uploading");
+      setUploadProgress(0);
+      await uploadMutation.mutateAsync(selectedFile);
+    } catch (error) {
+      console.error("Upload error:", error);
+    }
+  };
+  
+  const handleDownloadTemplate = async () => {
+    try {
+      window.open("/api/templates/marketing_data", "_blank");
+    } catch (error) {
+      console.error("Error downloading template:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to download template",
+        description: "There was a problem downloading the template file",
+      });
+    }
+  };
+  
+  const handleContinue = () => {
     navigate(`/projects/${id}/model-setup`);
   };
-
-  // Check if data sources are available to proceed
-  const canProceed = dataSources && dataSources.length > 0;
-
-  // If project not found
+  
+  // Handle error states
   if (projectError) {
     return (
-      <DashboardLayout title="Project Not Found">
+      <DashboardLayout title="Error loading project">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Project not found or you don't have access to it.
+            Failed to load project details. Please try again or go back to the dashboard.
           </AlertDescription>
         </Alert>
-        <div className="mt-6">
-          <Button onClick={() => navigate("/projects")}>
-            Back to Projects
-          </Button>
-        </div>
+        <Button className="mt-4" onClick={() => navigate("/projects")}>
+          Back to Projects
+        </Button>
       </DashboardLayout>
     );
   }
-
+  
   return (
     <DashboardLayout 
-      title={projectLoading ? "Loading..." : `${project?.name} - Data Upload`}
-      subtitle="Upload or connect to your marketing data sources"
+      title={`${projectLoading ? "Loading..." : project?.name} - Data Upload`}
+      subtitle="Upload your marketing data to begin analysis"
     >
-      <div className="mb-6">
-        <Button variant="outline" onClick={() => navigate(`/projects/${id}`)}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Project
-        </Button>
-      </div>
-
-      {projectLoading ? (
-        <Skeleton className="h-[500px] w-full rounded-lg" />
-      ) : (
-        <>
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Data Upload Instructions</CardTitle>
-              <CardDescription>
-                To begin your analysis, we need your marketing data. You can upload CSV files or connect to your marketing platforms.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="flex flex-col items-center text-center p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <FileText className="h-8 w-8 text-primary mb-2" />
-                  <h3 className="font-medium mb-1">CSV/Excel Upload</h3>
-                  <p className="text-sm text-slate-500">
-                    Upload your data files directly from your computer.
-                  </p>
+      <div className="space-y-6">
+        {/* Progress tracker */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white">
+                  1
                 </div>
-                
-                <div className="flex flex-col items-center text-center p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <Database className="h-8 w-8 text-primary mb-2" />
-                  <h3 className="font-medium mb-1">API Connectors</h3>
-                  <p className="text-sm text-slate-500">
-                    Connect to Google Ads, Facebook Ads, or Google Analytics.
-                  </p>
-                </div>
-                
-                <div className="flex flex-col items-center text-center p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <CheckCircle2 className="h-8 w-8 text-secondary mb-2" />
-                  <h3 className="font-medium mb-1">Required Data</h3>
-                  <p className="text-sm text-slate-500">
-                    Date, channel spend, sales/conversions, and control variables.
-                  </p>
-                </div>
+                <div className="ml-3 font-medium">Upload Data</div>
               </div>
-            </CardContent>
-          </Card>
-
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-6">
-              <TabsTrigger value="file-upload">
-                <Upload className="mr-2 h-4 w-4" />
-                File Upload
-              </TabsTrigger>
-              <TabsTrigger value="api-connectors">
-                <Database className="mr-2 h-4 w-4" />
-                API Connectors
-              </TabsTrigger>
-              <TabsTrigger value="data-sources">
-                <FileText className="mr-2 h-4 w-4" />
-                Data Sources ({dataSourcesLoading ? "..." : dataSources?.length || 0})
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="file-upload">
-              <DataUploadForm projectId={Number(id)} />
-            </TabsContent>
-            
-            <TabsContent value="api-connectors">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Connect to Marketing Platforms</CardTitle>
-                  <CardDescription>
-                    Import data directly from your marketing platforms
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Google Ads</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-slate-500 mb-4">
-                          Connect to your Google Ads account to import campaign performance data.
-                        </p>
-                        <Button 
-                          className="w-full" 
-                          variant="outline"
-                          onClick={() => window.location.href = api.getOAuthUrl("googleAds", Number(id))}
-                        >
-                          Connect Google Ads
-                        </Button>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Facebook Ads</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-slate-500 mb-4">
-                          Connect to your Facebook Ads account to import campaign performance data.
-                        </p>
-                        <Button 
-                          className="w-full" 
-                          variant="outline"
-                          onClick={() => window.location.href = api.getOAuthUrl("facebookAds", Number(id))}
-                        >
-                          Connect Facebook Ads
-                        </Button>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Google Analytics</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-slate-500 mb-4">
-                          Connect to Google Analytics to import website traffic and conversion data.
-                        </p>
-                        <Button 
-                          className="w-full" 
-                          variant="outline"
-                          onClick={() => window.location.href = api.getOAuthUrl("googleAnalytics", Number(id))}
-                        >
-                          Connect Analytics
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="data-sources">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Uploaded Data Sources</CardTitle>
-                  <CardDescription>
-                    Manage your project data sources
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {dataSourcesLoading ? (
-                    <div className="space-y-4">
-                      <Skeleton className="h-16 w-full" />
-                      <Skeleton className="h-16 w-full" />
-                    </div>
-                  ) : dataSources && dataSources.length > 0 ? (
-                    <div className="space-y-4">
-                      {dataSources.map((source: any) => (
-                        <div 
-                          key={source.id} 
-                          className="p-4 border border-slate-200 rounded-lg flex justify-between items-center"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-medium">
-                                {source.fileName || source.type.replace(/_/g, ' ')}
-                              </h3>
-                            </div>
-                            <p className="text-sm text-slate-500">
-                              {source.type === "csv_upload" 
-                                ? `File Upload - ${new Date(source.createdAt).toLocaleDateString()}`
-                                : `API Connection - ${source.type.replace(/_/g, ' ')}`
-                              }
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            View Details
+              <div className="flex items-center">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
+                  2
+                </div>
+                <div className="ml-3 text-slate-500">Configure Model</div>
+              </div>
+              <div className="flex items-center">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
+                  3
+                </div>
+                <div className="ml-3 text-slate-500">View Results</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Main upload area */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Upload Marketing Data</CardTitle>
+                <CardDescription>
+                  We accept CSV files containing your marketing spend and performance data
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent>
+                <Tabs defaultValue="upload">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="upload">Upload CSV</TabsTrigger>
+                    <TabsTrigger value="connect">Connect API</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="upload">
+                    <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-md p-6 text-center">
+                      <input
+                        type="file"
+                        accept=".csv"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                      
+                      {!selectedFile ? (
+                        <div>
+                          <Upload className="h-10 w-10 text-slate-400 mx-auto mb-4" />
+                          <h3 className="text-lg font-medium mb-2">
+                            Drag and drop your file here
+                          </h3>
+                          <p className="text-sm text-slate-500 mb-4">
+                            Or click to browse files (CSV format only)
+                          </p>
+                          <Button
+                            variant="outline"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            Select File
                           </Button>
                         </div>
-                      ))}
+                      ) : (
+                        <div>
+                          <FileText className="h-10 w-10 text-primary mx-auto mb-4" />
+                          <h3 className="text-lg font-medium mb-1">
+                            {selectedFile.name}
+                          </h3>
+                          <p className="text-sm text-slate-500 mb-4">
+                            {(selectedFile.size / 1024).toFixed(2)} KB - CSV File
+                          </p>
+                          
+                          {uploadState === "idle" && (
+                            <div className="flex flex-col items-center gap-2">
+                              <Button onClick={handleUpload}>
+                                Upload File
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                onClick={() => {
+                                  setSelectedFile(null);
+                                  if (fileInputRef.current) {
+                                    fileInputRef.current.value = "";
+                                  }
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          )}
+                          
+                          {uploadState === "uploading" && (
+                            <div className="space-y-4">
+                              <Progress value={uploadProgress} className="w-full h-2" />
+                              <p className="text-sm text-slate-600">
+                                Uploading... {uploadProgress}%
+                              </p>
+                              <Button disabled className="bg-primary/80">
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Uploading
+                              </Button>
+                            </div>
+                          )}
+                          
+                          {uploadState === "success" && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-center text-green-600">
+                                <CheckCircle2 className="h-5 w-5 mr-2" />
+                                <span>Upload Complete</span>
+                              </div>
+                              <Button onClick={handleContinue}>
+                                Continue to Model Setup
+                                <ChevronRight className="ml-2 h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                          
+                          {uploadState === "error" && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-center text-red-600">
+                                <AlertCircle className="h-5 w-5 mr-2" />
+                                <span>Upload Failed</span>
+                              </div>
+                              <Button onClick={() => setUploadState("idle")}>
+                                Try Again
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <p className="text-slate-500 mb-4">No data sources added yet.</p>
-                      <p className="text-sm text-slate-400 mb-4">
-                        Upload files or connect to platforms to add data sources.
-                      </p>
-                      <Button onClick={() => setActiveTab("file-upload")}>
-                        Add Data Source
-                      </Button>
+                  </TabsContent>
+                  
+                  <TabsContent value="connect">
+                    <div className="space-y-6">
+                      <Alert className="bg-blue-50 border-blue-200 text-blue-800">
+                        <AlertDescription>
+                          Connect your marketing platforms to automatically import data. This feature will be available soon.
+                        </AlertDescription>
+                      </Alert>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Button variant="outline" disabled className="h-24 justify-start px-4">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mr-4">
+                              <svg className="h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path>
+                                <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>
+                              </svg>
+                            </div>
+                            <div className="text-left">
+                              <h3 className="font-medium">Google Ads</h3>
+                              <p className="text-sm text-slate-500">Coming soon</p>
+                            </div>
+                          </div>
+                        </Button>
+                        
+                        <Button variant="outline" disabled className="h-24 justify-start px-4">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mr-4">
+                              <svg className="h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                              </svg>
+                            </div>
+                            <div className="text-left">
+                              <h3 className="font-medium">Facebook Ads</h3>
+                              <p className="text-sm text-slate-500">Coming soon</p>
+                            </div>
+                          </div>
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          <div className="mt-8 flex justify-between items-center">
-            <Button variant="outline" onClick={() => navigate(`/projects/${id}`)}>
-              Back
-            </Button>
-            <Button 
-              onClick={handleContinue}
-              disabled={!canProceed}
-            >
-              {canProceed ? "Continue to Model Setup" : "Add Data Sources to Continue"}
-            </Button>
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
           </div>
-        </>
-      )}
+          
+          <div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Guidelines</CardTitle>
+                <CardDescription>
+                  How to prepare your data
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="font-medium">Required Columns:</h3>
+                  <ul className="text-sm text-slate-600 list-disc pl-5 space-y-1">
+                    <li>Date (YYYY-MM-DD format)</li>
+                    <li>Channel name (e.g., Facebook, Google)</li>
+                    <li>Spend amount</li>
+                    <li>Conversion metrics</li>
+                  </ul>
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="font-medium">Tips:</h3>
+                  <ul className="text-sm text-slate-600 list-disc pl-5 space-y-1">
+                    <li>Ensure data is clean and consistent</li>
+                    <li>Include at least 6 months of data</li>
+                    <li>Make sure date format is consistent</li>
+                  </ul>
+                </div>
+                
+                <Button 
+                  variant="outline" 
+                  className="w-full gap-2"
+                  onClick={handleDownloadTemplate}
+                >
+                  <Download className="h-4 w-4" />
+                  Download Template
+                </Button>
+              </CardContent>
+            </Card>
+            
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Connected Data</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {dataSourcesLoading ? (
+                  <div className="py-4 text-center">
+                    <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                    <p className="text-sm text-slate-500 mt-2">Loading data sources...</p>
+                  </div>
+                ) : dataSources && dataSources.length > 0 ? (
+                  <ul className="space-y-2">
+                    {dataSources.map((source: any) => (
+                      <li key={source.id} className="flex items-center p-2 rounded-md bg-slate-50">
+                        <FileText className="h-4 w-4 text-primary mr-2" />
+                        <span className="text-sm">{source.fileName || source.type}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-500 py-4 text-center">
+                    No data sources connected yet
+                  </p>
+                )}
+              </CardContent>
+              <CardFooter>
+                {dataSources && dataSources.length > 0 && (
+                  <Button 
+                    variant="default" 
+                    className="w-full"
+                    onClick={handleContinue}
+                  >
+                    Continue to Model Setup
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+          </div>
+        </div>
+      </div>
     </DashboardLayout>
   );
 }
