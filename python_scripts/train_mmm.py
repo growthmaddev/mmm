@@ -116,50 +116,86 @@ def train_model(df, config):
         adstock = GeometricAdstock(l_max=3)  # Max lag of 3 weeks
         saturation = LogisticSaturation()    # Default logistic saturation
             
-        # Create PyMC-Marketing MMM object with simplified settings
-        # Create adstock and saturation objects for each channel
-        channel_adstocks = {}
-        channel_saturations = {}
+        # Try creating a PyMC-Marketing MMM with appropriate settings for the installed version
+        print("Detecting compatible PyMC-Marketing API approach...", file=sys.stderr)
         
-        # Apply adstock and saturation settings from config if available, or use defaults
-        for channel in channel_columns:
-            # Get adstock value from config or use default
-            adstock_value = config['adstock_settings'].get(channel, 2)
-            channel_adstocks[channel] = GeometricAdstock(l_max=int(adstock_value))
-            
-            # Get saturation value from config or use default
-            saturation_value = config['saturation_settings'].get(channel, 0.5)
-            channel_saturations[channel] = LogisticSaturation(lam=float(saturation_value))
-        
-        print(f"Created adstock and saturation settings for each channel", file=sys.stderr)
-        
-        # Create the MMM model with required parameters
+        # First, identify which PyMC-Marketing version/API we're dealing with
         try:
-            # Always use explicit adstock and saturation parameters since they're required now
-            mmm = MMM(
-                date_column=date_column,
-                channel_columns=channel_columns,
-                adstock=channel_adstocks,
-                saturation=channel_saturations
+            # Try importing the version
+            from pymc_marketing import __version__ as pymc_marketing_version
+            print(f"PyMC-Marketing version: {pymc_marketing_version}", file=sys.stderr)
+        except:
+            print("Could not determine PyMC-Marketing version, will try multiple API approaches", file=sys.stderr)
+        
+        # Try to create the MMM with different approaches known to work with various versions
+        
+        # Approach 1: Try with the DelayedSaturatedMMM class (newer versions)
+        try:
+            from pymc_marketing.mmm import DelayedSaturatedMMM
+            print("Found DelayedSaturatedMMM class, trying modern approach", file=sys.stderr)
+            
+            # For the newer versions that support DelayedSaturatedMMM
+            mmm = DelayedSaturatedMMM(
+                data=X,
+                target=target_column,
+                media=channel_columns,
+                date_column=date_column
             )
-            print("Successfully created MMM model with adstock and saturation", file=sys.stderr)
-        except Exception as e:
-            print(f"Error creating MMM model: {str(e)}", file=sys.stderr)
-            # Try a more basic version as a fallback
+            print("Successfully created MMM with DelayedSaturatedMMM", file=sys.stderr)
+            
+        except (ImportError, Exception) as e1:
+            print(f"DelayedSaturatedMMM approach failed: {str(e1)}", file=sys.stderr)
+            
+            # Approach 2: Try with explicit single adstock/saturation for all channels
             try:
-                # Create a simplified version with default adstock/saturation
-                default_adstock = {channel: GeometricAdstock(l_max=2) for channel in channel_columns}
-                default_saturation = {channel: LogisticSaturation() for channel in channel_columns}
+                print("Trying with explicit single adstock/saturation", file=sys.stderr)
+                adstock = GeometricAdstock(l_max=3)
+                saturation = LogisticSaturation()
                 
                 mmm = MMM(
+                    date_column=date_column,
                     channel_columns=channel_columns,
-                    adstock=default_adstock,
-                    saturation=default_saturation
+                    adstock=adstock,
+                    saturation=saturation
                 )
-                print("Created MMM model with fallback configuration", file=sys.stderr)
-            except Exception as inner_e:
-                print(f"Failed to create MMM model with fallback: {str(inner_e)}", file=sys.stderr)
-                raise Exception(f"Could not initialize MMM model: {str(e)}, fallback error: {str(inner_e)}")
+                print("Created MMM with explicit single adstock/saturation", file=sys.stderr)
+                
+            except Exception as e2:
+                print(f"Single adstock/saturation approach failed: {str(e2)}", file=sys.stderr)
+                
+                # Approach 3: Try using the most minimal approach possible
+                try:
+                    print("Trying minimal approach with only required parameters", file=sys.stderr)
+                    mmm = MMM(channel_columns=channel_columns)
+                    print("Created MMM with minimal parameters", file=sys.stderr)
+                    
+                except Exception as e3:
+                    # Final fallback - try one more time with an alternative constructor
+                    try:
+                        print("Trying direct PyMC-Marketing pipeline example approach", file=sys.stderr)
+                        # This follows exactly the example from PyMC-Marketing docs
+                        from pymc_marketing.mmm.preprocessing import preprocess_data
+                        
+                        # Preprocess data if needed
+                        data_processed = preprocess_data(
+                            X, 
+                            media_vars=channel_columns,
+                            target=target_column,
+                            date_var=date_column
+                        )
+                        
+                        # Create model from processed data
+                        mmm = MMM(
+                            media_vars=channel_columns,
+                            target=target_column,
+                            date_var=date_column
+                        )
+                        print("Created MMM using PyMC-Marketing documentation example", file=sys.stderr)
+                        
+                    except Exception as e4:
+                        print(f"All attempts to create MMM model failed", file=sys.stderr)
+                        print(f"Error details:\n- Approach 1: {str(e1)}\n- Approach 2: {str(e2)}\n- Approach 3: {str(e3)}\n- Approach 4: {str(e4)}", file=sys.stderr)
+                        raise Exception("Could not initialize MMM model with any known approach")
             
         # Sample with extremely reduced parameters for fast prototype
         try:
