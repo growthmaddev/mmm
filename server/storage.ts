@@ -195,7 +195,7 @@ export class DatabaseStorage implements IStorage {
     return newModel;
   }
   
-  async updateModel(id: number, model: Partial<schema.InsertModel>): Promise<schema.Model | undefined> {
+  async updateModel(id: number, model: schema.UpdateModel): Promise<schema.Model | undefined> {
     const [updatedModel] = await db
       .update(schema.models)
       .set({...model, updatedAt: new Date()})

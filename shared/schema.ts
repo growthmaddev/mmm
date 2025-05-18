@@ -234,6 +234,14 @@ export const insertModelSchema = createInsertSchema(models).omit({
   results: true
 });
 
+export const updateModelSchema = createInsertSchema(models).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  projectId: true,
+  createdById: true
+}).partial();
+
 export const insertChannelSchema = createInsertSchema(channels).omit({
   id: true,
   createdAt: true,
@@ -268,6 +276,7 @@ export type UpdateDataSource = z.infer<typeof updateDataSourceSchema>;
 export type DataSource = typeof dataSources.$inferSelect;
 
 export type InsertModel = z.infer<typeof insertModelSchema>;
+export type UpdateModel = z.infer<typeof updateModelSchema>;
 export type Model = typeof models.$inferSelect;
 
 export type InsertChannel = z.infer<typeof insertChannelSchema>;

@@ -3,6 +3,7 @@ import { storage } from '../storage';
 import path from 'path';
 import { AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
+import { UpdateModel, modelTrainingStatusEnum } from '@shared/schema';
 
 // Helper function to simulate model training with progress updates
 async function simulateModelTraining(modelId: number) {
