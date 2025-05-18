@@ -205,7 +205,7 @@ def train_model(df, config):
                 chains=4,       # Using 4 chains as recommended for robust convergence diagnostics
                 cores=1,        # Single core for compatibility
                 progressbar=False,  # No progress bar in API mode
-                target_accept=0.9   # Higher acceptance rate for faster convergence
+                target_accept=0.95  # Further increased to reduce divergences
             )
         except Exception as e:
             print(f"Fit method error: {str(e)}", file=sys.stderr)
