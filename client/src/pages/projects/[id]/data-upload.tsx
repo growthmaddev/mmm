@@ -43,52 +43,68 @@ export default function ProjectDataUpload() {
   // File upload mutation
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("projectId", id || "");
-      
-      // Create a custom fetch implementation to track upload progress
-      const xhr = new XMLHttpRequest();
-      
-      // Set up our progress tracking
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
-      };
-      
-      return new Promise((resolve, reject) => {
-        xhr.open("POST", "/api/upload");
-        xhr.setRequestHeader("Accept", "application/json");
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("projectId", id || "");
         
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              resolve(response);
-            } catch (e) {
-              reject(new Error("Invalid response format"));
+        // Use fetch with headers to make sure we have proper CORS and auth
+        const response = await new Promise<Response>((resolve, reject) => {
+          // Create a custom fetch implementation to track upload progress
+          const xhr = new XMLHttpRequest();
+          
+          // Set up our progress tracking
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const progress = Math.round((event.loaded / event.total) * 100);
+              setUploadProgress(progress);
             }
-          } else {
-            try {
-              const errorResponse = JSON.parse(xhr.responseText);
-              reject(new Error(errorResponse.message || "Upload failed"));
-            } catch (e) {
-              reject(new Error(xhr.statusText || "Upload failed"));
+          };
+          
+          xhr.open("POST", "/api/upload");
+          xhr.setRequestHeader("Accept", "application/json");
+          
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                console.log("Server response:", response);
+                resolve(response);
+              } catch (e) {
+                console.error("Error parsing response:", e);
+                reject(new Error("Invalid response format"));
+              }
+            } else {
+              try {
+                const errorResponse = JSON.parse(xhr.responseText);
+                reject(new Error(errorResponse.message || "Upload failed"));
+              } catch (e) {
+                reject(new Error(xhr.statusText || "Upload failed"));
+              }
             }
-          }
-        };
+          };
+          
+          xhr.onerror = (e) => {
+            console.error("XHR error:", e);
+            reject(new Error("Network error occurred during upload"));
+          };
+          
+          xhr.send(formData);
+        });
         
-        xhr.onerror = () => {
-          reject(new Error("Network error occurred during upload"));
-        };
-        
-        xhr.send(formData);
-      });
+        return response;
+      } catch (err) {
+        console.error("Upload caught error:", err);
+        throw err;
+      }
     },
     onSuccess: (data: any) => {
+      console.log("Upload succeeded:", data);
+      
+      // Make sure we invalidate the query to refresh the data sources
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${id}/data-sources`] });
+      
+      // Explicitly set upload state to success
       setUploadState("success");
       
       // Check validation results
@@ -106,7 +122,7 @@ export default function ProjectDataUpload() {
       }
     },
     onError: (error: Error) => {
-      console.error("Upload error:", error);
+      console.error("Upload mutation error:", error);
       setUploadState("error");
       toast({
         variant: "destructive",
@@ -131,9 +147,18 @@ export default function ProjectDataUpload() {
     try {
       setUploadState("uploading");
       setUploadProgress(0);
-      await uploadMutation.mutateAsync(selectedFile);
+      
+      // Add this console log to track when upload starts
+      console.log("Starting file upload...");
+      
+      const result = await uploadMutation.mutateAsync(selectedFile);
+      console.log("Upload completed successfully:", result);
+      
+      // Let's make sure we're updating the state properly
+      setUploadState("success");
     } catch (error) {
       console.error("Upload error:", error);
+      setUploadState("error");
     }
   };
   
