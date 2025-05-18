@@ -78,11 +78,23 @@ export default function ColumnMappingDirect() {
   
   // State for column mapping
   const [mappingConfig, setMappingConfig] = useState<MappingConfig>({
-    dateColumn: "",
-    targetColumn: "",
-    channelColumns: {},
-    controlColumns: {},
+    dateColumn: dataSource?.dateColumn || "",
+    targetColumn: dataSource?.metricColumns?.[0] || "",
+    channelColumns: dataSource?.channelColumns || {},
+    controlColumns: dataSource?.controlColumns || {},
   });
+  
+  // Update mapping config when data source is loaded
+  useEffect(() => {
+    if (dataSource && dataSource.connectionInfo?.columns?.length > 0) {
+      setMappingConfig({
+        dateColumn: dataSource.dateColumn || "",
+        targetColumn: dataSource.metricColumns?.[0] || "",
+        channelColumns: dataSource.channelColumns || {},
+        controlColumns: dataSource.controlColumns || {},
+      });
+    }
+  }, [dataSource]);
   
   // Save mutation
   const saveColumnMappingMutation = useMutation({
@@ -424,10 +436,14 @@ export default function ColumnMappingDirect() {
             <div className="space-y-4">
               {marketingColumns
                 .filter(col => 
+                  // Exclude date column
                   col.name !== mappingConfig.dateColumn && 
+                  // Exclude target metric column
                   col.name !== mappingConfig.targetColumn &&
-                  !col.name.includes('_Spend') &&
-                  !mappingConfig.channelColumns[col.name]
+                  // Exclude any channel columns (already selected as channels)
+                  !Object.keys(mappingConfig.channelColumns).includes(col.name) &&
+                  // Exclude spend columns that might not be selected yet
+                  !col.name.includes('_Spend')
                 )
                 .map((column) => (
                   <div key={column.name} className="flex items-start space-x-3 p-3 rounded-md border">
