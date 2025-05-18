@@ -22,6 +22,7 @@ export interface IStorage {
   getDataSource(id: number): Promise<schema.DataSource | undefined>;
   getDataSourcesByProject(projectId: number): Promise<schema.DataSource[]>;
   createDataSource(dataSource: schema.InsertDataSource): Promise<schema.DataSource>;
+  updateDataSource(id: number, dataSource: Partial<schema.UpdateDataSource>): Promise<schema.DataSource | undefined>;
   
   // Model operations
   getModel(id: number): Promise<schema.Model | undefined>;

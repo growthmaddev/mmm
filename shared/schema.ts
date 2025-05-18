@@ -212,6 +212,15 @@ export const insertDataSourceSchema = createInsertSchema(dataSources).omit({
   updatedAt: true
 });
 
+export const updateDataSourceSchema = createInsertSchema(dataSources).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  projectId: true,
+  type: true,
+  createdById: true
+}).partial();
+
 export const insertModelSchema = createInsertSchema(models).omit({
   id: true,
   createdAt: true,
@@ -251,6 +260,7 @@ export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
 
 export type InsertDataSource = z.infer<typeof insertDataSourceSchema>;
+export type UpdateDataSource = z.infer<typeof updateDataSourceSchema>;
 export type DataSource = typeof dataSources.$inferSelect;
 
 export type InsertModel = z.infer<typeof insertModelSchema>;
