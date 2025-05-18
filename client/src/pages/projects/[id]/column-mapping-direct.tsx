@@ -1,6 +1,6 @@
 import { useParams, useLocation } from "wouter";
 import { useState, useEffect } from "react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import {
@@ -59,17 +59,22 @@ export default function ColumnMappingDirect() {
     }
   }, []);
   
-  // Columns based on the actual uploaded CSV file
-  const marketingColumns = [
-    { name: 'Date', type: 'date', examples: ['1/07/2018', '1/14/2018'] },
-    { name: 'Sales', type: 'number', examples: ['9779.8', '13245.19'] },
-    { name: 'TV_Spend', type: 'number', examples: ['611.61', '617.64'] },
-    { name: 'Radio_Spend', type: 'number', examples: ['267.75', '269.41'] },
-    { name: 'Social_Spend', type: 'number', examples: ['506.63', '502.69'] },
-    { name: 'Search_Spend', type: 'number', examples: ['349.33', '388.37'] },
-    { name: 'Email_Spend', type: 'number', examples: ['150.79', '170.38'] },
-    { name: 'Print_Spend', type: 'number', examples: ['324.64', '330.12'] }
-  ];
+  // Fetch the data source to get the actual columns from the uploaded file
+  const { data: dataSource, isLoading } = useQuery({
+    queryKey: [`/api/data-sources/${dataSourceId}`],
+    queryFn: async () => {
+      if (!dataSourceId) return null;
+      const response = await fetch(`/api/data-sources/${dataSourceId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch data source');
+      }
+      return response.json();
+    },
+    enabled: !!dataSourceId,
+  });
+
+  // Get columns from data source or use fallback while loading
+  const marketingColumns = dataSource?.connectionInfo?.columns || [];
   
   // State for column mapping
   const [mappingConfig, setMappingConfig] = useState<MappingConfig>({
