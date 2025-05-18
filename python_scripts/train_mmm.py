@@ -199,13 +199,13 @@ def train_model(df, config):
             
         # Sample with extremely reduced parameters for fast prototype
         try:
-            # Try to use the standard fit method with our reduced parameters
+            # Use better MCMC parameters while still keeping runtime reasonable
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=20,       # Ultra-minimal for initial integration testing
-                tune=10,        # Ultra-minimal for initial integration testing
-                chains=1,       # Single chain for speed
+                draws=200,      # Increased from 20 for better accuracy
+                tune=100,       # Increased from 10 for better convergence
+                chains=2,       # Using 2 chains for minimal convergence diagnostics
                 cores=1,        # Single core for compatibility
                 progressbar=False,  # No progress bar in API mode
                 target_accept=0.9   # Higher acceptance rate for faster convergence
