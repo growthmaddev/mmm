@@ -36,7 +36,7 @@ function App() {
           <Route path="/projects/create" component={CreateProject} />
           <Route path="/projects/:id" component={ProjectDetails} />
           <Route path="/projects/:id/data-upload" component={ProjectDataUpload} />
-          <Route path="/projects/:id/column-mapping/:dataSourceId" component={ColumnMapping} />
+          <Route path="/projects/:id/column-mapping" component={ColumnMapping} />
           <Route path="/projects/:id/model-setup" component={ProjectModelSetup} />
           <Route path="/projects/:id/results" component={ProjectResults} />
           <Route path="/projects/:id/budget-optimizer" component={ProjectBudgetOptimizer} />

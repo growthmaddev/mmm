@@ -38,7 +38,11 @@ interface MappingConfig {
 }
 
 export default function ColumnMapping() {
-  const { id: projectId, dataSourceId } = useParams();
+  const { id: projectId } = useParams();
+  const [, params] = useLocation();
+  // Extract dataSourceId from URL query parameters
+  const searchParams = new URLSearchParams(params.split('?')[1] || '');
+  const dataSourceId = searchParams.get('dataSource');
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -72,14 +76,18 @@ export default function ColumnMapping() {
     enabled: !!projectId,
   });
   
-  // Get data source details
+  // Get all data sources for the project
   const { 
-    data: dataSource, 
-    isLoading: dataSourceLoading 
+    data: dataSources, 
+    isLoading: dataSourcesLoading 
   } = useQuery({
-    queryKey: [`/api/data-sources/${dataSourceId}`],
-    enabled: !!dataSourceId,
+    queryKey: [`/api/projects/${projectId}/data-sources`],
+    enabled: !!projectId,
   });
+  
+  // Find the specific data source from the project's data sources
+  const dataSource = dataSources?.find((ds: any) => ds.id.toString() === dataSourceId);
+  const dataSourceLoading = projectLoading || dataSourcesLoading;
   
   // Mutation for saving column mapping
   const saveColumnMappingMutation = useMutation({
@@ -273,10 +281,10 @@ export default function ColumnMapping() {
   }
   
   // Get column data from data source
-  const columns = dataSource.connectionInfo?.columns || [];
+  const columns = dataSource?.connectionInfo?.columns || [];
   const isNumericColumn = (col: Column) => col.type === 'number' || col.examples?.some(ex => !isNaN(Number(ex)));
   const numericColumns = columns.filter(isNumericColumn);
-  const dateColumns = columns.filter(col => col.type === 'date' || col.name.toLowerCase().includes('date'));
+  const dateColumns = columns.filter(col => col.type === 'date' || (col.name && col.name.toLowerCase().includes('date')));
   
   return (
     <DashboardLayout 

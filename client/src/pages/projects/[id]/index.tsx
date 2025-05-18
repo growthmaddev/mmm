@@ -129,7 +129,7 @@ function DataSourcesList({ projectId }: { projectId: string }) {
               <Button 
                 size="sm" 
                 variant={hasColumnMapping ? "outline" : "default"}
-                onClick={() => navigate(`/projects/${projectId}/column-mapping/${dataSource.id}`)}
+                onClick={() => navigate(`/projects/${projectId}/column-mapping?dataSource=${dataSource.id}`)}
               >
                 <Table className="h-4 w-4 mr-1" />
                 {hasColumnMapping ? "Edit Column Mapping" : "Map Columns"}
