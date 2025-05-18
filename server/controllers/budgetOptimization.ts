@@ -79,10 +79,24 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     // We'll use the model's actual results with channel ROIs calculated from training
     
     // Extract channel ROIs from the model results
-    const modelResults = model.results || {};
-    const channelData = modelResults.summary?.channels || {};
+    // The model results are stored as a JSON string in the database
+    let modelResults;
+    let channelData = {};
     
-    console.log('Model results available:', JSON.stringify(modelResults.summary?.channels, null, 2));
+    try {
+      if (typeof model.results === 'string') {
+        modelResults = JSON.parse(model.results);
+      } else {
+        modelResults = model.results || {};
+      }
+      
+      // Based on the database structure we observed, the channel data is in summary.channels
+      channelData = modelResults.summary?.channels || {};
+      
+      console.log('Model results available:', JSON.stringify(channelData, null, 2));
+    } catch (error) {
+      console.error('Error parsing model results:', error);
+    }
     
     // Map channels with their actual ROIs from model results
     const channelsWithROI = Object.entries(current_allocation).map(([channel, spend]) => {
@@ -179,6 +193,19 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     // Calculate expected lift
     const expectedLift = (expectedOutcome - currentOutcome) / currentOutcome;
     
+    // Extract target variable from responseVariables
+    let targetVariable = 'Sales'; // Default
+    try {
+      if (typeof model.responseVariables === 'string') {
+        const responseVars = JSON.parse(model.responseVariables);
+        targetVariable = responseVars.target || 'Sales';
+      } else if (model.responseVariables && model.responseVariables.target) {
+        targetVariable = model.responseVariables.target;
+      }
+    } catch (error) {
+      console.error('Error parsing response variables:', error);
+    }
+    
     // Prepare and return the results with detailed breakdown
     const result: OptimizationResult = {
       optimized_allocation: optimizedAllocation,
@@ -186,7 +213,7 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       expected_lift: expectedLift,
       current_outcome: Math.round(currentOutcome),
       channel_breakdown: channelBreakdown,
-      target_variable: model.responseVariables?.target || 'Sales'
+      target_variable: targetVariable
     };
     
     console.log("Sending optimization result:", JSON.stringify(result, null, 2));
