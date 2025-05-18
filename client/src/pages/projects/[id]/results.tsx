@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, Info } from "lucide-react";
+import { Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, Info, Sparkles } from "lucide-react";
 
 export default function ModelResults() {
   const { id } = useParams();
