@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -26,21 +26,9 @@ export default function ModelSetup() {
   
   // Model configuration state
   const [modelName, setModelName] = useState("Default Model");
-  const [targetVariable, setTargetVariable] = useState("Sales");
-  const [adstock, setAdstock] = useState({
-    TV_Spend: 3,
-    Radio_Spend: 2,
-    Social_Spend: 1,
-    Search_Spend: 1,
-    Display_Spend: 2
-  });
-  const [saturation, setSaturation] = useState({
-    TV_Spend: 0.7,
-    Radio_Spend: 0.5,
-    Social_Spend: 0.6,
-    Search_Spend: 0.8,
-    Display_Spend: 0.6
-  });
+  const [targetVariable, setTargetVariable] = useState("");
+  const [adstock, setAdstock] = useState<Record<string, number>>({});
+  const [saturation, setSaturation] = useState<Record<string, number>>({});
   const [controlVariables, setControlVariables] = useState({
     Temperature: true,
     Holiday: true,
@@ -66,6 +54,51 @@ export default function ModelSetup() {
     queryKey: [`/api/projects/${id}/data-sources`],
     enabled: !!id,
   });
+  
+  // Initialize model settings from data source channel columns
+  useEffect(() => {
+    if (dataSources && dataSources.length > 0) {
+      const dataSource = dataSources[0];
+      
+      // Set target variable from data source
+      if (dataSource.metricColumns && dataSource.metricColumns.length > 0) {
+        setTargetVariable(dataSource.metricColumns[0]);
+      }
+      
+      // Initialize adstock and saturation settings from channel columns
+      if (dataSource.channelColumns && Object.keys(dataSource.channelColumns).length > 0) {
+        const channelNames = Object.keys(dataSource.channelColumns);
+        
+        // Default adstock values (1-3 weeks)
+        const newAdstock: Record<string, number> = {};
+        channelNames.forEach(channel => {
+          // Assign different default adstock values based on channel type
+          if (channel.toLowerCase().includes('search')) {
+            newAdstock[channel] = 1; // Search typically has shorter effect
+          } else if (channel.toLowerCase().includes('social') || channel.toLowerCase().includes('fb')) {
+            newAdstock[channel] = 2; // Social medium effect
+          } else {
+            newAdstock[channel] = 3; // Other channels longer effect
+          }
+        });
+        setAdstock(newAdstock);
+        
+        // Default saturation values (0.5-0.8)
+        const newSaturation: Record<string, number> = {};
+        channelNames.forEach(channel => {
+          // Assign different default saturation values based on channel type
+          if (channel.toLowerCase().includes('search')) {
+            newSaturation[channel] = 0.8; // Search typically has higher saturation
+          } else if (channel.toLowerCase().includes('social') || channel.toLowerCase().includes('fb')) {
+            newSaturation[channel] = 0.6; // Social medium saturation
+          } else {
+            newSaturation[channel] = 0.5; // Other channels lower saturation
+          }
+        });
+        setSaturation(newSaturation);
+      }
+    }
+  }, [dataSources]);
   
   // Fetch existing models
   const {
