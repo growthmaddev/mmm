@@ -67,6 +67,16 @@ export default function ModelSetup() {
     enabled: !!id,
   });
   
+  // Fetch existing models
+  const {
+    data: models,
+    isLoading: modelsLoading,
+    refetch: refetchModels
+  } = useQuery({
+    queryKey: [`/api/projects/${id}/models`],
+    enabled: !!id,
+  });
+  
   // Create model mutation
   const createModelMutation = useMutation({
     mutationFn: async (modelConfig: any) => {
@@ -76,13 +86,10 @@ export default function ModelSetup() {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${id}/models`] });
       toast({
         title: "Model created successfully",
-        description: "Your model is now being trained. You will be redirected to the results page.",
+        description: "Your model has been created. You can now start training it.",
       });
-      
-      // Navigate to results page after a short delay
-      setTimeout(() => {
-        navigate(`/projects/${id}/results?model=${data.id}`);
-      }, 1500);
+      setLoading(false);
+      refetchModels();
     },
     onError: (error: any) => {
       toast({
@@ -91,6 +98,31 @@ export default function ModelSetup() {
         description: error.message || "There was a problem creating your model.",
       });
       setLoading(false);
+    },
+  });
+  
+  // Train model mutation
+  const trainModelMutation = useMutation({
+    mutationFn: async (modelId: number) => {
+      return apiRequest("POST", `/api/models/${modelId}/train`);
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Training started",
+        description: "Your model is now being trained. You can monitor progress on the results page.",
+      });
+      
+      // Navigate to results page after a short delay
+      setTimeout(() => {
+        navigate(`/projects/${id}/results?model=${data.model.id}`);
+      }, 1500);
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to start training",
+        description: error.message || "There was a problem starting the model training.",
+      });
     },
   });
   
@@ -211,12 +243,90 @@ export default function ModelSetup() {
           </Alert>
         )}
         
+        {/* Existing Models Section */}
+        {!modelsLoading && models && models.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Existing Models</CardTitle>
+              <CardDescription>
+                Train or view your existing models
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {models.map((model: any) => (
+                  <div key={model.id} className="p-4 border border-slate-200 rounded-md">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-medium">{model.name}</h3>
+                      <div className="px-2 py-1 text-xs rounded-full font-medium bg-slate-100">
+                        {model.status}
+                      </div>
+                    </div>
+                    
+                    {/* Model details */}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-4 text-sm">
+                      <div>
+                        <span className="text-slate-500">Created:</span> {new Date(model.createdAt).toLocaleDateString()}
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Progress:</span> {model.progress || 0}%
+                      </div>
+                    </div>
+                    
+                    {/* Training progress bar if in training */}
+                    {model.status === 'training' && (
+                      <div className="mt-2 mb-4">
+                        <div className="w-full bg-slate-200 rounded-full h-1.5">
+                          <div 
+                            className="bg-primary h-1.5 rounded-full" 
+                            style={{ width: `${model.progress || 0}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Action buttons based on model status */}
+                    <div className="flex justify-end gap-2 mt-2">
+                      {['queued', 'created', 'error'].includes(model.status) && (
+                        <Button 
+                          onClick={() => trainModelMutation.mutate(model.id)}
+                          disabled={trainModelMutation.isPending}
+                          size="sm"
+                        >
+                          {trainModelMutation.isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                              Starting Training...
+                            </>
+                          ) : (
+                            <>Start Training</>
+                          )}
+                        </Button>
+                      )}
+                      
+                      {['completed', 'training'].includes(model.status) && (
+                        <Button 
+                          variant="outline"
+                          onClick={() => navigate(`/projects/${id}/results?model=${model.id}`)}
+                          size="sm"
+                        >
+                          View Results
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
         {/* Main configuration area */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle>Configure Your Model</CardTitle>
+                <CardTitle>Configure New Model</CardTitle>
                 <CardDescription>
                   Adjust parameters to optimize your marketing mix model
                 </CardDescription>
