@@ -238,8 +238,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // File upload routes
-  apiRouter.post('/upload', isAuthenticated, upload.single('file'), handleFileUpload);
+  // File upload routes - add specific error handling
+  apiRouter.post('/upload', isAuthenticated, (req, res, next) => {
+    upload.single('file')(req, res, (err) => {
+      if (err) {
+        console.error("Multer upload error:", err);
+        return res.status(400).json({ 
+          message: 'File upload error', 
+          error: err.message 
+        });
+      }
+      
+      // If no error, continue to the handler
+      handleFileUpload(req as AuthRequest, res);
+    });
+  });
+  
   apiRouter.get('/templates/:type', getFileTemplate);
   
   // OAuth connector routes

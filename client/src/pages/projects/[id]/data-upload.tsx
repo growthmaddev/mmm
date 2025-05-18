@@ -43,60 +43,64 @@ export default function ProjectDataUpload() {
   // File upload mutation
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("projectId", id || "");
+      // Create form data
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectId", id || "");
+      
+      // Use standard fetch API with progress tracking via a custom XHR
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
         
-        // Use fetch with headers to make sure we have proper CORS and auth
-        const response = await new Promise<Response>((resolve, reject) => {
-          // Create a custom fetch implementation to track upload progress
-          const xhr = new XMLHttpRequest();
-          
-          // Set up our progress tracking
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              const progress = Math.round((event.loaded / event.total) * 100);
-              setUploadProgress(progress);
-            }
-          };
-          
-          xhr.open("POST", "/api/upload");
-          xhr.setRequestHeader("Accept", "application/json");
-          
-          xhr.onload = () => {
+        // Set up our progress tracking
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            console.log(`Upload progress: ${progress}%`);
+            setUploadProgress(progress);
+          }
+        };
+        
+        // Set up completion handler
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState === 4) { // DONE
+            console.log(`Upload complete, status: ${xhr.status}`);
+            
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
-                const response = JSON.parse(xhr.responseText);
-                console.log("Server response:", response);
-                resolve(response);
+                const data = JSON.parse(xhr.responseText);
+                console.log("Upload response data:", data);
+                resolve(data);
               } catch (e) {
                 console.error("Error parsing response:", e);
-                reject(new Error("Invalid response format"));
+                reject(new Error("Invalid server response"));
               }
             } else {
+              console.error("Upload failed with status:", xhr.status);
+              let errorMessage = "Upload failed";
+              
               try {
-                const errorResponse = JSON.parse(xhr.responseText);
-                reject(new Error(errorResponse.message || "Upload failed"));
+                const errorData = JSON.parse(xhr.responseText);
+                errorMessage = errorData.message || errorMessage;
               } catch (e) {
-                reject(new Error(xhr.statusText || "Upload failed"));
+                // If we can't parse the error, use a default message
               }
+              
+              reject(new Error(errorMessage));
             }
-          };
-          
-          xhr.onerror = (e) => {
-            console.error("XHR error:", e);
-            reject(new Error("Network error occurred during upload"));
-          };
-          
-          xhr.send(formData);
-        });
+          }
+        };
         
-        return response;
-      } catch (err) {
-        console.error("Upload caught error:", err);
-        throw err;
-      }
+        // Handle network errors
+        xhr.onerror = function() {
+          console.error("Network error during upload");
+          reject(new Error("Network error occurred"));
+        };
+        
+        // Open and send the request
+        xhr.open("POST", "/api/upload", true);
+        xhr.send(formData);
+      });
     },
     onSuccess: (data: any) => {
       console.log("Upload succeeded:", data);
