@@ -303,9 +303,8 @@ export default function ColumnMappingDirect() {
     );
   }
   
-  // Filter columns by type
-  const dateColumns = marketingColumns.filter(col => col.type === 'date');
-  const numericColumns = marketingColumns.filter(col => col.type === 'number');
+  // These variables are already defined at the top of the component
+  // No need to redefine them here
   
   // Loading state
   if (isLoading) {
