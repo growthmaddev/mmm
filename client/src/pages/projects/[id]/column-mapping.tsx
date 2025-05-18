@@ -40,6 +40,10 @@ interface MappingConfig {
 export default function ColumnMapping() {
   const { id: projectId } = useParams();
   const [location] = useLocation();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
   // Get dataSourceId from sessionStorage instead of URL parameters
   // This is more reliable than URL parameters with wouter
   const [dataSourceId, setDataSourceId] = useState<string | null>(null);
@@ -50,9 +54,6 @@ export default function ColumnMapping() {
     console.log("Retrieved data source ID from session:", storedDataSourceId);
     setDataSourceId(storedDataSourceId);
   }, []);
-  const [, navigate] = useLocation();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
   
   // State for column mapping
   const [mappingConfig, setMappingConfig] = useState<MappingConfig>({
