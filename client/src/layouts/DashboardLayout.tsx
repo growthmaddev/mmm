@@ -1,21 +1,34 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
-import { cn } from "@/lib/utils";
-import UserProfileDropdown from "@/components/UserProfileDropdown";
+import { useQuery } from "@tanstack/react-query";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
+  BarChart3,
+  ChevronDown,
   Menu,
-  PackageOpen,
-  LayoutDashboard,
-  FileBarChart,
+  LogOut,
+  PieChart,
   Settings,
-  Users,
-  Bell,
-  HelpCircle,
-  FolderKanban,
+  UserPlus,
+  TrendingUp,
+  Database,
+  Home,
+  Plus,
 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { apiRequest } from "@/lib/queryClient";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -28,204 +41,231 @@ export default function DashboardLayout({
   title,
   subtitle,
 }: DashboardLayoutProps) {
-  const { user, isAuthenticated, logout } = useAuth();
+  const isMobile = useIsMobile();
+  const [, navigate] = useLocation();
   const [location] = useLocation();
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Navigation items
-  const mainNavItems = [
-    {
-      label: "Dashboard",
-      href: "/",
-      icon: <LayoutDashboard className="h-5 w-5" />,
-      active: location === "/",
-    },
-    {
-      label: "Projects",
-      href: "/projects",
-      icon: <FolderKanban className="h-5 w-5" />,
-      active: location.startsWith("/projects"),
-    },
-    {
-      label: "Reports",
-      href: "/reports",
-      icon: <FileBarChart className="h-5 w-5" />,
-      active: location.startsWith("/reports"),
-    },
-  ];
+  // Fetch the current user
+  const {
+    data: user,
+    isLoading: isUserLoading,
+    error: userError,
+  } = useQuery<User>({
+    queryKey: ["/api/auth/user"],
+    retry: false,
+  });
 
-  const settingsNavItems = [
-    {
-      label: "Account",
-      href: "/settings/account",
-      icon: <Settings className="h-5 w-5" />,
-      active: location === "/settings/account",
-    },
-    {
-      label: "Users",
-      href: "/settings/users",
-      icon: <Users className="h-5 w-5" />,
-      active: location === "/settings/users",
-    },
-    {
-      label: "Notifications",
-      href: "/settings/notifications",
-      icon: <Bell className="h-5 w-5" />,
-      active: location === "/settings/notifications",
-    },
-  ];
-
-  const toggleMobileSidebar = () => {
-    setMobileSidebarOpen(!mobileSidebarOpen);
-  };
-
-  // If not authenticated, don't render the layout
-  if (!isAuthenticated) {
-    return <div>{children}</div>;
+  // Handle authentication check
+  if (userError) {
+    navigate("/login");
   }
 
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+      navigate("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  // Navigation items
+  const navItems = [
+    { href: "/dashboard", label: "Dashboard", icon: Home },
+    { href: "/projects", label: "Projects", icon: Database },
+    { href: "/channels", label: "Channels", icon: BarChart3 },
+    { href: "/reports", label: "Reports", icon: PieChart },
+    { href: "/optimization", label: "Budget Optimizer", icon: TrendingUp },
+  ];
+
+  // Get user initials for avatar fallback
+  const getUserInitials = (user?: User) => {
+    if (!user) return "MK";
+    
+    if (user.firstName && user.lastName) {
+      return `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`;
+    }
+    
+    if (user.firstName) {
+      return user.firstName.substring(0, 2);
+    }
+    
+    if (user.email) {
+      return user.email.substring(0, 2).toUpperCase();
+    }
+    
+    return "MK";
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar (hidden on mobile) */}
-      <aside
-        className={cn(
-          "hidden md:flex md:flex-col w-64 bg-white border-r border-slate-200 overflow-y-auto",
-          mobileSidebarOpen && "block absolute inset-y-0 left-0 z-50"
-        )}
-      >
-        {/* Logo/Brand */}
-        <div className="px-6 py-4 border-b border-slate-200">
-          <h1 className="text-xl font-bold text-primary">MMM Platform</h1>
-          <p className="text-xs text-slate-500 mt-1">Market Mix Modelling</p>
+    <div className="flex h-screen flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+        <div className="flex items-center gap-2">
+          {isMobile && (
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="md:hidden"
+                  aria-label="Toggle Menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="pr-0">
+                <nav className="grid gap-2 text-lg font-medium">
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <a
+                          className={`flex items-center gap-4 px-2 py-2 rounded-md ${
+                            isActive
+                              ? "bg-primary/10 text-primary"
+                              : "text-slate-600 hover:text-primary hover:bg-slate-100"
+                          }`}
+                        >
+                          <Icon className={`h-5 w-5 ${isActive ? 'text-primary' : 'text-slate-500'}`} />
+                          {item.label}
+                        </a>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </SheetContent>
+            </Sheet>
+          )}
+
+          {/* Logo */}
+          <Link href="/dashboard">
+            <a className="flex items-center gap-2">
+              <span className="font-bold text-lg md:text-xl">MMM Platform</span>
+            </a>
+          </Link>
         </div>
 
-        {/* Organization Selector */}
-        <div className="px-4 py-3 border-b border-slate-200">
-          <label className="block text-xs font-medium text-slate-500 mb-1">
-            Organization
-          </label>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">
-              {user?.organizationId ? "Your Organization" : "Personal Account"}
-            </span>
-          </div>
-        </div>
+        <div className="ml-auto flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden md:flex gap-2"
+            onClick={() => navigate("/projects/create")}
+          >
+            <Plus className="h-4 w-4" />
+            New Project
+          </Button>
 
-        {/* Navigation Menu */}
-        <nav className="px-2 py-4">
-          <div className="mb-2">
-            <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Main
-            </p>
-          </div>
-
-          {/* Main Navigation Items */}
-          <ul className="space-y-1">
-            {mainNavItems.map((item) => (
-              <li key={item.href}>
-                <Link href={item.href}>
-                  <a
-                    className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                      item.active
-                        ? "bg-primary-50 text-primary-700"
-                        : "text-slate-600 hover:bg-slate-100"
-                    )}
-                  >
-                    {item.icon}
-                    <span className="ml-3">{item.label}</span>
-                  </a>
-                </Link>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-8 mb-2">
-            <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Settings
-            </p>
-          </div>
-
-          {/* Settings Items */}
-          <ul className="space-y-1">
-            {settingsNavItems.map((item) => (
-              <li key={item.href}>
-                <Link href={item.href}>
-                  <a
-                    className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                      item.active
-                        ? "bg-primary-50 text-primary-700"
-                        : "text-slate-600 hover:bg-slate-100"
-                    )}
-                  >
-                    {item.icon}
-                    <span className="ml-3">{item.label}</span>
-                  </a>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* User Profile Section */}
-        <div className="mt-auto px-4 py-3 border-t border-slate-200">
-          <UserProfileDropdown />
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-slate-50 pb-10">
-        {/* Top Header / Mobile Menu */}
-        <header className="bg-white shadow-sm sticky top-0 z-10">
-          <div className="flex items-center justify-between px-4 py-3 md:px-6">
-            <div className="flex items-center">
-              {/* Mobile Menu Button */}
-              <button
-                type="button"
-                onClick={toggleMobileSidebar}
-                className="md:hidden text-slate-600 hover:text-slate-900"
+          {/* User dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full overflow-hidden"
               >
-                <Menu className="h-6 w-6" />
-              </button>
-              <h1 className="text-lg font-semibold text-slate-900 md:ml-0 ml-3">
-                {title || "Dashboard"}
-              </h1>
-            </div>
+                {isUserLoading ? (
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                ) : (
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage
+                      src={user?.profileImageUrl || ""}
+                      alt="User avatar"
+                    />
+                    <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
+                  </Avatar>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                {isUserLoading ? (
+                  <Skeleton className="h-4 w-24" />
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium">
+                      {user?.firstName
+                        ? `${user?.firstName} ${user?.lastName || ""}`
+                        : user?.email}
+                    </p>
+                    {user?.email && (
+                      <p className="text-xs text-slate-500 truncate">
+                        {user.email}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => navigate("/settings/profile")}>
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/settings/team")}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                <span>Team</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
 
-            {/* Right side controls */}
-            <div className="flex items-center space-x-4">
-              <button className="p-1 text-slate-400 hover:text-slate-500">
-                <Bell className="h-5 w-5" />
-              </button>
-              <button className="p-1 text-slate-400 hover:text-slate-500">
-                <HelpCircle className="h-5 w-5" />
-              </button>
-              <div className="md:hidden">
-                <UserProfileDropdown mobileView />
-              </div>
-            </div>
-          </div>
-        </header>
+      {/* Main container */}
+      <div className="flex flex-1">
+        {/* Sidebar (desktop only) */}
+        {!isMobile && (
+          <aside className="sticky top-16 hidden w-56 border-r bg-slate-50 py-4 md:block">
+            <nav className="grid gap-1 px-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location === item.href;
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <a
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md ${
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-slate-600 hover:text-primary hover:bg-slate-100"
+                      }`}
+                    >
+                      <Icon className={`h-5 w-5 ${isActive ? 'text-primary' : 'text-slate-500'}`} />
+                      {item.label}
+                    </a>
+                  </Link>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
 
-        {/* Main Content Area */}
-        <div className="px-4 py-6 md:px-6">
-          {/* Page Title and Actions */}
-          {title && (
-            <div className="md:flex md:items-center md:justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-1">
-                  {title}
-                </h2>
-                {subtitle && <p className="text-slate-500">{subtitle}</p>}
-              </div>
+        {/* Main content */}
+        <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
+          {/* Page header */}
+          {(title || subtitle) && (
+            <div className="mb-6">
+              {title && <h1 className="text-2xl font-bold">{title}</h1>}
+              {subtitle && (
+                <p className="text-slate-600 text-sm mt-1">{subtitle}</p>
+              )}
             </div>
           )}
 
-          {/* Content */}
+          {/* Page content */}
           {children}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

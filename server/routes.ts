@@ -10,11 +10,23 @@ import { upload, handleFileUpload, getFileTemplate } from "./utils/fileUpload";
 import { initializeOAuth, handleOAuthCallback } from "./utils/oauthConnectors";
 import path from "path";
 import cookieParser from "cookie-parser";
+import session from "express-session";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Add middleware for parsing cookies and JSON
   app.use(cookieParser());
   app.use(express.json());
+  
+  // Set up session middleware
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'mmm-platform-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 1 week
+    }
+  }));
   
   // API routes with /api prefix
   const apiRouter = express.Router();
