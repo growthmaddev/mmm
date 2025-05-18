@@ -51,7 +51,7 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     }
 
     // Check if we have results
-    if (!model.results || !model.results.summary || !model.results.summary.channels) {
+    if (!model.results || !model.results.channels) {
       return res.status(400).json({ 
         success: false, 
         message: 'Model does not have valid results for optimization' 
@@ -76,26 +76,29 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     // In the future, we could use Python for more sophisticated optimization
     
     // Extract channel ROIs and contributions from model results
-    const channelResults = model.results.summary.channels;
+    const channelResults = model.results.channels;
     
     // Current outcome calculation
     let currentOutcome = 0;
     for (const [channel, spend] of Object.entries(current_allocation)) {
       const channelKey = `${channel}`; // Match the format in results
-      if (channelResults[channelKey]) {
+      if (channelResults && channelResults[channelKey] && channelResults[channelKey].roi) {
         // Use ROI to estimate current contribution
         currentOutcome += spend * channelResults[channelKey].roi / 100;
+      } else {
+        // If no ROI data, use a default ROI of 1%
+        currentOutcome += spend * 0.01;
       }
     }
     
     // Create an array of channels with their ROIs for sorting
-    const channelsWithROI = Object.entries(channelResults).map(([channelKey, channelData]) => {
+    const channelsWithROI = Object.entries(channelResults || {}).map(([channelKey, channelData]) => {
       // Extract the base channel name (without Spend suffix if it exists)
       const channelName = channelKey.replace(/_Spend$/, '');
       
       return {
         channel: channelName,
-        roi: (channelData as any).roi
+        roi: (channelData as any).roi || 1 // Default ROI of 1 if not available
       };
     });
     
@@ -141,9 +144,12 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     let expectedOutcome = 0;
     for (const [channel, spend] of Object.entries(optimizedAllocation)) {
       const channelKey = `${channel}`; // Match the format in results
-      if (channelResults[channelKey]) {
+      if (channelResults && channelResults[channelKey] && channelResults[channelKey].roi) {
         // Use ROI to estimate optimized contribution
         expectedOutcome += spend * channelResults[channelKey].roi / 100;
+      } else {
+        // If no ROI data, use a default ROI of 1%
+        expectedOutcome += spend * 0.01;
       }
     }
     
