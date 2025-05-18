@@ -20,6 +20,25 @@ def load_data(file_path):
         # Read CSV file
         df = pd.read_csv(file_path)
         
+        # Clean up numeric columns that might have commas as thousand separators
+        # or are formatted as strings
+        for col in df.columns:
+            if col != 'Date':  # Skip the date column
+                try:
+                    # First, replace any commas in numeric strings
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].str.replace(',', '')
+                    
+                    # Convert to numeric, forcing errors to NaN
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    # Fill any NaN values with 0
+                    df[col] = df[col].fillna(0)
+                    
+                    print(f"Successfully cleaned and converted column {col} to numeric", file=sys.stderr)
+                except Exception as e:
+                    print(f"Could not convert column {col} to numeric: {str(e)}", file=sys.stderr)
+        
         # Parse dates if date column exists
         if 'Date' in df.columns:
             # Try multiple date formats to handle international date formats
