@@ -133,20 +133,59 @@ export default function ProjectDataUpload() {
     if (!selectedFile) return;
     
     try {
+      // Reset states
       setUploadState("uploading");
       setUploadProgress(0);
       
-      // Add this console log to track when upload starts
+      // Create form data
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("projectId", id || "");
+      
       console.log("Starting file upload...");
       
-      const result = await uploadMutation.mutateAsync(selectedFile);
-      console.log("Upload completed successfully:", result);
+      // Simulate some initial progress to show user activity
+      setUploadProgress(20);
       
-      // Let's make sure we're updating the state properly
-      setUploadState("success");
+      // Simple fetch without bells and whistles
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include"
+      });
+      
+      // Show near completion
+      setUploadProgress(90);
+      
+      if (!response.ok) {
+        throw new Error("Upload failed: " + response.statusText);
+      }
+      
+      const result = await response.json();
+      console.log("Upload result:", result);
+      
+      // Set final progress and success state
+      setUploadProgress(100);
+      
+      // Invalidate queries to refresh data sources
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${id}/data-sources`] });
+      
+      // Explicitly set success state with timeout to ensure UI updates
+      setTimeout(() => {
+        setUploadState("success");
+        toast({
+          title: "Upload complete",
+          description: "Your data has been successfully uploaded",
+        });
+      }, 500);
     } catch (error) {
       console.error("Upload error:", error);
       setUploadState("error");
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+      });
     }
   };
   
