@@ -98,7 +98,11 @@ export const dataSources = pgTable("data_sources", {
   type: dataSourceEnum("type").notNull(),
   fileName: text("file_name"),
   fileUrl: text("file_url"),
-  connectionInfo: json("connection_info"),
+  connectionInfo: json("connection_info").$type<{
+    columns?: Array<{ name: string, type: string, examples: string[] }>,
+    status?: string,
+    fileSize?: number
+  }>(),
   dateColumn: text("date_column"),
   metricColumns: json("metric_columns").$type<string[]>(),
   channelColumns: json("channel_columns").$type<{[key: string]: string}>(),

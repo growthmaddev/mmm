@@ -146,7 +146,7 @@ export const updateColumnMapping = async (req: AuthRequest, res: Response) => {
     // Validate that the columns exist in the data source
     const connectionInfo = dataSource.connectionInfo || {};
     const columns = connectionInfo.columns || [];
-    const columnNames = columns.map(col => col.name);
+    const columnNames = columns.map((col: any) => col.name);
     
     // Check if date column exists
     if (!columnNames.includes(mapping.dateColumn)) {
