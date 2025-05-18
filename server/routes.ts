@@ -173,13 +173,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Model training routes
   apiRouter.post('/models/:modelId/train', isAuthenticated, async (req: AuthRequest, res) => {
-    const { startModelTraining } = require('./controllers/modelTraining');
-    await startModelTraining(req, res);
+    // Import using ES modules syntax
+    const modelTraining = await import('./controllers/modelTraining');
+    await modelTraining.startModelTraining(req, res);
   });
   
   apiRouter.get('/models/:modelId/status', isAuthenticated, async (req: AuthRequest, res) => {
-    const { getModelStatus } = require('./controllers/modelTraining');
-    await getModelStatus(req, res);
+    // Import using ES modules syntax
+    const modelTraining = await import('./controllers/modelTraining');
+    await modelTraining.getModelStatus(req, res);
   });
   
   apiRouter.post('/models', isAuthenticated, async (req: AuthRequest, res) => {
