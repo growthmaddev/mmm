@@ -33,16 +33,27 @@ def load_data(file_path):
         }))
         sys.exit(1)
 
-def parse_config(config_json):
-    """Parse model configuration from JSON"""
+def parse_config(config_json_path):
+    """Parse model configuration from JSON file path"""
     try:
-        # Convert to Python dict if it's a JSON string
-        if isinstance(config_json, str):
-            # Debug output
-            print(f"Parsing config string (first 50 chars): {config_json[:50]}...", file=sys.stderr)
-            config = json.loads(config_json)
+        # Check if it's a file path to a JSON file
+        if isinstance(config_json_path, str) and os.path.isfile(config_json_path):
+            # Read the config from the JSON file
+            with open(config_json_path, 'r') as f:
+                config_str = f.read()
+                config = json.loads(config_str)
+                print(f"Successfully loaded config from file: {config_json_path}", file=sys.stderr)
+        # If it's a JSON string directly
+        elif isinstance(config_json_path, str):
+            try:
+                config = json.loads(config_json_path)
+            except json.JSONDecodeError:
+                print(f"Could not parse as JSON string, trying as file path: {config_json_path}", file=sys.stderr)
+                with open(config_json_path, 'r') as f:
+                    config_str = f.read()
+                    config = json.loads(config_str)
         else:
-            config = config_json
+            config = config_json_path
             
         # Extract key configuration parameters
         date_column = config.get('dateColumn', 'Date')
