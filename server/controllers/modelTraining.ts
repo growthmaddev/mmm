@@ -289,20 +289,121 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
         console.error('Python stderr:', data.toString());
       });
       
-      // Handle process completion
-      pythonProcess.on('close', (code) => {
+      // Handle process completion with improved error handling
+      pythonProcess.on('close', async (code) => {
+        // Capture all stderr output
+        const stderr = Buffer.concat(stderrChunks).toString();
+        const stdout = Buffer.concat(stdoutChunks).toString();
+        
         if (code !== 0) {
-          const stderr = Buffer.concat(stderrChunks).toString();
-          console.error(`Python process exited with code ${code}`);
+          console.error(`Python MMM training process exited with code ${code}`);
           console.error('Python stderr output:', stderr);
           
-          storage.updateModel(modelId, {
+          // Extract a user-friendly error message if possible
+          let errorMessage = "An error occurred during model training";
+          try {
+            // Try to find a JSON error message in the output
+            const lines = stdout.split('\n').filter(line => line.trim().startsWith('{'));
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line);
+                if (data.error) {
+                  errorMessage = data.error;
+                  break;
+                }
+              } catch (e) {
+                // Not valid JSON or doesn't contain error field
+              }
+            }
+            
+            // If we couldn't find an error in stdout, check stderr
+            if (errorMessage === "An error occurred during model training" && stderr) {
+              // Try to extract a readable error message from stderr
+              const errorLines = stderr.split('\n')
+                .filter(line => line.includes('Error') || line.includes('Exception') || line.includes('failed'))
+                .slice(-3); // Take the last few lines which often contain the most specific error
+              
+              if (errorLines.length > 0) {
+                errorMessage = errorLines.join(' ').substring(0, 200); // Limit length
+              }
+            }
+          } catch (parseError) {
+            console.error('Error parsing Python error output:', parseError);
+          }
+          
+          // Update model with error status and message
+          await storage.updateModel(modelId, {
             status: 'error',
-            progress: 0
+            progress: 0,
+            results: {
+              success: false,
+              error: errorMessage,
+              error_details: stderr.substring(0, 1000), // Store truncated error details
+              timestamp: new Date().toISOString()
+            }
           });
           
-          reject(new Error(`Python process exited with code ${code}: ${stderr}`));
+          reject(new Error(`Model training failed: ${errorMessage}`));
         } else {
+          console.log(`Python MMM training process completed successfully for model ${modelId}`);
+          
+          // Double-check if the model was marked as completed during the process
+          const model = await storage.getModel(modelId);
+          if (model && model.status !== 'completed') {
+            console.log('Model not marked as completed during processing, checking output for results');
+            
+            // Try to find a results object in the output
+            try {
+              const lines = stdout.split('\n').filter(line => line.trim().startsWith('{'));
+              let finalResults = null;
+              
+              // Look for the last JSON object that has success=true and contains model results
+              for (const line of lines.reverse()) { // Start from the end to find the last one
+                try {
+                  const data = JSON.parse(line);
+                  if (data.success === true && (data.model_accuracy || data.summary)) {
+                    finalResults = data;
+                    break;
+                  }
+                } catch (e) {
+                  // Not valid JSON or missing required fields
+                }
+              }
+              
+              if (finalResults) {
+                // Found results, update the model
+                await storage.updateModel(modelId, {
+                  status: 'completed',
+                  progress: 100,
+                  results: finalResults
+                });
+                console.log('Successfully extracted and saved model results');
+              } else {
+                console.warn('Process completed but no valid results found in output');
+                await storage.updateModel(modelId, {
+                  status: 'error',
+                  progress: 0,
+                  results: {
+                    success: false,
+                    error: 'Process completed but no valid results were found',
+                    timestamp: new Date().toISOString()
+                  }
+                });
+              }
+            } catch (resultsError) {
+              console.error('Error processing results:', resultsError);
+              await storage.updateModel(modelId, {
+                status: 'error',
+                progress: 0,
+                results: {
+                  success: false,
+                  error: 'Error processing model results',
+                  timestamp: new Date().toISOString()
+                }
+              });
+            }
+          }
+          
           resolve();
         }
       });
