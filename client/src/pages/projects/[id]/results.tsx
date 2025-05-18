@@ -396,9 +396,27 @@ export default function ModelResults() {
                     <p className="text-muted-foreground mb-6">
                       Recommendations for optimizing your marketing budget allocation.
                     </p>
-                    <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
-                      <p className="italic text-muted-foreground">Budget optimization tools will appear here</p>
-                    </div>
+                    {model?.status === 'completed' ? (
+                      <div className="space-y-4">
+                        <p className="text-sm">
+                          The model training has completed successfully. You can now use the budget optimizer 
+                          to get recommendations on how to allocate your marketing budget more effectively.
+                        </p>
+                        <Button
+                          onClick={() => navigate(`/projects/${id}/budget-optimizer?model=${modelId}`)}
+                          className="mt-2"
+                        >
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Open Budget Optimizer
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
+                        <p className="italic text-muted-foreground">
+                          Budget optimization will be available when model training completes
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
                 
