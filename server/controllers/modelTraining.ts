@@ -4,6 +4,7 @@ import path from 'path';
 import { AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
 import { UpdateModel, modelTrainingStatusEnum } from '@shared/schema';
+import * as fs from 'fs';
 
 // Helper function to simulate model training with progress updates
 async function simulateModelTraining(modelId: number) {
@@ -235,7 +236,6 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
       console.log(`Running MMM training with config: ${configJson.substring(0, 100)}...`);
       
       // Create a temp file to pass the config to avoid command line argument issues
-      const fs = require('fs');
       const tempConfigPath = path.join(process.cwd(), 'temp_config.json');
       fs.writeFileSync(tempConfigPath, configJson, 'utf8');
       
