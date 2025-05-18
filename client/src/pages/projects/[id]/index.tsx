@@ -130,8 +130,10 @@ function DataSourcesList({ projectId }: { projectId: string }) {
                 size="sm" 
                 variant={hasColumnMapping ? "outline" : "default"}
                 onClick={() => {
-                  console.log(`Navigating to column mapping for data source ID: ${dataSource.id}`);
-                  navigate(`/projects/${projectId}/column-mapping?dataSource=${dataSource.id}`);
+                  // Store dataSourceId in sessionStorage before navigation
+                  sessionStorage.setItem('activeDataSourceId', dataSource.id.toString());
+                  console.log(`Storing data source ID in session: ${dataSource.id}`);
+                  navigate(`/projects/${projectId}/column-mapping`);
                 }}
               >
                 <Table className="h-4 w-4 mr-1" />
