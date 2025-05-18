@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { ZodError } from "zod";
-import { formatValidationError } from "zod-validation-error";
+import { fromZodError } from "zod-validation-error";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -63,7 +63,7 @@ export const validateRequest = (schema: any) => {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const validationError = formatValidationError(error);
+        const validationError = fromZodError(error);
         return res.status(400).json({ 
           message: "Validation error", 
           errors: validationError.details 

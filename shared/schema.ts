@@ -7,9 +7,11 @@ import {
   timestamp,
   varchar,
   json,
+  jsonb,
   unique,
   foreignKey,
   pgEnum,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
