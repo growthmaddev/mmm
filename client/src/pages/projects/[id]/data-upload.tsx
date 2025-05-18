@@ -43,64 +43,54 @@ export default function ProjectDataUpload() {
   // File upload mutation
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      // Create form data
+      // Simply use fetch API instead of XMLHttpRequest
       const formData = new FormData();
       formData.append("file", file);
       formData.append("projectId", id || "");
       
-      // Use standard fetch API with progress tracking via a custom XHR
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        // Set up our progress tracking
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const progress = Math.round((event.loaded / event.total) * 100);
-            console.log(`Upload progress: ${progress}%`);
-            setUploadProgress(progress);
+      // Simulate progress since we're using regular fetch
+      const simulateProgress = () => {
+        let progress = 0;
+        const interval = setInterval(() => {
+          progress += 5;
+          if (progress > 95) {
+            clearInterval(interval);
+            return;
           }
-        };
+          setUploadProgress(progress);
+        }, 100);
         
-        // Set up completion handler
-        xhr.onreadystatechange = function() {
-          if (xhr.readyState === 4) { // DONE
-            console.log(`Upload complete, status: ${xhr.status}`);
-            
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const data = JSON.parse(xhr.responseText);
-                console.log("Upload response data:", data);
-                resolve(data);
-              } catch (e) {
-                console.error("Error parsing response:", e);
-                reject(new Error("Invalid server response"));
-              }
-            } else {
-              console.error("Upload failed with status:", xhr.status);
-              let errorMessage = "Upload failed";
-              
-              try {
-                const errorData = JSON.parse(xhr.responseText);
-                errorMessage = errorData.message || errorMessage;
-              } catch (e) {
-                // If we can't parse the error, use a default message
-              }
-              
-              reject(new Error(errorMessage));
-            }
-          }
-        };
+        return () => clearInterval(interval);
+      };
+      
+      const cleanup = simulateProgress();
+      
+      try {
+        // Use the standard fetch API which should be more reliable
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+          // Important: don't set Content-Type header as browser will set it with boundary
+        });
         
-        // Handle network errors
-        xhr.onerror = function() {
-          console.error("Network error during upload");
-          reject(new Error("Network error occurred"));
-        };
+        // Set progress to 100% when fetch completes
+        setUploadProgress(100);
         
-        // Open and send the request
-        xhr.open("POST", "/api/upload", true);
-        xhr.send(formData);
-      });
+        // Clear the progress simulation
+        cleanup();
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Upload failed:", errorText);
+          throw new Error(errorText || "Upload failed");
+        }
+        
+        return await response.json();
+      } catch (error) {
+        cleanup();
+        console.error("Upload error caught:", error);
+        throw error;
+      }
     },
     onSuccess: (data: any) => {
       console.log("Upload succeeded:", data);

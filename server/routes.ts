@@ -238,9 +238,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // File upload routes - add specific error handling
-  apiRouter.post('/upload', isAuthenticated, (req, res, next) => {
-    upload.single('file')(req, res, (err) => {
+  // Simpler file upload route with direct handling
+  apiRouter.post('/upload', isAuthenticated, (req, res) => {
+    console.log("Upload request received");
+    
+    // Use a simpler multer middleware directly
+    upload.single('file')(req, res, async (err) => {
       if (err) {
         console.error("Multer upload error:", err);
         return res.status(400).json({ 
@@ -249,8 +252,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // If no error, continue to the handler
-      handleFileUpload(req as AuthRequest, res);
+      if (!req.file) {
+        console.error("No file in request");
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+      
+      try {
+        console.log("File received:", req.file.originalname);
+        
+        // Create a data source record
+        const projectId = req.body.projectId ? parseInt(req.body.projectId) : null;
+        if (!projectId) {
+          return res.status(400).json({ message: 'Project ID is required' });
+        }
+        
+        // Create a simple data source entry without validation
+        const dataSource = await storage.createDataSource({
+          projectId,
+          type: 'csv_upload',
+          fileName: req.file.originalname,
+          fileUrl: req.file.path,
+          connectionInfo: {
+            status: 'ready',
+            fileSize: req.file.size
+          },
+          createdById: (req as AuthRequest).userId || 1 // Fallback to admin user
+        });
+        
+        // Return success with data source info
+        return res.json({
+          success: true,
+          id: dataSource.id,
+          fileName: req.file.originalname
+        });
+      } catch (error) {
+        console.error("Error in file upload handler:", error);
+        return res.status(500).json({ 
+          message: 'Server error during file processing',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
     });
   });
   
