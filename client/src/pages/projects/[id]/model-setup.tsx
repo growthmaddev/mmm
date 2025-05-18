@@ -106,15 +106,15 @@ export default function ModelSetup() {
     mutationFn: async (modelId: number) => {
       return apiRequest("POST", `/api/models/${modelId}/train`);
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       toast({
         title: "Training started",
         description: "Your model is now being trained. You can monitor progress on the results page.",
       });
       
-      // Navigate to results page after a short delay
+      // Navigate to results page after a short delay using the modelId from variables
       setTimeout(() => {
-        navigate(`/projects/${id}/results?model=${data.model.id}`);
+        navigate(`/projects/${id}/results?model=${variables}`);
       }, 1500);
     },
     onError: (error: any) => {
