@@ -469,6 +469,11 @@ def optimize_budget(
     # Use the basic formula for percentage lift calculation
     percentage_lift = ((optimized_outcome - current_outcome) / current_outcome) if current_outcome > 0 else 0
     
+    # Verify meaningful lift when budget is increased
+    if desired_budget > sum(current_allocation.values()) * 1.1 and abs(percentage_lift) < 0.01:
+        print(f"DEBUG: WARNING - Budget increased by over 10% but lift is negligible ({percentage_lift:.6f})", file=sys.stderr)
+        print(f"DEBUG: This suggests channel contributions may be underestimated with current parameters", file=sys.stderr)
+    
     if debug:
         print(f"\nDEBUG: === FINAL RESULTS ===", file=sys.stderr)
         print(f"DEBUG: Baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
