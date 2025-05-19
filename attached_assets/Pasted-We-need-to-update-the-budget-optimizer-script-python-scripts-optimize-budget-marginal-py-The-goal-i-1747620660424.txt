@@ -1,0 +1,27 @@
+We need to update the budget optimizer script python_scripts/optimize_budget_marginal.py. The goal is to align its core logic with the principles that led to successful results in our standalone test script, budget_optimizer_direct_fix.py.
+
+Please perform the following modifications to python_scripts/optimize_budget_marginal.py:
+
+Backup: Create a backup copy of python_scripts/optimize_budget_marginal.py before making changes.
+Parameter Prioritization:
+Ensure the script primarily uses the channel_params (betas, adstock parameters, and saturation parameters L, k, x0) passed from the Node.js controller (server/controllers/budgetOptimization.ts). These parameters originate from our trained Model ID 14.
+Temporarily simplify or comment out the extensive internal logic within the optimize_budget function that "fixes" or "synthesizes" L, k, and x0 values. The model's own parameters should be the primary source of truth. Minimal validation (e.g., non-zero checks) can remain, but aggressive overriding should be paused.
+Channel Contribution Scaling:
+Temporarily disable or comment out the scaling_factor logic found within the optimize_budget function.
+Channel contributions should be calculated directly (e.g., raw_contribution = get_channel_response(...) without a subsequent multiplication by scaling_factor).
+The expected_outcome and current_outcome should be calculated as baseline_sales + total_raw_channel_contribution.
+Lift Calculation:
+Modify the lift calculation to use the simpler formula: expected_lift = ((expected_outcome - current_outcome) / current_outcome) * 100 if current_outcome > 0, else 0.0. The complex ROI-adjusted lift and capping can be temporarily removed.
+Diversity Factor:
+In the budget allocation loop, change the diversity_factor calculation to: diversity_factor = max(0.1, 1.0 - (allocation_percentages.get(ch, 0) * 1.5)).
+Adstock Usage:
+Continue to use the adstock transformation within get_channel_response as it's currently implemented in python_scripts/optimize_budget_marginal.py, assuming Model ID 14 provides adstock parameters (alpha, l_max).
+Comprehensive Logging:
+Ensure the script includes detailed print statements (to sys.stderr) at critical stages:
+Received channel_params (betas, L, k, x0, adstock) for each channel.
+baseline_sales value being used.
+current_allocation and the calculated total_current_contribution (unscaled) and current_outcome.
+The optimized_allocation for each channel.
+The calculated total_channel_contribution (unscaled, from optimized allocation) and expected_outcome.
+The final expected_lift percentage.
+After implementing these changes, we will run an end-to-end test using Model ID 14 parameters (initial budget $201,785, desired budget $300,000) to verify the results against our target lifts of +27% to +45% and observe budget diversity.
