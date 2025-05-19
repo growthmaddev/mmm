@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Budget Optimizer with proven logic from test_optimizer.py
+Scaled Budget Optimizer
 
-Implements the successful optimization approach that achieved +27% lift
-for same budget and +45% lift for increased budget with good channel diversity.
+This script provides a revised approach to the budget optimizer with proper scaling
+of contribution values to make them meaningful in comparison to baseline sales.
 """
 
-import sys
 import json
+import sys
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Any, Optional
 
 def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0001, x0: float = 50000.0) -> float:
     """
@@ -38,9 +38,9 @@ def get_channel_response(
     beta: float, 
     saturation_params: Dict[str, float],
     adstock_params: Optional[Dict[str, float]] = None,
+    scaling_factor: float = 5000.0,  # Apply scaling to make contributions meaningful
     debug: bool = False,
-    channel_name: str = "",
-    scaling_factor: float = 5000.0  # CRITICAL: Apply scaling to make contributions meaningful
+    channel_name: str = ""
 ) -> float:
     """
     Calculate expected response for a channel given spend and parameters.
@@ -50,6 +50,7 @@ def get_channel_response(
         beta: Channel coefficient (effectiveness)
         saturation_params: Saturation parameters (L, k, x0)
         adstock_params: Adstock parameters (if applicable)
+        scaling_factor: Multiplier to scale contributions for meaningful comparison
         debug: Whether to print debug information
         channel_name: Name of channel (for debugging)
         
@@ -93,7 +94,7 @@ def get_channel_response(
     # Apply beta coefficient to get final response
     response = beta * saturated_spend
     
-    # Apply scaling factor to make contributions meaningful
+    # Apply scaling factor to make contributions comparable to baseline sales
     scaled_response = response * scaling_factor
     
     # Debug output
@@ -112,9 +113,9 @@ def calculate_marginal_return(
     channel_params: Dict[str, Any],
     current_spend: float,
     increment: float = 1000.0,
+    scaling_factor: float = 5000.0,
     debug: bool = False,
-    channel_name: str = "",
-    scaling_factor: float = 5000.0  # CRITICAL: Apply same scaling as in get_channel_response
+    channel_name: str = ""
 ) -> float:
     """
     Calculate marginal return for additional spend on a channel.
@@ -123,6 +124,7 @@ def calculate_marginal_return(
         channel_params: Parameters for the channel
         current_spend: Current spend amount
         increment: Amount to increment for calculation
+        scaling_factor: Multiplier to scale contributions
         debug: Whether to print debug information
         channel_name: Name of channel (for debugging)
         
@@ -136,40 +138,14 @@ def calculate_marginal_return(
     
     # Calculate response at current spend
     response_current = get_channel_response(
-
-        current_spend,
-
-        beta,
-
-        sat_params,
-
-        adstock_params,
-
-        debug=False,
-
-        channel_name=channel_name,
-
-        scaling_factor=scaling_factor
-
+        current_spend, beta, sat_params, adstock_params,
+        scaling_factor=scaling_factor, debug=False, channel_name=channel_name
     )
     
     # Calculate response at incremented spend
     response_incremented = get_channel_response(
-
-        current_spend + increment,
-
-        beta,
-
-        sat_params,
-
-        adstock_params,
-
-        debug=False,
-
-        channel_name=channel_name,
-
-        scaling_factor=scaling_factor
-
+        current_spend + increment, beta, sat_params, adstock_params,
+        scaling_factor=scaling_factor, debug=False, channel_name=channel_name
     )
     
     # Calculate marginal return (response difference per dollar)
@@ -198,9 +174,8 @@ def optimize_budget(
     max_iterations: int = 1000,
     baseline_sales: float = 0.0,
     min_channel_budget: float = 1000.0,
-    debug: bool = True,
-    scaling_factor: float = 5000.0,  # CRITICAL: Scaling factor to make contributions meaningful
-    diversity_factor: float = 0.5  # Diversity constraint (0-1, higher = more diverse)
+    scaling_factor: float = 5000.0,  # Apply scaling to make contributions meaningful
+    debug: bool = True
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
@@ -213,6 +188,7 @@ def optimize_budget(
         max_iterations: Maximum iterations to run
         baseline_sales: Baseline sales (intercept)
         min_channel_budget: Minimum budget per channel
+        scaling_factor: Multiplier to scale contributions
         debug: Whether to print debug information
         
     Returns:
@@ -221,6 +197,7 @@ def optimize_budget(
     if debug:
         print(f"DEBUG: Starting budget optimization with ${desired_budget:,.2f}", file=sys.stderr)
         print(f"DEBUG: Baseline sales (intercept): ${baseline_sales:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Using scaling factor: {scaling_factor:,.0f}", file=sys.stderr)
     
     # Initialize with defaults if needed
     if current_allocation is None:
@@ -252,21 +229,13 @@ def optimize_budget(
         
         # Calculate contribution
         contribution = get_channel_response(
-
             spend,
-
             params.get("beta_coefficient", 0),
-
             params.get("saturation_parameters", {}),
-
             params.get("adstock_parameters", {}),
-
+            scaling_factor=scaling_factor,
             debug=debug,
-
-            channel_name=channel,
-
-            scaling_factor=scaling_factor
-
+            channel_name=channel
         )
         
         current_contributions[channel] = contribution
@@ -274,13 +243,13 @@ def optimize_budget(
         
         # Debug output for initial allocation
         if debug:
-            print(f"DEBUG: Initial {channel}: ${spend:,.2f} spend → {contribution:.6f} contribution", file=sys.stderr)
+            print(f"DEBUG: Initial {channel}: ${spend:,.2f} spend → {contribution:.2f} contribution", file=sys.stderr)
     
     # Calculate current outcome (baseline + contributions)
     current_outcome = baseline_sales + total_current_contribution
     
     if debug:
-        print(f"DEBUG: Total initial contribution: {total_current_contribution:.6f}", file=sys.stderr)
+        print(f"DEBUG: Total initial contribution: {total_current_contribution:.2f}", file=sys.stderr)
         print(f"DEBUG: Initial outcome (baseline + contribution): ${current_outcome:,.2f}", file=sys.stderr)
     
     # STEP 2: Start optimization with minimum allocation to each channel
@@ -310,7 +279,6 @@ def optimize_budget(
         while remaining_budget >= increment and iteration < max_iterations:
             # Calculate marginal returns for all channels
             marginal_returns = {}
-            total_allocated = sum(optimized_allocation.values())
             
             for channel, params in channel_params.items():
                 current_spend = optimized_allocation[channel]
@@ -318,25 +286,10 @@ def optimize_budget(
                 # Calculate marginal return
                 mr = calculate_marginal_return(
                     params, current_spend, increment,
+                    scaling_factor=scaling_factor,
                     debug=(debug and iteration % 100 == 0),  # Debug every 100 iterations
-                    channel_name=channel,
-                    scaling_factor=scaling_factor
+                    channel_name=channel
                 )
-                
-                # Apply diversity adjustment to favor a more balanced allocation
-                if diversity_factor > 0:
-                    # Calculate percentage of total budget allocated to this channel
-                    channel_percentage = current_spend / total_allocated if total_allocated > 0 else 0
-                    
-                    # Apply diversity penalty to channels with higher allocation percentage
-                    # Higher diversity_factor means stronger penalty for concentration
-                    diversity_adjustment = 1.0 - (channel_percentage * diversity_factor)
-                    adjusted_mr = mr * diversity_adjustment
-                    
-                    if debug and iteration % 100 == 0:
-                        print(f"DEBUG: Channel {channel} - Base MR: {mr:.6f}, Allocation: {channel_percentage:.2%}, Adjusted MR: {adjusted_mr:.6f}", file=sys.stderr)
-                    
-                    mr = adjusted_mr
                 
                 marginal_returns[channel] = mr
             
@@ -381,21 +334,13 @@ def optimize_budget(
         
         # Calculate optimized contribution
         contribution = get_channel_response(
-
             spend,
-
             params.get("beta_coefficient", 0),
-
             params.get("saturation_parameters", {}),
-
             params.get("adstock_parameters", {}),
-
+            scaling_factor=scaling_factor,
             debug=debug,
-
-            channel_name=channel,
-
-            scaling_factor=scaling_factor
-
+            channel_name=channel
         )
         
         optimized_contributions[channel] = contribution
@@ -406,7 +351,7 @@ def optimize_budget(
         
         # Debug output
         if debug:
-            print(f"DEBUG: Optimized {channel}: ${spend:,.2f} spend → {contribution:.6f} contribution (ROI: {roi:.6f})", file=sys.stderr)
+            print(f"DEBUG: Optimized {channel}: ${spend:,.2f} spend → {contribution:.2f} contribution (ROI: {roi:.6f})", file=sys.stderr)
             
             # Show change from current
             current = current_allocation.get(channel, 0)
@@ -493,77 +438,8 @@ def optimize_budget(
     
     return result
 
-def main():
-    """Main function to run the budget optimization."""
-    if len(sys.argv) < 2:
-        print(json.dumps({
-            "success": False,
-            "error": "Usage: python optimize_budget_marginal.py <input_json_path>"
-        }))
-        sys.exit(1)
-    
-    # Get command line arguments
-    input_json_path = sys.argv[1]
-    
-    try:
-        # Load input JSON
-        with open(input_json_path, 'r') as f:
-            input_data = json.load(f)
-        
-        # Extract parameters
-        model_parameters = input_data.get("model_parameters", {})
-        current_budget = input_data.get("current_budget", 0.0)
-        desired_budget = input_data.get("desired_budget", 0.0)
-        current_allocation = input_data.get("current_allocation", {})
-        
-        # Set default baseline if not provided
-        baseline_sales = input_data.get("baseline_sales", 0.0)
-        if baseline_sales <= 0:
-            # Default to 5x the initial budget as baseline
-            baseline_sales = current_budget * 5
-            print(f"DEBUG: Setting default baseline sales to ${baseline_sales:,.2f}", file=sys.stderr)
-        
-        # Run the budget optimization
-        result = optimize_budget(
-            channel_params=model_parameters,
-            desired_budget=desired_budget,
-            current_allocation=current_allocation,
-            baseline_sales=baseline_sales,
-            min_channel_budget=1000.0,
-            debug=True  # Enable detailed output
-        )
-        
-        # Show optimizer debugging info
-        print("=== OPTIMIZATION RESULT ===", file=sys.stderr)
-        print(json.dumps(result, indent=2), file=sys.stderr)
-        print("=== END OPTIMIZATION RESULT ===", file=sys.stderr)
-        
-        # Suggest curl test command
-        print(f"To test directly with curl:", file=sys.stderr)
-        curl_cmd = f"curl -X POST -H \"Content-Type: application/json\" -d '{json.dumps({k: v for k, v in input_data.items() if k in ['current_budget', 'desired_budget', 'current_allocation']})}' http://localhost:3000/api/models/{input_data.get('model_id', 'unknown')}/optimize-budget"
-        print(curl_cmd, file=sys.stderr)
-        
-        # Get raw result string
-        result_string = json.dumps({"success": True, **result})
-        print(f"Result string length: {len(result_string)}", file=sys.stderr)
-        print(f"First 100 chars: {result_string[:100]}", file=sys.stderr)
-        
-        # Return success response
-        print(json.dumps({
-            "success": True,
-            **result
-        }))
-        
-    except Exception as e:
-        import traceback
-        print(f"DEBUG: Error in budget optimization: {str(e)}", file=sys.stderr)
-        print(traceback.format_exc(), file=sys.stderr)
-        
-        # Return error response
-        print(json.dumps({
-            "success": False,
-            "error": str(e)
-        }))
-
+# Test data for manual testing
 if __name__ == "__main__":
-    main()
+    # Sample model config and allocation for testing
+    from test_optimizer import test_optimizer
+    test_optimizer()

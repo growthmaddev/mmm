@@ -39,8 +39,7 @@ def get_channel_response(
     saturation_params: Dict[str, float],
     adstock_params: Optional[Dict[str, float]] = None,
     debug: bool = False,
-    channel_name: str = "",
-    scaling_factor: float = 5000.0  # CRITICAL: Apply scaling to make contributions meaningful
+    channel_name: str = ""
 ) -> float:
     """
     Calculate expected response for a channel given spend and parameters.
@@ -93,9 +92,6 @@ def get_channel_response(
     # Apply beta coefficient to get final response
     response = beta * saturated_spend
     
-    # Apply scaling factor to make contributions meaningful
-    scaled_response = response * scaling_factor
-    
     # Debug output
     if debug:
         print(f"DEBUG: {channel_name} response calculation:", file=sys.stderr)
@@ -103,18 +99,16 @@ def get_channel_response(
         print(f"  - Beta: {beta:.6f}", file=sys.stderr)
         print(f"  - Saturation params: L={L:.2f}, k={k:.6f}, x0={x0:,.0f}", file=sys.stderr)
         print(f"  - Saturated spend: {saturated_spend:.6f}", file=sys.stderr)
-        print(f"  - Raw response: {response:.6f}", file=sys.stderr)
-        print(f"  - Scaled response (x{scaling_factor}): {scaled_response:.2f}", file=sys.stderr)
+        print(f"  - Response: {response:.6f}", file=sys.stderr)
     
-    return scaled_response
+    return response
 
 def calculate_marginal_return(
     channel_params: Dict[str, Any],
     current_spend: float,
     increment: float = 1000.0,
     debug: bool = False,
-    channel_name: str = "",
-    scaling_factor: float = 5000.0  # CRITICAL: Apply same scaling as in get_channel_response
+    channel_name: str = ""
 ) -> float:
     """
     Calculate marginal return for additional spend on a channel.
@@ -136,40 +130,14 @@ def calculate_marginal_return(
     
     # Calculate response at current spend
     response_current = get_channel_response(
-
-        current_spend,
-
-        beta,
-
-        sat_params,
-
-        adstock_params,
-
-        debug=False,
-
-        channel_name=channel_name,
-
-        scaling_factor=scaling_factor
-
+        current_spend, beta, sat_params, adstock_params,
+        debug=False, channel_name=channel_name
     )
     
     # Calculate response at incremented spend
     response_incremented = get_channel_response(
-
-        current_spend + increment,
-
-        beta,
-
-        sat_params,
-
-        adstock_params,
-
-        debug=False,
-
-        channel_name=channel_name,
-
-        scaling_factor=scaling_factor
-
+        current_spend + increment, beta, sat_params, adstock_params,
+        debug=False, channel_name=channel_name
     )
     
     # Calculate marginal return (response difference per dollar)
@@ -183,9 +151,9 @@ def calculate_marginal_return(
     if debug:
         print(f"DEBUG: {channel_name} marginal return calculation:", file=sys.stderr)
         print(f"  - Current spend: ${current_spend:,.2f}", file=sys.stderr)
-        print(f"  - Response at current: {response_current:.2f}", file=sys.stderr)
-        print(f"  - Response at +{increment:,.0f}: {response_incremented:.2f}", file=sys.stderr)
-        print(f"  - Difference: {response_diff:.2f}", file=sys.stderr)
+        print(f"  - Response at current: {response_current:.6f}", file=sys.stderr)
+        print(f"  - Response at +{increment:,.0f}: {response_incremented:.6f}", file=sys.stderr)
+        print(f"  - Difference: {response_diff:.6f}", file=sys.stderr)
         print(f"  - Marginal return: {marginal_return:.6f} per dollar", file=sys.stderr)
     
     return marginal_return
@@ -198,9 +166,7 @@ def optimize_budget(
     max_iterations: int = 1000,
     baseline_sales: float = 0.0,
     min_channel_budget: float = 1000.0,
-    debug: bool = True,
-    scaling_factor: float = 5000.0,  # CRITICAL: Scaling factor to make contributions meaningful
-    diversity_factor: float = 0.5  # Diversity constraint (0-1, higher = more diverse)
+    debug: bool = True
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
@@ -252,21 +218,12 @@ def optimize_budget(
         
         # Calculate contribution
         contribution = get_channel_response(
-
             spend,
-
             params.get("beta_coefficient", 0),
-
             params.get("saturation_parameters", {}),
-
             params.get("adstock_parameters", {}),
-
             debug=debug,
-
-            channel_name=channel,
-
-            scaling_factor=scaling_factor
-
+            channel_name=channel
         )
         
         current_contributions[channel] = contribution
@@ -310,7 +267,6 @@ def optimize_budget(
         while remaining_budget >= increment and iteration < max_iterations:
             # Calculate marginal returns for all channels
             marginal_returns = {}
-            total_allocated = sum(optimized_allocation.values())
             
             for channel, params in channel_params.items():
                 current_spend = optimized_allocation[channel]
@@ -319,24 +275,8 @@ def optimize_budget(
                 mr = calculate_marginal_return(
                     params, current_spend, increment,
                     debug=(debug and iteration % 100 == 0),  # Debug every 100 iterations
-                    channel_name=channel,
-                    scaling_factor=scaling_factor
+                    channel_name=channel
                 )
-                
-                # Apply diversity adjustment to favor a more balanced allocation
-                if diversity_factor > 0:
-                    # Calculate percentage of total budget allocated to this channel
-                    channel_percentage = current_spend / total_allocated if total_allocated > 0 else 0
-                    
-                    # Apply diversity penalty to channels with higher allocation percentage
-                    # Higher diversity_factor means stronger penalty for concentration
-                    diversity_adjustment = 1.0 - (channel_percentage * diversity_factor)
-                    adjusted_mr = mr * diversity_adjustment
-                    
-                    if debug and iteration % 100 == 0:
-                        print(f"DEBUG: Channel {channel} - Base MR: {mr:.6f}, Allocation: {channel_percentage:.2%}, Adjusted MR: {adjusted_mr:.6f}", file=sys.stderr)
-                    
-                    mr = adjusted_mr
                 
                 marginal_returns[channel] = mr
             
@@ -381,21 +321,12 @@ def optimize_budget(
         
         # Calculate optimized contribution
         contribution = get_channel_response(
-
             spend,
-
             params.get("beta_coefficient", 0),
-
             params.get("saturation_parameters", {}),
-
             params.get("adstock_parameters", {}),
-
             debug=debug,
-
-            channel_name=channel,
-
-            scaling_factor=scaling_factor
-
+            channel_name=channel
         )
         
         optimized_contributions[channel] = contribution
