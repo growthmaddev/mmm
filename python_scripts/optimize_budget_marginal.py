@@ -228,7 +228,7 @@ def optimize_budget(
         min_channel_budget: Minimum budget per channel
         debug: Whether to print debug information
         scaling_factor: Factor to scale contributions to meaningful levels
-        diversity_factor: Factor to encourage diversity (0-1)
+        enable_dynamic_diversity: Whether to apply dynamic diversity adjustments to prevent budget concentration
         
     Returns:
         Dictionary containing optimized allocation and results
@@ -237,7 +237,7 @@ def optimize_budget(
         print(f"DEBUG: Starting budget optimization with ${desired_budget:,.2f}", file=sys.stderr)
         print(f"DEBUG: Baseline sales (intercept): ${baseline_sales:,.2f}", file=sys.stderr)
         print(f"DEBUG: Using scaling_factor: {scaling_factor}", file=sys.stderr)
-        print(f"DEBUG: Using diversity_factor: {diversity_factor}", file=sys.stderr)
+        print(f"DEBUG: Dynamic diversity optimization: {'Enabled' if enable_dynamic_diversity else 'Disabled'}", file=sys.stderr)
     
     # Initialize with defaults if needed
     if current_allocation is None:
