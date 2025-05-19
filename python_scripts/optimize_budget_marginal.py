@@ -40,7 +40,7 @@ def get_channel_response(
     adstock_params: Optional[Dict[str, float]] = None,
     debug: bool = False,
     channel_name: str = "",
-    scaling_factor: float = 5000.0  # CRITICAL: Apply scaling to make contributions meaningful
+    scaling_factor: float = 1.0  # Use raw contribution values (no scaling)
 ) -> float:
     """
     Calculate expected response for a channel given spend and parameters.
@@ -60,47 +60,44 @@ def get_channel_response(
     if spend <= 0.0:
         return 0.0
     
-    # Ensure reasonable beta
-    if beta <= 0.0:
-        if debug:
-            print(f"DEBUG: {channel_name} has zero/negative beta, using reasonable default", file=sys.stderr)
-        
-        # Use reasonable defaults based on channel type
-        if "Brand" in channel_name:
-            beta = 0.15  # Higher default for brand
-        elif "PPC" in channel_name:
-            beta = 0.10  # Medium default for PPC 
-        else:
-            beta = 0.05  # Lower default for others
-    
+    # Use Model ID 14 parameters without aggressive modification
     # Extract saturation parameters with defaults
     L = saturation_params.get("L", 1.0)
     k = saturation_params.get("k", 0.0001)
     x0 = saturation_params.get("x0", 50000.0)
     
-    # Ensure reasonable parameter values
-    if L <= 0.01:
+    # Minimal parameter validation - only fix completely invalid values
+    if L <= 0:
         L = 1.0
-    if k <= 0.00001:
+        if debug:
+            print(f"DEBUG: Fixed invalid L parameter for {channel_name} to 1.0", file=sys.stderr)
+    
+    if k <= 0:
         k = 0.0001
-    if x0 <= 0 or x0 > 1000000:
-        # Scale x0 relative to the spend level
-        x0 = max(5000, min(50000, spend * 2.5))
-        
-    # CRITICAL: Apply additional fix for very high x0 values
-    # This is essential to make saturation work properly at realistic spend levels
-    if x0 > spend * 10 and spend > 0:
-        # Cap x0 to a more reasonable multiple of spend
-        x0 = max(5000, min(50000, spend * 3))
+        if debug:
+            print(f"DEBUG: Fixed invalid k parameter for {channel_name} to 0.0001", file=sys.stderr)
+    
+    if x0 <= 0:
+        x0 = 10000.0
+        if debug:
+            print(f"DEBUG: Fixed invalid x0 parameter for {channel_name} to 10000.0", file=sys.stderr)
+    
+    # Apply adstock if parameters are provided
+    adstocked_spend = spend
+    if adstock_params and "alpha" in adstock_params:
+        # Simple geometric adstock implementation
+        alpha = adstock_params.get("alpha", 0.3)
+        if debug:
+            print(f"DEBUG: Applying adstock with alpha={alpha} for {channel_name}", file=sys.stderr)
+        # Note: In a real implementation, we would apply the full adstock calculation
+        # This is simplified for the optimizer's purposes
+        adstocked_spend = spend * (1 + alpha)
     
     # Apply saturation to get diminishing returns
-    saturated_spend = logistic_saturation(spend, L, k, x0)
+    saturated_spend = logistic_saturation(adstocked_spend, L, k, x0)
     
     # Apply beta coefficient to get final response
     response = beta * saturated_spend
-    
-    # Apply scaling factor to make contributions meaningful
-    scaled_response = response * scaling_factor
     
     # Debug output
     if debug:
@@ -109,10 +106,9 @@ def get_channel_response(
         print(f"  - Beta: {beta:.6f}", file=sys.stderr)
         print(f"  - Saturation params: L={L:.2f}, k={k:.6f}, x0={x0:,.0f}", file=sys.stderr)
         print(f"  - Saturated spend: {saturated_spend:.6f}", file=sys.stderr)
-        print(f"  - Raw response: {response:.6f}", file=sys.stderr)
-        print(f"  - Scaled response (x{scaling_factor}): {scaled_response:.2f}", file=sys.stderr)
+        print(f"  - Raw contribution: {response:.6f}", file=sys.stderr)
     
-    return scaled_response
+    return response
 
 def calculate_marginal_return(
     channel_params: Dict[str, Any],
