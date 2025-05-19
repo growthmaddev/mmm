@@ -259,7 +259,7 @@ def optimize_budget(
         
         iteration += 1
     
-    # STEP 4: Apply mild diversity enhancement to prevent extreme concentration
+    # STEP 4: Apply stronger diversity enhancement to prevent extreme concentration
     if debug:
         print(f"\nDEBUG: === CHECKING ALLOCATION DIVERSITY ===", file=sys.stderr)
     
@@ -268,40 +268,63 @@ def optimize_budget(
     allocations.sort(key=lambda x: x[1], reverse=True)
     
     total_allocation = sum(optimized_allocation.values())
-    top_two_allocation = sum(alloc for _, alloc in allocations[:2])
-    top_two_percentage = (top_two_allocation / total_allocation) * 100
+    top_channels_allocation = sum(alloc for _, alloc in allocations[:3])
+    top_channels_percentage = (top_channels_allocation / total_allocation) * 100
     
-    if top_two_percentage > 80:
-        # If top 2 channels have more than 80% of budget, apply mild rebalancing
+    # More aggressive diversity enforcement
+    # We want to ensure that no more than 75% of budget goes to top 3 channels
+    if top_channels_percentage > 75:
         if debug:
-            print(f"DEBUG: High concentration detected: Top 2 channels have {top_two_percentage:.1f}% of budget", file=sys.stderr)
-            print(f"DEBUG: Applying mild diversity enhancement", file=sys.stderr)
+            print(f"DEBUG: High concentration detected: Top 3 channels have {top_channels_percentage:.1f}% of budget", file=sys.stderr)
+            print(f"DEBUG: Applying stronger diversity enhancement", file=sys.stderr)
         
-        # Redistribute 10% of top 2 budget
-        amount_to_redistribute = top_two_allocation * 0.1
+        # Calculate how much to redistribute to get top channels to target percentage
+        target_percentage = 75.0
+        target_allocation = (target_percentage / 100.0) * total_allocation
+        
+        # Amount to redistribute 
+        amount_to_redistribute = top_channels_allocation - target_allocation
+        
+        if debug:
+            print(f"DEBUG: Redistributing ${amount_to_redistribute:,.2f} from top channels", file=sys.stderr)
         
         # Take proportionally from top channels
-        for top_ch, top_alloc in allocations[:2]:
-            reduction = amount_to_redistribute * (top_alloc / top_two_allocation)
+        for top_ch, top_alloc in allocations[:3]:
+            reduction = amount_to_redistribute * (top_alloc / top_channels_allocation)
             optimized_allocation[top_ch] -= reduction
             
             if debug:
                 print(f"DEBUG: Reducing {top_ch} by ${reduction:,.2f}", file=sys.stderr)
         
-        # Distribute to lower channels proportional to their marginal returns
-        lower_channels = allocations[2:]
-        total_lower_mr = sum(marginal_returns.get(ch, 0.001) for ch, _ in lower_channels)
+        # Distribute to lower channels - give more to mid-tier channels
+        lower_channels = allocations[3:]
         
-        for lower_ch, _ in lower_channels:
-            mr = marginal_returns.get(lower_ch, 0.001)
-            proportion = mr / total_lower_mr if total_lower_mr > 0 else 1.0 / len(lower_channels)
+        # Simple tiered distribution - more to the higher ranked channels
+        if lower_channels:
+            # Split lower channels into tiers
+            tier1 = lower_channels[:2] if len(lower_channels) >= 2 else lower_channels
+            tier2 = lower_channels[2:] if len(lower_channels) > 2 else []
             
-            # Add to this channel proportional to its marginal return
-            addition = amount_to_redistribute * proportion
-            optimized_allocation[lower_ch] += addition
+            # Allocate 70% to tier 1, 30% to tier 2
+            tier1_amount = amount_to_redistribute * 0.7
+            tier2_amount = amount_to_redistribute * 0.3
             
-            if debug:
-                print(f"DEBUG: Increasing {lower_ch} by ${addition:,.2f}", file=sys.stderr)
+            # Distribute within tier 1
+            for ch, _ in tier1:
+                addition = tier1_amount / len(tier1)
+                optimized_allocation[ch] += addition
+                
+                if debug:
+                    print(f"DEBUG: Increasing tier 1 channel {ch} by ${addition:,.2f}", file=sys.stderr)
+            
+            # Distribute within tier 2
+            if tier2:
+                for ch, _ in tier2:
+                    addition = tier2_amount / len(tier2)
+                    optimized_allocation[ch] += addition
+                    
+                    if debug:
+                        print(f"DEBUG: Increasing tier 2 channel {ch} by ${addition:,.2f}", file=sys.stderr)
     
     # STEP 5: Calculate expected outcome with optimized allocation
     if debug:
@@ -438,8 +461,8 @@ def main():
             baseline_sales = sum(current_allocation.values()) * 5
             print(f"DEBUG: Setting default baseline sales to ${baseline_sales:,.2f}", file=sys.stderr)
         
-        # Set contribution scaling factor to 200 to get meaningful values
-        contribution_scaling_factor = 200.0
+        # Set contribution scaling factor to 5000 to get more meaningful values
+        contribution_scaling_factor = 5000.0
         print(f"DEBUG: Using contribution scaling factor: {contribution_scaling_factor:.1f}x", file=sys.stderr)
         
         # Run the budget optimization
