@@ -7,6 +7,8 @@ import {
   ResponsiveContainer, 
   AreaChart, 
   Area, 
+  LineChart,
+  Line,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -82,6 +84,9 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
     (channelImpact?.baseline / (channelImpact?.overall_total || 1)) || 
     0.4; // 40% fallback baseline if not available
   
+  // Extract response curves data from the model
+  const responseCurves = channelImpact?.response_curves || {};
+
   // Use only real time series data from PyMC model for contribution over time chart
   const contributionTimeData = React.useMemo(() => {
     // Get the real time series data from the model
@@ -90,35 +95,7 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
     // If we have real time series data from the model, use it
     if (timeSeriesData.length > 0) {
       console.log('Using real time series data from PyMC model');
-      return timeSeriesData.map((dataPoint: any) => {
-        // Format the data point for the chart
-        const formattedPoint: any = {
-          date: new Date(dataPoint.date).toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric',
-            year: '2-digit'
-          })
-        };
-        
-        // Add baseline
-        formattedPoint['Baseline'] = dataPoint.baseline || 0;
-        
-        // Add control variables
-        if (dataPoint.control_variables) {
-          Object.entries(dataPoint.control_variables).forEach(([key, value]: [string, any]) => {
-            formattedPoint[key] = value;
-          });
-        }
-        
-        // Add channel contributions
-        if (dataPoint.channels) {
-          Object.entries(dataPoint.channels).forEach(([channel, value]: [string, any]) => {
-            formattedPoint[channel] = value;
-          });
-        }
-        
-        return formattedPoint;
-      });
+      return timeSeriesData;
     } 
     
     // If no real data is available, return empty array
@@ -487,6 +464,74 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
         </Card>
       </div>
       
+      {/* Response Curves section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <LineChartIcon className="mr-2 h-4 w-4" />
+            Response Curves
+          </CardTitle>
+          <CardDescription>
+            How each channel's performance changes with different spend levels
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {responseCurves && Object.keys(responseCurves).length > 0 ? (
+            <div className="space-y-6">
+              {/* Select top channels to display response curves */}
+              {sortedChannels.slice(0, 3).map((channelData) => {
+                // Get response curve data for this channel
+                const curveData = responseCurves[channelData.channel];
+                if (!curveData || curveData.length === 0) return null;
+                
+                return (
+                  <div key={channelData.channel} className="space-y-2">
+                    <h4 className="font-medium">{channelData.channel}</h4>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={curveData}
+                          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="spend" 
+                            tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} 
+                          />
+                          <YAxis 
+                            tickFormatter={(value) => `$${value.toLocaleString()}`} 
+                          />
+                          <Tooltip 
+                            formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Contribution']}
+                            labelFormatter={(value) => `Spend: $${Number(value).toLocaleString()}`}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="response" 
+                            stroke={channelColors[channelData.channel] || '#6b7280'} 
+                            activeDot={{ r: 8 }} 
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            // Show "No data available" message when no response curve data exists
+            <div className="h-[300px] flex items-center justify-center flex-col text-muted-foreground">
+              <div className="mb-2">
+                <LineChartIcon className="h-12 w-12 opacity-20" />
+              </div>
+              <p>No response curve data available from the model</p>
+              <p className="text-sm">Train a model with comprehensive parameter outputs to see response curves</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Key Takeaways section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
