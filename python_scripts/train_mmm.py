@@ -421,24 +421,25 @@ def train_model(df, config):
             # If there's an error, create an empty time series data structure
             time_series_data = []
         
-        # Manually calculate channel contributions using simplified approach if not already done
-        if not contributions:
-            contributions = {}
-            for channel in channel_columns:
-                # If we already have time series data for this channel, sum it
-                if channel in channel_contributions_ts:
-                    contributions[channel] = sum(channel_contributions_ts[channel])
-                else:
-                    # Otherwise estimate based on spend proportion
-                    channel_spend = df[channel].sum()
-                    total_spend = sum(df[col].sum() for col in channel_columns)
-                    
-                    # Avoid division by zero
-                    contribution_ratio = channel_spend / total_spend if total_spend > 0 else 0
-                    
-                    # Calculate a weighted contribution that factors in size and effectiveness
-                    log_factor = np.log1p(channel_spend) / np.log1p(total_spend) if total_spend > 0 else 0
-                    contributions[channel] = contribution_ratio * y.sum() * 0.6 * (0.5 + 0.5 * log_factor)
+        # Initialize contributions variable
+        contributions = {}
+        
+        # Manually calculate channel contributions using simplified approach
+        for channel in channel_columns:
+            # If we already have time series data for this channel, sum it
+            if channel in channel_contributions_ts:
+                contributions[channel] = sum(channel_contributions_ts[channel])
+            else:
+                # Otherwise estimate based on spend proportion
+                channel_spend = df[channel].sum()
+                total_spend = sum(df[col].sum() for col in channel_columns)
+                
+                # Avoid division by zero
+                contribution_ratio = channel_spend / total_spend if total_spend > 0 else 0
+                
+                # Calculate a weighted contribution that factors in size and effectiveness
+                log_factor = np.log1p(channel_spend) / np.log1p(total_spend) if total_spend > 0 else 0
+                contributions[channel] = contribution_ratio * y.sum() * 0.6 * (0.5 + 0.5 * log_factor)
         
         # Use scikit-learn for metrics calculation
         r_squared = r2_score(y, predictions)
