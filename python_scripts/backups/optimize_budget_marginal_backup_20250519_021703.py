@@ -86,12 +86,6 @@ def get_channel_response(
     if x0 <= 0 or x0 > 1000000:
         # Scale x0 relative to the spend level
         x0 = max(5000, min(50000, spend * 2.5))
-        
-    # CRITICAL: Apply additional fix for very high x0 values
-    # This is essential to make saturation work properly at realistic spend levels
-    if x0 > spend * 10 and spend > 0:
-        # Cap x0 to a more reasonable multiple of spend
-        x0 = max(5000, min(50000, spend * 3))
     
     # Apply saturation to get diminishing returns
     saturated_spend = logistic_saturation(spend, L, k, x0)
@@ -309,22 +303,6 @@ def optimize_budget(
         # Just allocate evenly in this case
         allocation_per_channel = desired_budget / len(channel_params)
         optimized_allocation = {channel: allocation_per_channel for channel in channel_params}
-    # Special case: If desired budget equals current budget, start with current allocation
-    # but ensure minimum allocation per channel
-    elif abs(desired_budget - sum(current_allocation.values())) < 0.01:
-        if debug:
-            print(f"DEBUG: Desired budget equals current budget, optimizing from current allocation", file=sys.stderr)
-        
-        # Start with current allocation
-        optimized_allocation = {channel: max(current_allocation.get(channel, min_channel_budget), min_channel_budget) 
-                               for channel in channel_params}
-        
-        # Adjust to match desired budget exactly
-        total_allocated = sum(optimized_allocation.values())
-        adjustment_factor = desired_budget / total_allocated if total_allocated > 0 else 1.0
-        
-        optimized_allocation = {channel: spend * adjustment_factor 
-                               for channel, spend in optimized_allocation.items()}
     else:
         # STEP 3: Iteratively allocate remaining budget based on marginal returns
         iteration = 0
