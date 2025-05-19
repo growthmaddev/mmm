@@ -213,7 +213,7 @@ def optimize_budget(
     min_channel_budget: float = 1000.0,
     debug: bool = True,
     scaling_factor: float = 300.0,  # Use scaling factor to make contributions meaningful
-    diversity_factor: float = 0.8  # Higher diversity factor = more balanced allocation
+    enable_dynamic_diversity: bool = True  # Enable dynamic diversity adjustments to prevent budget concentration
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
@@ -333,12 +333,15 @@ def optimize_budget(
                 )
                 
                 # Apply diversity adjustment using the proven formula
-                if diversity_factor > 0:
+                if enable_dynamic_diversity:  # Renamed from diversity_factor for clarity
                     # Calculate percentage of total budget
                     total_optimized = sum(optimized_allocation.values())
                     channel_percentage = current_spend / total_optimized if total_optimized > 0 else 0
                     
-                    # Use max(0.1, 1.0 - channel_percentage * 2.0) formula
+                    # The diversity formula: max(0.1, 1.0 - channel_percentage * 2.0)
+                    # This reduces marginal returns for channels that already have a large budget percentage
+                    # - Channels with >50% allocation will get max reduction (90% reduction)
+                    # - Channels with <50% allocation get proportionally smaller reductions
                     diversity_adjustment = max(0.1, 1.0 - (channel_percentage * 2.0))
                     adjusted_mr = mr * diversity_adjustment
                     
