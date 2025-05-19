@@ -1,29 +1,14 @@
 {
   "dateColumn": "Date",
   "targetColumn": "Sales",
-  "channelColumns": {
-    "TV_Spend": "TV Spend",
-    "Radio_Spend": "Radio Spend",
-    "Social_Spend": "Social Spend",
-    "Search_Spend": "Search Spend",
-    "Email_Spend": "Email Spend",
-    "Print_Spend": "Print Spend"
-  },
-  "adstockSettings": {
-    "TV_Spend": 3,
-    "Radio_Spend": 2,
-    "Social_Spend": 1,
-    "Search_Spend": 1,
-    "Email_Spend": 1,
-    "Print_Spend": 2
-  },
-  "saturationSettings": {
-    "TV_Spend": 0.7,
-    "Radio_Spend": 0.5,
-    "Social_Spend": 0.6,
-    "Search_Spend": 0.8,
-    "Email_Spend": 0.4,
-    "Print_Spend": 0.5
-  },
-  "controlVariables": {}
+  "channelColumns": [
+    "PPCNonBrand_Spend",
+    "PPCShopping_Spend",
+    "FBReach_Spend"
+  ],
+  "mcmcSettings": {
+    "draws": 50,
+    "tune": 50,
+    "chains": 2
+  }
 }
