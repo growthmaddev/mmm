@@ -11,6 +11,8 @@ import pandas as pd
 import numpy as np
 import pymc as pm
 import arviz as az
+import math
+from datetime import datetime, timedelta
 from sklearn.metrics import r2_score, mean_squared_error
 from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
 
@@ -415,12 +417,23 @@ def train_model(df, config):
                 # Create constant baseline
                 time_series_decomposition["baseline"] = [baseline_level] * len(time_series_decomposition["dates"])
                 
+            # Initialize contributions if not already defined
+            if 'contributions' not in locals() or contributions is None:
+                contributions = {}
+                # Create default channel contributions based on spend
+                for channel in channel_columns:
+                    channel_spend = df[channel].sum() if channel in df.columns else 0
+                    total_spend = sum(df[col].sum() for col in channel_columns if col in df.columns)
+                    ratio = channel_spend / total_spend if total_spend > 0 else 0
+                    contributions[channel] = ratio * sum(y) * 0.5  # Simple proportional allocation
+                    print(f"Created default contribution for {channel}: {contributions[channel]}", file=sys.stderr)
+                
             # Ensure marketing channels have data
             if not time_series_decomposition["marketing_channels"] or len(time_series_decomposition["marketing_channels"]) == 0:
                 print("No channel data found, creating from contribution proportions", file=sys.stderr)
                 # Get total outcome level
                 total_outcome = sum(y)
-                # Use channels from contributions
+                # Use channels from contributions - now safely initialized
                 for channel, value in contributions.items():
                     channel_name = channel.replace("_Spend", "")
                     # Create smoothed contribution pattern
