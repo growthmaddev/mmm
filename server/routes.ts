@@ -165,6 +165,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Model not found" });
       }
       
+      // Check if model has channel impact data and include it in the response
+      if (model.results && model.results.channel_impact) {
+        console.log(`Model ${modelId} has detailed channel impact data`);
+      } else {
+        console.log(`Model ${modelId} does not have detailed channel impact data`);
+      }
+      
       res.json(model);
     } catch (error) {
       console.error("Error fetching model:", error);
