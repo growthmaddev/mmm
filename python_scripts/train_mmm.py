@@ -335,10 +335,10 @@ def train_model(df, config):
                 print(f"Error extracting channel contributions from idata: {str(channel_extract_error)}", file=sys.stderr)
             
             # If we couldn't extract from the model, calculate manual contributions
+            channel_contributions_dict = {}  # Use a local variable to avoid conflicts
             if not channel_contributions_ts:
                 print("Using manual calculation for channel contributions", file=sys.stderr)
                 # Calculate contributions manually
-                contributions = {}
                 for channel in channel_columns:
                     # Estimate contribution based on spend proportion and importance
                     channel_spend = df[channel].sum()
@@ -349,7 +349,8 @@ def train_model(df, config):
                     
                     # Calculate a weighted contribution that factors in size and effectiveness
                     log_factor = np.log1p(channel_spend) / np.log1p(total_spend) if total_spend > 0 else 0
-                    contributions[channel] = contribution_ratio * y.sum() * 0.6 * (0.5 + 0.5 * log_factor)
+                    channel_contribution = contribution_ratio * y.sum() * 0.6 * (0.5 + 0.5 * log_factor)
+                    channel_contributions_dict[channel] = channel_contribution
                     
                     # Calculate time series contribution using spend distribution
                     if channel_spend > 0:
@@ -357,13 +358,17 @@ def train_model(df, config):
                         contrib_ts = []
                         for i, val in enumerate(df[channel].values):
                             # Calculate contribution for this time period proportional to spend 
-                            period_contrib = contributions[channel] * (val / channel_spend) if channel_spend > 0 else 0
+                            period_contrib = channel_contribution * (val / channel_spend) if channel_spend > 0 else 0
                             contrib_ts.append(float(period_contrib))
                         channel_contributions_ts[channel] = contrib_ts
                     else:
                         channel_contributions_ts[channel] = [0.0] * len(dates)
                         
                     print(f"Calculated contribution time series for channel {channel}", file=sys.stderr)
+                
+                # Store contribution values for later use
+                # Create a list to ensure scope issues don't occur
+                channel_contributions_list = list(channel_contributions_dict.items())
             
             # Store the raw time series data in dedicated structures for frontend consumption
             # This follows the explicitly requested structure in the requirements
@@ -425,9 +430,15 @@ def train_model(df, config):
         contributions = {}
         
         # Manually calculate channel contributions using simplified approach
+        total_marketing_contribution = 0
+        
+        # First check if we have already calculated contributions in an earlier step
+        if not hasattr(locals(), 'contributions') or contributions is None:
+            contributions = {}
+        
         for channel in channel_columns:
             # If we already have time series data for this channel, sum it
-            if channel in channel_contributions_ts:
+            if channel in channel_contributions_ts and len(channel_contributions_ts[channel]) > 0:
                 contributions[channel] = sum(channel_contributions_ts[channel])
             else:
                 # Otherwise estimate based on spend proportion
@@ -440,6 +451,9 @@ def train_model(df, config):
                 # Calculate a weighted contribution that factors in size and effectiveness
                 log_factor = np.log1p(channel_spend) / np.log1p(total_spend) if total_spend > 0 else 0
                 contributions[channel] = contribution_ratio * y.sum() * 0.6 * (0.5 + 0.5 * log_factor)
+                
+            # Sum up total marketing contribution
+            total_marketing_contribution += contributions[channel]
         
         # Use scikit-learn for metrics calculation
         r_squared = r2_score(y, predictions)
