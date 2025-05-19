@@ -774,26 +774,56 @@ def train_model(df, config):
                 },
                 "model_parameters": model_parameters  # Also include parameters at top level
             },
-            # Add detailed channel impact data with percentage calculations
+            # Add detailed channel impact data with explicitly structured data
             "channel_impact": {
+                # Legacy time series data format (for backward compatibility)
                 "time_series_data": time_series_data,
+                
+                # Explicitly structured time series decomposition data as requested
+                "time_series_decomposition": time_series_decomposition if 'time_series_decomposition' in locals() else {
+                    "dates": [], 
+                    "baseline": [],
+                    "control_variables": {},
+                    "marketing_channels": {}
+                },
+                
+                # Response curves with detailed parameter information
                 "response_curves": response_curves,
+                
+                # Store detailed channel parameters for visualization
+                "channel_parameters": channel_parameters if 'channel_parameters' in locals() else {},
+                
+                # Aggregated contribution totals for tables and metrics
                 "total_contributions": {
                     "baseline": total_baseline,
                     "baseline_proportion": total_baseline / total_predicted_outcome if total_predicted_outcome > 0 else 0.0,
                     "control_variables": total_control_contributions if 'total_control_contributions' in locals() else {},
-                    "channels": total_contributions,
+                    "channels": {
+                        channel.replace("_Spend", ""): total_contributions[channel] 
+                        for channel in channel_columns
+                    },
                     "total_marketing": total_marketing_contribution,
                     "overall_total": total_predicted_outcome,
-                    # Add percentage calculations for each channel
+                    
+                    # Add percentage calculations for each channel (two distinct metrics)
                     "percentage_metrics": {
-                        channel: {
-                            "percent_of_total": total_contributions[channel] / total_predicted_outcome if total_predicted_outcome > 0 else 0.0,
-                            "percent_of_marketing": total_contributions[channel] / total_marketing_contribution if total_marketing_contribution > 0 else 0.0
+                        channel.replace("_Spend", ""): {
+                            # Percentage of TOTAL outcome (including baseline and control variables)
+                            "percent_of_total": float(total_contributions[channel] / total_predicted_outcome) if total_predicted_outcome > 0 else 0.0,
+                            
+                            # Percentage of MARKETING-DRIVEN outcome (excluding baseline and control variables)
+                            "percent_of_marketing": float(total_contributions[channel] / total_marketing_contribution) if total_marketing_contribution > 0 else 0.0
                         } for channel in channel_columns
                     }
                 },
-                "historical_spends": historical_channel_spends if 'historical_channel_spends' in locals() else {},
+                
+                # Historical spend data for ROI calculations
+                "historical_spends": {
+                    channel.replace("_Spend", ""): float(historical_channel_spends.get(channel, 0)) 
+                    for channel in channel_columns if 'historical_channel_spends' in locals()
+                },
+                
+                # Include model parameters for reference
                 "model_parameters": model_parameters
             }
         }
