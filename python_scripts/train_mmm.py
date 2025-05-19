@@ -693,6 +693,19 @@ def train_model(df, config):
         # Ensure model_parameters is initialized
         if 'model_parameters' not in locals() or model_parameters is None:
             model_parameters = {}
+
+        # Extract channel contributions time series
+        print("Extracting channel contributions time series...", file=sys.stderr)
+        channel_contributions_ts = extract_channel_contributions(mmm, df, channel_columns, idata)
+        
+        # Extract response curves
+        print("Extracting response curves...", file=sys.stderr)
+        response_curves = extract_response_curves(mmm, channel_columns, df, idata)
+        
+        # Extract historical channel spends
+        print("Extracting historical channel spends...", file=sys.stderr)
+        historical_channel_spends = extract_historical_spends(df, channel_columns)
+
             
         print("Generating response curves from real model parameters...", file=sys.stderr)
         
@@ -1173,17 +1186,38 @@ def train_model(df, config):
                 "model_parameters": model_parameters  # Also include parameters at top level
             },
             # Add detailed channel impact data with explicitly structured data
+            # Add detailed channel impact data with rich, model-derived values
             "channel_impact": {
-                # Legacy time series data format (for backward compatibility)
-                "time_series_data": time_series_data if time_series_data else [
-                    # Generate minimal data if needed
-                    {
-                        "date": (datetime.now() - timedelta(days=i*7)).strftime("%b %d, %Y"),
-                        "baseline": float(model_parameters.get("intercept", 100000) / 12),
-                        **{
-                            channel.replace("_Spend", ""): float(contributions.get(channel, 100000) * (0.8 + 0.4 * math.sin(i * 0.5)) / 12)
-                            for channel in channel_columns
-                        }
+                # Create time series decomposition with actual model-derived data
+                "time_series_decomposition": {
+                    # Use actual dates from the dataset
+                    "dates": date_strings,
+                    
+                    # Always include baseline values for each time point
+                    "baseline": baseline_contribution_ts,
+                    
+                    # Include control variables if they exist
+                    "control_variables": control_contributions_ts if control_contributions_ts else {},
+                    
+                    # Include marketing channel contributions over time
+                    "marketing_channels": channel_contributions_ts if channel_contributions_ts else {}
+                },
+                
+                # Include response curves with model-derived parameters
+                "response_curves": response_curves if "response_curves" in locals() and response_curves else {},
+                
+                # Always include historical spends for all channels
+                "historical_spends": historical_channel_spends if "historical_channel_spends" in locals() and historical_channel_spends else {},
+                
+                # Include total contribution summary
+                "total_contributions_summary": {
+                    "baseline": float(total_baseline_contribution) if "total_baseline_contribution" in locals() else float(baseline_value * len(dates)),
+                    "control_variables": total_control_contributions if "total_control_contributions" in locals() and total_control_contributions else {},
+                    "marketing_channels": {channel: float(contributions.get(channel, 0)) for channel in channel_columns},
+                    "total_marketing": float(sum(contributions.values())) if contributions else 0.0,
+                    "total_outcome": float(sum(contributions.values()) + (total_baseline_contribution if "total_baseline_contribution" in locals() else baseline_value * len(dates)))
+                }
+            },
                     }
                     for i in range(12)
                 ],
@@ -1428,6 +1462,164 @@ def extract_model_intercept(idata, summary_df, model_object=None):
     # This makes the issue transparent rather than silently using a potentially incorrect value
     print("CRITICAL: Returning None for model intercept. Budget optimizer will use 0.0 as fallback.", file=sys.stderr)
     return None
+
+
+def extract_channel_contributions(mmm, df, channel_columns, idata):
+    """Extract channel contributions over time from the model"""
+    channel_contributions = {}
+    
+    # Try different methods to extract channel contributions
+    try:
+        # First try to get contributions directly from the model
+        print(f"Extracting channel contributions from the model...", file=sys.stderr)
+        
+        # Try modern PyMC-Marketing API that provides decompose_pred
+        if hasattr(mmm, "decompose_pred"):
+            print("Using mmm.decompose_pred() to get channel contributions", file=sys.stderr)
+            contributions_df = mmm.decompose_pred(df)
+            
+            # Process the contributions dataframe
+            for channel in channel_columns:
+                channel_name = channel.replace("_Spend", "")
+                if channel_name in contributions_df.columns:
+                    # Extract the contribution for this channel
+                    channel_contributions[channel] = contributions_df[channel_name].values.tolist()
+                    print(f"Extracted contributions for {channel}: {len(channel_contributions[channel])} points", file=sys.stderr)
+        # If that fails, try to calculate manually from the posterior
+        else:
+            print("Calculating contributions manually from model parameters", file=sys.stderr)
+            # Get the beta coefficients
+            beta_dict = {}
+            for channel in channel_columns:
+                channel_name = channel.replace("_Spend", "")
+                param_name = f"beta_{channel_name}"
+                
+                # Try various parameter naming conventions
+                for potential_name in [param_name, f"β_{channel_name}", f"coefficient_{channel_name}"]:
+                    try:
+                        if potential_name in idata.posterior:
+                            beta_dict[channel] = float(idata.posterior[potential_name].mean().values)
+                            print(f"Found beta for {channel}: {beta_dict[channel]}", file=sys.stderr)
+                            break
+                    except Exception as e:
+                        print(f"Error getting beta from {potential_name}: {str(e)}", file=sys.stderr)
+            
+            # Calculate contributions using beta * spend
+            for channel in channel_columns:
+                if channel in beta_dict and channel in df.columns:
+                    spend_values = df[channel].values
+                    channel_contributions[channel] = [float(beta_dict[channel] * spend) for spend in spend_values]
+                    print(f"Calculated contributions for {channel}: {len(channel_contributions[channel])} points", file=sys.stderr)
+    
+    except Exception as e:
+        print(f"Error extracting channel contributions: {str(e)}", file=sys.stderr)
+    
+    return channel_contributions
+
+def extract_response_curves(mmm, channel_columns, df, idata):
+    """Extract response curves data from the model"""
+    response_curves = {}
+    
+    try:
+        print("Extracting response curves from model parameters...", file=sys.stderr)
+        
+        # For each channel, create a range of spend values and predict the response
+        for channel in channel_columns:
+            channel_name = channel.replace("_Spend", "")
+            
+            # Get actual spending range for this channel
+            min_spend = float(df[channel].min())
+            max_spend = float(df[channel].max())
+            actual_spend = float(df[channel].sum())
+            
+            # Generate spending points (20 points from min to 2x max)
+            num_points = 20
+            upper_bound = max_spend * 2.0  # Go twice as high as historical max
+            spend_points = np.linspace(0, upper_bound, num_points).tolist()
+            
+            # Try to extract saturation parameters
+            L, k, x0 = 1.0, 0.0001, 50000.0  # Default fallback values
+            
+            # Try to find saturation parameters in idata
+            for param in [f"L_{channel_name}", f"k_{channel_name}", f"x0_{channel_name}"]:
+                try:
+                    if param in idata.posterior:
+                        if param.startswith("L_"):
+                            L = float(idata.posterior[param].mean().values)
+                            print(f"Found L for {channel_name}: {L}", file=sys.stderr)
+                        elif param.startswith("k_"):
+                            k = float(idata.posterior[param].mean().values)
+                            print(f"Found k for {channel_name}: {k}", file=sys.stderr)
+                        elif param.startswith("x0_"):
+                            x0 = float(idata.posterior[param].mean().values)
+                            print(f"Found x0 for {channel_name}: {x0}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error getting parameter {param}: {str(e)}", file=sys.stderr)
+            
+            # Calculate response values using saturation function
+            # Get the beta coefficient
+            beta = 1.0  # Default fallback
+            for potential_name in [f"beta_{channel_name}", f"β_{channel_name}", f"coefficient_{channel_name}"]:
+                try:
+                    if potential_name in idata.posterior:
+                        beta = float(idata.posterior[potential_name].mean().values)
+                        print(f"Found beta for response curve {channel_name}: {beta}", file=sys.stderr)
+                        break
+                except Exception as e:
+                    print(f"Error getting beta from {potential_name}: {str(e)}", file=sys.stderr)
+            
+            # Apply logistic saturation function
+            response_values = []
+            for spend in spend_points:
+                if spend == 0:
+                    response_values.append(0.0)
+                else:
+                    try:
+                        # Apply logistic saturation: beta * L / (1 + exp(-k * (spend - x0)))
+                        saturated = L / (1 + math.exp(-k * (spend - x0)))
+                        response = beta * saturated * spend
+                        response_values.append(float(response))
+                    except Exception as curve_error:
+                        print(f"Error in curve calculation for {channel_name}: {str(curve_error)}", file=sys.stderr)
+                        response_values.append(0.0)
+            
+            # Store the response curve data
+            response_curves[channel_name] = {
+                "spend_points": spend_points,
+                "response_values": response_values,
+                "parameters": {
+                    "beta": beta,
+                    "L": L,
+                    "k": k,
+                    "x0": x0
+                },
+                "metrics": {
+                    "total_spend": actual_spend,
+                    "roi": response_values[-1] / spend_points[-1] if spend_points[-1] > 0 else 0.0
+                }
+            }
+            
+            print(f"Generated response curve for {channel_name} with {len(spend_points)} points", file=sys.stderr)
+    
+    except Exception as e:
+        print(f"Error extracting response curves: {str(e)}", file=sys.stderr)
+    
+    return response_curves
+
+def extract_historical_spends(df, channel_columns):
+    """Extract historical spend totals for each channel"""
+    historical_spends = {}
+    
+    try:
+        for channel in channel_columns:
+            channel_name = channel.replace("_Spend", "")
+            if channel in df.columns:
+                historical_spends[channel_name] = float(df[channel].sum())
+                print(f"Extracted historical spend for {channel_name}: {historical_spends[channel_name]}", file=sys.stderr)
+    except Exception as e:
+        print(f"Error extracting historical spends: {str(e)}", file=sys.stderr)
+    
+    return historical_spends
 
 def main():
     """Main function to run the MMM training"""
