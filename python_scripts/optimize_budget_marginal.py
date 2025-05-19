@@ -199,7 +199,8 @@ def optimize_budget(
     baseline_sales: float = 0.0,
     min_channel_budget: float = 1000.0,
     debug: bool = True,
-    scaling_factor: float = 5000.0  # CRITICAL: Scaling factor to make contributions meaningful
+    scaling_factor: float = 5000.0,  # CRITICAL: Scaling factor to make contributions meaningful
+    diversity_factor: float = 0.5  # Diversity constraint (0-1, higher = more diverse)
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
@@ -309,6 +310,7 @@ def optimize_budget(
         while remaining_budget >= increment and iteration < max_iterations:
             # Calculate marginal returns for all channels
             marginal_returns = {}
+            total_allocated = sum(optimized_allocation.values())
             
             for channel, params in channel_params.items():
                 current_spend = optimized_allocation[channel]
@@ -317,8 +319,24 @@ def optimize_budget(
                 mr = calculate_marginal_return(
                     params, current_spend, increment,
                     debug=(debug and iteration % 100 == 0),  # Debug every 100 iterations
-                    channel_name=channel
+                    channel_name=channel,
+                    scaling_factor=scaling_factor
                 )
+                
+                # Apply diversity adjustment to favor a more balanced allocation
+                if diversity_factor > 0:
+                    # Calculate percentage of total budget allocated to this channel
+                    channel_percentage = current_spend / total_allocated if total_allocated > 0 else 0
+                    
+                    # Apply diversity penalty to channels with higher allocation percentage
+                    # Higher diversity_factor means stronger penalty for concentration
+                    diversity_adjustment = 1.0 - (channel_percentage * diversity_factor)
+                    adjusted_mr = mr * diversity_adjustment
+                    
+                    if debug and iteration % 100 == 0:
+                        print(f"DEBUG: Channel {channel} - Base MR: {mr:.6f}, Allocation: {channel_percentage:.2%}, Adjusted MR: {adjusted_mr:.6f}", file=sys.stderr)
+                    
+                    mr = adjusted_mr
                 
                 marginal_returns[channel] = mr
             
