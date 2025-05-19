@@ -1,0 +1,112 @@
+               params["beta_coefficient"] = 0.2
+                print(f"DEBUG: Created default beta for {channel}: 0.2000", file=sys.stderr)
+    
+    # STEP 2: CRITICAL FIX - Ensure saturation parameters are reasonable for all channels
+    # This step is essential for proper optimization of the budget allocation
+    print(f"DEBUG: ***** Fixing saturation parameters for all channels *****", file=sys.stderr)
+    # STEP 2: Log the received model parameters for each channel
+    # This is crucial to verify we're using the actual trained model parameters
+    print(f"DEBUG: ***** Received channel parameters from Model ID 14 *****", file=sys.stderr)
+    
+    for channel, params in channel_params.items():
+        current_spend = current_allocation.get(channel, 5000)
+        print(f"DEBUG: Fixing saturation parameters for {channel} (current spend: ${current_spend:,})", file=sys.stderr)
+        
+        # Create default parameters if missing
+        current_spend = current_allocation.get(channel, 0)
+        print(f"DEBUG: Channel {channel} (current spend: ${current_spend:,})", file=sys.stderr)
+        
+        # Log beta coefficient
+        beta = params.get("beta_coefficient", 0.0)
+        print(f"DEBUG: Beta coefficient for {channel}: {beta:.6f}", file=sys.stderr)
+        
+        # Create default parameters only if completely missing
+        if "saturation_parameters" not in params:
+            # Set reasonable default saturation parameters
+            # Minimal default parameters - only as fallback
+            params["saturation_parameters"] = {
+                "L": 1.0,              # Standard normalized ceiling
+                "k": 0.0001,           # More gradual diminishing returns curve
+                "x0": min(50000, max(5000, current_spend * 2.5))  # Midpoint relative to spend
+                "k": 0.0001,           # Moderate steepness
+                "x0": 10000.0          # Moderate midpoint
+            }
+            print(f"DEBUG: Created default saturation parameters for {channel}: L=1.0, k=0.0001, x0={params['saturation_parameters']['x0']}", file=sys.stderr)
+        
+        # CRITICAL FIX: Fix existing saturation parameters to ensure they produce reasonable response curves
+            print(f"DEBUG: WARNING - Created minimal default saturation parameters for {channel}: L=1.0, k=0.0001, x0=10000.0", file=sys.stderr)
+        
+        # Log existing saturation parameters without aggressive modification
+        sat_params = params["saturation_parameters"]
+        
+        # 1. Fix L parameter (ceiling) - critical to ensure meaningful saturation behavior
+        # A higher L means a channel can contribute more before saturating
+        if "L" not in sat_params or sat_params["L"] <= 0.1:
+            original_L = sat_params.get("L", 0)
+            sat_params["L"] = 1.0  # Standard normalized value
+            print(f"DEBUG: Fixed L parameter for {channel} from {original_L} to 1.0", file=sys.stderr)
+        else:
+            print(f"DEBUG: Keeping valid L parameter for {channel}: {sat_params['L']}", file=sys.stderr)
+        
+        # 2. Fix k parameter (steepness) - controls how quickly diminishing returns set in
+        # A smaller k produces a more gradual curve with smoother diminishing returns
+        if "k" not in sat_params or sat_params["k"] <= 0.00001 or sat_params["k"] > 0.01:
+            original_k = sat_params.get("k", 0)
+            # Use smaller k (0.0001) for more gradual diminishing returns 
+        # Minimal validation - ensure we have non-zero positive values
+        if "L" not in sat_params or sat_params["L"] <= 0:
+            sat_params["L"] = 1.0
+            print(f"DEBUG: WARNING - Fixed missing/invalid L parameter for {channel} to 1.0", file=sys.stderr)
+            
+        if "k" not in sat_params or sat_params["k"] <= 0:
+            sat_params["k"] = 0.0001
+            print(f"DEBUG: Fixed k parameter for {channel} from {original_k} to 0.0001", file=sys.stderr)
+        else:
+            print(f"DEBUG: Keeping valid k parameter for {channel}: {sat_params['k']}", file=sys.stderr)
+        
+        # 3. CRITICAL FIX: Set x0 (midpoint) to a reasonable value based on current spend
+        # This is the most important parameter for proper allocation
+        # A huge x0 (like 50,000) for a small channel (spend < 10,000) makes it ineffective
+        # This fix ensures each channel's response curve is properly scaled to its spend level
+        if "x0" not in sat_params or sat_params["x0"] <= 0 or sat_params["x0"] > 100000:
+            original_x0 = sat_params.get("x0", 0)
+            
+            # Set x0 relative to channel's actual spend level for balanced optimization
+            # Channels should start saturating at reasonable multiples of their current spend
+            if current_spend < 5000:
+                # Small channels: set x0 to ~3x current spend but at least 5,000
+                sat_params["x0"] = max(5000, current_spend * 3)
+            elif current_spend < 20000:
+                # Medium channels: set x0 to ~2.5x current spend
+                sat_params["x0"] = current_spend * 2.5
+            else:
+                # Large channels: set x0 to ~2x current spend but cap at 50,000
+                sat_params["x0"] = min(50000, current_spend * 2)
+                
+            print(f"DEBUG: Fixed x0 parameter for {channel} from {original_x0} to {sat_params['x0']} (scaled to spend)", file=sys.stderr)
+        else:
+            # Cap unreasonably large x0 values relative to the channel's spend
+            if sat_params["x0"] > current_spend * 5 and current_spend > 0:
+                original_x0 = sat_params["x0"]
+                sat_params["x0"] = current_spend * 3  # More reasonable multiple
+                print(f"DEBUG: Adjusted too large x0 for {channel} from {original_x0} to {sat_params['x0']} (3x current spend)", file=sys.stderr)
+            else:
+                print(f"DEBUG: Keeping valid x0 parameter for {channel}: {sat_params['x0']}", file=sys.stderr)
+                
+        # Log the final parameters being used for this channel
+        print(f"DEBUG: Final saturation parameters for {channel}: L={sat_params['L']}, k={sat_params['k']}, x0={sat_params['x0']}", file=sys.stderr)
+            print(f"DEBUG: WARNING - Fixed missing/invalid k parameter for {channel} to 0.0001", file=sys.stderr)
+            
+        if "x0" not in sat_params or sat_params["x0"] <= 0:
+            sat_params["x0"] = 10000.0
+            print(f"DEBUG: WARNING - Fixed missing/invalid x0 parameter for {channel} to 10000.0", file=sys.stderr)
+        
+        # Log the parameters being used for this channel
+        print(f"DEBUG: Using saturation parameters for {channel}: L={sat_params['L']}, k={sat_params['k']}, x0={sat_params['x0']}", file=sys.stderr)
+        
+        # Log adstock parameters
+        adstock_params = params.get("adstock_parameters", {"alpha": 0.3, "l_max": 3})
+        print(f"DEBUG: Using adstock parameters for {channel}: alpha={adstock_params.get('alpha', 0.3)}, l_max={adstock_params.get('l_max', 3)}", file=sys.stderr)
+    
+    # STEP 3: CRITICAL FIX - Determine appropriate scaling factor for meaningful contributions
+    # This is essential to make channel contributions properly scaled relative to baseline
