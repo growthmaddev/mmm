@@ -81,6 +81,13 @@ def get_channel_response(
         x0 = 10000.0
         if debug:
             print(f"DEBUG: Fixed invalid x0 parameter for {channel_name} to 10000.0", file=sys.stderr)
+            
+    # Ensure beta is positive
+    if beta <= 0:
+        # Default beta if missing or invalid
+        beta = 0.2  # Use a reasonable default value
+        if debug:
+            print(f"DEBUG: Using default beta coefficient for {channel_name}: 0.2", file=sys.stderr)
     
     # Apply adstock if parameters are provided
     adstocked_spend = spend
