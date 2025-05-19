@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, Info, Sparkles } from "lucide-react";
+import ChannelImpact from "@/components/projects/ChannelImpact";
 
 export default function ModelResults() {
   const { id } = useParams();
@@ -379,15 +380,23 @@ export default function ModelResults() {
                 </TabsContent>
                 
                 <TabsContent value="channel-impact" className="pt-4">
-                  <div className="text-center py-10">
-                    <h3 className="text-lg font-medium mb-2">Channel Impact Analysis</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Detailed analysis of how each marketing channel impacts your business outcomes.
-                    </p>
-                    <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
-                      <p className="italic text-muted-foreground">Channel impact visualization will appear here</p>
+                  {/* Import the ChannelImpact component at the top of the file */}
+                  {model && model.results ? (
+                    <div>
+                      {/* Use our new ChannelImpact component */}
+                      <ChannelImpact model={model} />
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-center py-10">
+                      <h3 className="text-lg font-medium mb-2">Channel Impact Analysis</h3>
+                      <p className="text-muted-foreground mb-6">
+                        Detailed analysis of how each marketing channel impacts your business outcomes.
+                      </p>
+                      <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
+                        <p className="italic text-muted-foreground">No channel impact data available</p>
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
                 
                 <TabsContent value="budget-optimization" className="pt-4">
