@@ -520,16 +520,14 @@ def main():
     desired_budget = data.get("desired_budget", 0)
     model_parameters = data.get("model_parameters", {})
     
-    # Extract baseline_sales from the data if available
+    # Extract baseline_sales from the data (should come from model intercept)
     baseline_sales = data.get("baseline_sales", 0.0)
     
-    # If baseline_sales is missing or zero, use a reasonable default value
-    # This ensures more realistic outcome values even if controller doesn't send baseline
-    if baseline_sales == 0.0:
-        # Use a reasonable default based on expected outcome magnitude 
-        # (typically 10-20x the total channel contributions)
-        baseline_sales = sum(current_allocation.values()) * 0.5  # Set baseline to 50% of total spend
-        print(f"DEBUG: WARNING - baseline_sales is 0. Using estimated value: {baseline_sales}", file=sys.stderr)
+    # Log appropriate warnings if baseline_sales is missing or zero
+    if "baseline_sales" not in data:
+        print("DEBUG: CRITICAL WARNING - 'baseline_sales' not found in input JSON. Outcomes will be inaccurate.", file=sys.stderr)
+    elif baseline_sales == 0.0:
+        print("DEBUG: WARNING - baseline_sales is 0.0 from input. Ensure this is the correct intercept value.", file=sys.stderr)
     
     # Run optimization
     try:

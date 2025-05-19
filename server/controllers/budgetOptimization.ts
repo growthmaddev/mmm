@@ -217,11 +217,31 @@ export const optimizeBudget = async (req: Request, res: Response) => {
     
     try {
       // Prepare input data for Python script
+      // Extract baseline_sales (intercept) from model results
+      let baseline_sales = 0.0;
+      
+      // Try to get the intercept/baseline_sales from model results
+      if (modelResults.summary && modelResults.summary.intercept) {
+        // Direct intercept value from model summary
+        baseline_sales = modelResults.summary.intercept;
+        console.log(`Using model intercept as baseline_sales: ${baseline_sales}`);
+      } else if (modelResults.intercept) {
+        // Alternative location for intercept
+        baseline_sales = modelResults.intercept;
+        console.log(`Using model.intercept as baseline_sales: ${baseline_sales}`);
+      } else {
+        console.warn('WARNING: Could not find intercept value in model results. Outcomes may be inaccurate.');
+        // Fallback: calculate a default based on total budget as a reasonable starting point
+        baseline_sales = current_budget * 0.5;
+        console.log(`Using estimated baseline_sales (based on current budget): ${baseline_sales}`);
+      }
+      
       const inputData = {
         model_parameters: modelParameters,
         current_budget: current_budget,
         desired_budget: desired_budget,
-        current_allocation: current_allocation
+        current_allocation: current_allocation,
+        baseline_sales: baseline_sales  // Add baseline_sales to the input data
       };
       
       // Write input data to temporary file

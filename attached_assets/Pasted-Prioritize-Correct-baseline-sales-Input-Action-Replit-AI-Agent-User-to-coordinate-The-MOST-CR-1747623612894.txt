@@ -1,0 +1,24 @@
+Prioritize Correct baseline_sales Input:
+
+Action (Replit AI Agent & User to coordinate):
+The MOST CRITICAL STEP now is to ensure that server/controllers/budgetOptimization.ts correctly retrieves the intercept (baseline_sales) associated with the selected model (e.g., Model ID 14) and includes it as "baseline_sales": actual_intercept_value in the JSON data passed to python_scripts/optimize_budget_marginal.py.
+Remove the estimation logic for baseline_sales from the Python script's main() function. It should simply use the value provided in the JSON or default to 0.0 ONLY if it's genuinely missing (though it shouldn't be):
+Python
+
+# In main() function of python_scripts/optimize_budget_marginal.py
+baseline_sales = data.get("baseline_sales", 0.0) # Ensure it's float
+if "baseline_sales" not in data: # More explicit check if key is missing
+     print("DEBUG: CRITICAL WARNING - 'baseline_sales' not found in input JSON. Outcomes will be inaccurate.", file=sys.stderr)
+elif baseline_sales == 0.0: # If key exists but is 0
+     print("DEBUG: WARNING - baseline_sales is 0.0 from input. Ensure this is the correct intercept value.", file=sys.stderr)
+
+Reasoning: The accuracy of the entire optimization output (outcomes and lift) depends heavily on using the correct baseline_sales from the trained model.
+Test Thoroughly with Correct baseline_sales:
+
+Action (Replit AI Agent): Once the correct baseline_sales is being passed:
+Run both scenarios again with Model ID 14 parameters:
+Scenario 1: Current Budget $201,785, Desired Budget $201,785
+Scenario 2: Current Budget $201,785, Desired Budget $300,000
+Capture and provide the complete stderr debug logs from the Python script for both scenarios. Pay close attention to the logged baseline_sales value, the calculated current/expected outcomes before the 10000x scaling, and the percentage lift.
+Provide screenshots of the UI results for both scenarios.
+With the "Same Budget" scenario logic fixed and if the actual baseline_sales is used, we should see much more reliable and interpretable results. The outcome_scale=10000 will then scale these more accurate underlying figures for UI presentation
