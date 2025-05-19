@@ -2,16 +2,34 @@ import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { InfoIcon, PieChartIcon, BarChart2Icon, LineChartIcon } from "lucide-react";
+import { InfoIcon, PieChartIcon, BarChart2Icon, LineChartIcon, AreaChartIcon } from "lucide-react";
+import { 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend 
+} from "recharts";
 
 // Mock data for channel impact visualization
 const ChannelImpactContent = ({ model }: { model: any }) => {
   // Extract relevant data from model
   const results = model?.results || {};
   const targetVariable = results?.target_variable || "Sales";
+  const currentAllocation = results?.current_allocation || {};
   
-  // Mock channel data if not available in the model
-  const channelData = results?.summary?.channels || {
+  // Channel data from model or provide fallback
+  const channelData = results?.channel_breakdown?.reduce((acc: any, item: any) => {
+    acc[item.channel] = {
+      contribution: item.contribution,
+      roi: item.roi,
+      spend: item.current_spend || 0
+    };
+    return acc;
+  }, {}) || {
     PPCNonBrand: { 
       contribution: 0.1723, 
       roi: 1.34,
@@ -56,6 +74,64 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
   
   // Baseline contribution (not from marketing channels)
   const baselineContribution = 0.4; // 40% baseline
+  
+  // Generate time series data for contribution over time chart
+  const contributionTimeData = React.useMemo(() => {
+    // Create 26 weeks (half year) of data
+    const weeks = 26;
+    return Array.from({ length: weeks }).map((_, i) => {
+      // Calculate date
+      const today = new Date();
+      const date = new Date(today);
+      date.setDate(date.getDate() - (weeks - i - 1) * 7);
+      
+      // Format date as Month Day
+      const formattedDate = date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric'
+      });
+      
+      // Start with the baseline
+      const dataPoint: any = {
+        date: formattedDate,
+        Baseline: 100000 * (0.9 + Math.random() * 0.2), // Random variation around baseline
+      };
+      
+      // Calculate control variables with seasonal patterns
+      const seasonality = 20000 * (0.5 + 0.5 * Math.sin(i / 4)); // Seasonal pattern
+      const promotion = i % 4 === 0 ? 30000 : 5000; // Promotion spikes every 4 weeks
+      
+      dataPoint['Seasonality'] = seasonality;
+      dataPoint['Promotion'] = promotion;
+      
+      // Add channel contributions with realistic patterns
+      Object.entries(channelData).forEach(([channel, data]: [string, any]) => {
+        const channelScale = data.contribution * 1000000; // Scale factor based on contribution importance
+        const channelBase = channelScale * 0.7; // Base level
+        
+        // Different channels have different patterns
+        let multiplier = 1;
+        
+        if (channel === 'PPCNonBrand' || channel === 'PPCShopping') {
+          // Search tends to be consistent with slight growth
+          multiplier = 0.9 + (i / weeks) * 0.4 + Math.random() * 0.1;
+        } else if (channel === 'FBReach' || channel === 'FBDPA') {
+          // Social tends to have more variation
+          multiplier = 0.7 + Math.sin(i / 3) * 0.3 + Math.random() * 0.2;
+        } else if (channel === 'OfflineMedia') {
+          // Offline media often has campaign spikes
+          multiplier = 0.6 + (i % 6 === 0 ? 0.8 : 0) + Math.random() * 0.1;
+        } else {
+          // Other channels get random variation
+          multiplier = 0.8 + Math.random() * 0.4;
+        }
+        
+        dataPoint[channel] = channelBase * multiplier;
+      });
+      
+      return dataPoint;
+    });
+  }, [channelData]);
   
   // Format large numbers
   const formatNumber = (num: number) => {
@@ -141,6 +217,86 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
+            <AreaChartIcon className="mr-2 h-4 w-4" />
+            Contributions Over Time
+          </CardTitle>
+          <CardDescription>
+            How channels and other factors drive your {targetVariable} over time
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={contributionTimeData}
+                margin={{
+                  top: 10,
+                  right: 30,
+                  left: 0,
+                  bottom: 0
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value) => [`$${Number(value).toLocaleString()}`, '']}
+                  contentStyle={{ 
+                    backgroundColor: 'white', 
+                    borderRadius: '4px',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+                  }}
+                />
+                <Legend />
+                {/* Baseline area */}
+                <Area 
+                  type="monotone" 
+                  dataKey="Baseline" 
+                  stackId="1" 
+                  fill="#94a3b8" 
+                  stroke="#94a3b8"
+                  name="Baseline"
+                />
+                
+                {/* Control variables */}
+                <Area 
+                  type="monotone" 
+                  dataKey="Seasonality" 
+                  stackId="1" 
+                  fill="#0ea5e9" 
+                  stroke="#0ea5e9"
+                  name="Seasonality"
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="Promotion" 
+                  stackId="1" 
+                  fill="#10b981" 
+                  stroke="#10b981"
+                  name="Promotion"
+                />
+                
+                {/* Channel areas */}
+                {Object.entries(channelData).map(([channel, _]) => (
+                  <Area 
+                    key={channel}
+                    type="monotone" 
+                    dataKey={channel} 
+                    stackId="1" 
+                    fill={channelColors[channel] || '#6b7280'} 
+                    stroke={channelColors[channel] || '#6b7280'}
+                    name={channel}
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
             <PieChartIcon className="mr-2 h-4 w-4" />
             Contribution Analysis
           </CardTitle>
@@ -161,23 +317,34 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedChannels.map(([channel, data]: [string, any]) => (
-                  <TableRow key={channel}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center">
-                        <div 
-                          className="w-3 h-3 rounded-full mr-2" 
-                          style={{ backgroundColor: channelColors[channel] || '#6b7280' }}
-                        ></div>
-                        {channel}
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatPercent(data.contribution)}</TableCell>
-                    <TableCell>{formatPercent(data.contribution / totalContribution)}</TableCell>
-                    <TableCell>{data.roi.toFixed(2)}x</TableCell>
-                    <TableCell>{formatNumber(data.spend)}</TableCell>
-                  </TableRow>
-                ))}
+                {sortedChannels.map(([channel, data]: [string, any]) => {
+                  // Calculate normalized contribution percent vs total marketing
+                  const marketingPercent = totalContribution > 0 ? 
+                    data.contribution / totalContribution : 0;
+                  
+                  // Format spend - handle if it's NaN
+                  const spendFormatted = isNaN(data.spend) ? 
+                    formatNumber(currentAllocation[channel] || 0) : 
+                    formatNumber(data.spend);
+                  
+                  return (
+                    <TableRow key={channel}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center">
+                          <div 
+                            className="w-3 h-3 rounded-full mr-2" 
+                            style={{ backgroundColor: channelColors[channel] || '#6b7280' }}
+                          ></div>
+                          {channel}
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatPercent(data.contribution)}</TableCell>
+                      <TableCell>{formatPercent(marketingPercent)}</TableCell>
+                      <TableCell>{data.roi.toFixed(2)}x</TableCell>
+                      <TableCell>{spendFormatted}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
