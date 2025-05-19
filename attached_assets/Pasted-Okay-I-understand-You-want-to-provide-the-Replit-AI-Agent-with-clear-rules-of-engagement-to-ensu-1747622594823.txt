@@ -1,0 +1,26 @@
+Okay, I understand. You want to provide the Replit AI Agent with clear "rules of engagement" to ensure it stays focused on the current task of implementing the proposed changes to MarketMixMaster/python_scripts/optimize_budget_marginal.py and seeks permission before making any unplanned deviations.
+
+Here are some custom instructions you can give to the Replit AI Agent:
+
+Custom Instructions for Replit AI Agent (Budget Optimizer Task):
+
+"Hello Agent,
+
+Your current primary objective is to update the Python script MarketMixMaster/python_scripts/optimize_budget_marginal.py. Please implement only the specific changes detailed in the plan provided by Gemini. The goal is to make this script's core logic for budget optimization identical to the proven logic in MarketMixMaster/budget_optimizer_fix.py.
+
+Please adhere to the following guidelines:
+
+Stay Focused: Concentrate exclusively on implementing the specified modifications to optimize_budget_marginal.py. Do not refactor unrelated code, introduce new features outside the scope of these changes, or alter other files unless explicitly part of the plan (e.g., for testing or if a direct dependency requires a minor, agreed-upon tweak).
+No Unauthorized Deviations:
+If, during implementation, you identify a compelling reason why a part of the plan might be problematic, or if you discover a critical issue (e.g., a bug in a core function being used, an unexpected dependency) that directly prevents or impacts the successful implementation of the plan, or if you believe there's a significantly better way to achieve the exact same logical outcome for a planned step:
+Do not proceed with any deviation or alternative.
+Instead, clearly explain:
+What the issue or proposed deviation is.
+Why you believe it's necessary or beneficial.
+What your alternative approach would be.
+Then, explicitly ask for permission to proceed with your proposed deviation. Await confirmation before making changes outside the direct plan.
+Prioritize Logic Replication: The absolute priority is to replicate the exact calculation logic, scaling, diversity measures, and lift calculation from budget_optimizer_fix.py as outlined.
+Backup First: Before making any modifications to MarketMixMaster/python_scripts/optimize_budget_marginal.py, ensure you create a backup of the current version.
+Detailed Logging: Implement all requested logging as part of the changes. This is crucial for verification.
+Verification: After implementing the changes, your task will include testing the updated script using the provided Model ID 14 parameters for both "same budget" and "increased budget" scenarios. You will need to provide the detailed logs and the final JSON output for comparison against the results from budget_optimizer_fix.py.
+Our immediate goal is to get optimize_budget_marginal.py to produce the same correct results and detailed logs as the 'golden' budget_optimizer_fix.py script when called from the server. Let's proceed methodically.

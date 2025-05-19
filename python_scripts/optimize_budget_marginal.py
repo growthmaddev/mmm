@@ -8,6 +8,7 @@ for same budget and +45% lift for increased budget with good channel diversity.
 
 import sys
 import json
+import math
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 
@@ -24,14 +25,23 @@ def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0001, x0: float =
     Returns:
         Saturated value between 0 and L
     """
-    # Avoid overflow in exp
-    exponent = k * (x - x0)
-    if exponent > 100:
-        return L
-    elif exponent < -100:
-        return 0
-    
-    return L / (1 + np.exp(-exponent))
+    try:
+        # Apply logistic function: L / (1 + e^(-k(x-x0)))
+        exponent = -k * (x - x0)
+        
+        # Handle extreme values to avoid overflow/underflow
+        if exponent > 100:  # Very large positive exponent
+            return 0.0
+        elif exponent < -100:  # Very large negative exponent
+            return L
+        
+        return L / (1.0 + math.exp(exponent))
+    except (OverflowError, ValueError) as e:
+        # If any error occurs, handle gracefully
+        if x >= x0:
+            return L  # If x is beyond midpoint, return maximum
+        else:
+            return 0.0  # Otherwise return minimum
 
 def get_channel_response(
     spend: float, 
@@ -40,7 +50,7 @@ def get_channel_response(
     adstock_params: Optional[Dict[str, float]] = None,
     debug: bool = False,
     channel_name: str = "",
-    scaling_factor: float = 1.0  # Use raw contribution values (no scaling)
+    scaling_factor: float = 300.0  # Use scaling factor to make contributions meaningful
 ) -> float:
     """
     Calculate expected response for a channel given spend and parameters.
@@ -148,7 +158,7 @@ def calculate_marginal_return(
     increment: float = 1000.0,
     debug: bool = False,
     channel_name: str = "",
-    scaling_factor: float = 1.0  # Use raw contribution values (no scaling)
+    scaling_factor: float = 300.0  # Use scaling factor to make marginal returns meaningful
 ) -> float:
     """
     Calculate marginal return for additional spend on a channel.
@@ -222,7 +232,7 @@ def optimize_budget(
     baseline_sales: float = 0.0,
     min_channel_budget: float = 1000.0,
     debug: bool = True,
-    scaling_factor: float = 1.0,  # Use raw contributions (no scaling)
+    scaling_factor: float = 300.0,  # Use recommended scaling factor to make contributions meaningful
     diversity_factor: float = 0.3  # Reduced diversity constraint to avoid extreme allocations
 ) -> Dict[str, Any]:
     """
@@ -389,9 +399,9 @@ def optimize_budget(
                     # Calculate percentage of total budget allocated to this channel
                     channel_percentage = current_spend / total_allocated if total_allocated > 0 else 0
                     
-                    # Adjusted diversity factor using the specified formula
-                    # Use max(0.1, 1.0 - (allocation_percentages * 1.5))
-                    diversity_adjustment = max(0.1, 1.0 - (channel_percentage * 1.5))
+                    # Use the proven formula from budget_optimizer_fix.py
+                    # max(0.1, 1.0 - (channel_percentage * 2.0))
+                    diversity_adjustment = max(0.1, 1.0 - (channel_percentage * 2.0))
                     adjusted_mr = mr * diversity_adjustment
                     
                     if debug and iteration % 50 == 0:
