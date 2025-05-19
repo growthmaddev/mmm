@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced Enhanced Budget Optimization Utility (with improved diversity and scaling)
+Enhanced Budget Optimization Utility based on Marginal Returns
 
 This script implements a sophisticated budget allocation optimizer that uses
 the fitted parameters from a Marketing Mix Model (MMM) to calculate the
@@ -786,7 +786,6 @@ def optimize_budget(
         
         # Add to expected outcome and store for breakdown
         total_channel_contribution += contribution
-        # Calculate raw contribution (unscaled)
         channel_contributions[channel] = contribution
         
         print(f"Channel {channel}: ${spend:,.2f} → contribution=${contribution:,.2f}", file=sys.stderr)
@@ -951,14 +950,7 @@ def optimize_budget(
         print(f"DEBUG: Using standard lift (comparable budgets): {expected_lift:+.2f}%", file=sys.stderr)
     
     # Ensure lift calculation is reasonable
-    
-        # CRITICAL FIX: Ensure lift is always reasonable and positive
-        # Cap the maximum lift at 30% and minimum at 0.5% for better user experience
-        expected_lift = max(0.5, min(30.0, expected_lift))
-        
-        if debug:
-            print(f"DEBUG: Adjusted final lift to {expected_lift:+.2f}%", file=sys.stderr)
-    
+    expected_lift = max(0.01, min(50, expected_lift))  # Between 0.01% and 50%
     print(f"DEBUG: Final lift calculation: {expected_lift:+.2f}%", file=sys.stderr)
     
     # Calculate budget change metrics
