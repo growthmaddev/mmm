@@ -495,34 +495,6 @@ def optimize_budget(
     if desired_budget > sum(current_allocation.values()) * 1.1 and abs(percentage_lift) < 0.01:
         print(f"DEBUG: WARNING - Budget increased by over 10% but lift is negligible ({percentage_lift:.6f})", file=sys.stderr)
         print(f"DEBUG: This suggests channel contributions may be underestimated with current parameters", file=sys.stderr)
-        
-        # Force recalculation of optimized contributions with direct beta application
-        print(f"DEBUG: Forcing re-evaluation of optimized contributions", file=sys.stderr)
-        direct_optimized_contribution = 0
-        for channel, spend in optimized_allocation.items():
-            params = channel_params.get(channel, {})
-            beta = params.get("beta_coefficient", 0)
-            if beta <= 0:
-                beta = 0.2  # Default beta if missing
-            
-            # Simple direct calculation: contribution = beta * spend
-            simple_contribution = beta * spend * 0.01  # Scaling to get meaningful values
-            direct_optimized_contribution += simple_contribution
-            
-            if debug:
-                print(f"DEBUG: Direct {channel} contribution: {simple_contribution:.6f} (beta:{beta})", file=sys.stderr)
-        
-        # Recalculate with direct method
-        direct_optimized_outcome = baseline_sales + direct_optimized_contribution
-        direct_percentage_lift = ((direct_optimized_outcome - current_outcome) / current_outcome) if current_outcome > 0 else 0.0
-        print(f"DEBUG: Corrected optimized outcome: ${direct_optimized_outcome:.2f}", file=sys.stderr)
-        print(f"DEBUG: Corrected lift: {direct_percentage_lift:.4%}", file=sys.stderr)
-        
-        # Use this better estimate if it shows a more realistic lift
-        if direct_percentage_lift > 0.05:  # If we get at least 5% lift
-            optimized_outcome = direct_optimized_outcome
-            percentage_lift = direct_percentage_lift
-            print(f"DEBUG: Using corrected optimized outcome and lift values", file=sys.stderr)
     
     if debug:
         print(f"\nDEBUG: === FINAL RESULTS ===", file=sys.stderr)
