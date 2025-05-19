@@ -721,16 +721,24 @@ def train_model(df, config):
                 },
                 "model_parameters": model_parameters  # Also include parameters at top level
             },
-            # Add detailed channel impact data
+            # Add detailed channel impact data with percentage calculations
             "channel_impact": {
                 "time_series_data": time_series_data,
                 "response_curves": response_curves,
                 "total_contributions": {
                     "baseline": total_baseline,
+                    "baseline_proportion": total_baseline / total_predicted_outcome if total_predicted_outcome > 0 else 0.0,
                     "control_variables": total_control_contributions if 'total_control_contributions' in locals() else {},
                     "channels": total_contributions,
                     "total_marketing": total_marketing_contribution,
-                    "overall_total": total_predicted_outcome
+                    "overall_total": total_predicted_outcome,
+                    # Add percentage calculations for each channel
+                    "percentage_metrics": {
+                        channel: {
+                            "percent_of_total": total_contributions[channel] / total_predicted_outcome if total_predicted_outcome > 0 else 0.0,
+                            "percent_of_marketing": total_contributions[channel] / total_marketing_contribution if total_marketing_contribution > 0 else 0.0
+                        } for channel in channel_columns
+                    }
                 },
                 "historical_spends": historical_channel_spends if 'historical_channel_spends' in locals() else {},
                 "model_parameters": model_parameters

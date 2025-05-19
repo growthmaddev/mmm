@@ -82,9 +82,9 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
     (channelImpact?.baseline / (channelImpact?.overall_total || 1)) || 
     0.4; // 40% fallback baseline if not available
   
-  // Use real time series data from PyMC model for contribution over time chart
+  // Use only real time series data from PyMC model for contribution over time chart
   const contributionTimeData = React.useMemo(() => {
-    // Try to get the real time series data from the model
+    // Get the real time series data from the model
     const timeSeriesData = channelImpact?.time_series_data || [];
     
     // If we have real time series data from the model, use it
@@ -121,56 +121,11 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
       });
     } 
     
-    // If we don't have real data, create synthetic data based on the current model
-    console.log('No real time series data available, using synthetic data');
-    
-    const weeks = 26;
-    return Array.from({ length: weeks }).map((_, i) => {
-      // Calculate date
-      const today = new Date();
-      const date = new Date(today);
-      date.setDate(date.getDate() - (weeks - i - 1) * 7);
-      
-      // Format date as Month Day
-      const formattedDate = date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric'
-      });
-      
-      // Start with the baseline - use actual baseline if available
-      const baselineValue = channelImpact?.baseline || 100000;
-      const dataPoint: any = {
-        date: formattedDate,
-        Baseline: baselineValue * (0.9 + Math.random() * 0.2),
-      };
-      
-      // Add real control variables if available, otherwise use synthetic ones
-      const controlVars = totalContributions?.control_variables || {};
-      if (Object.keys(controlVars).length > 0) {
-        Object.entries(controlVars).forEach(([name, value]: [string, any]) => {
-          dataPoint[name] = (value as number) * (0.8 + Math.random() * 0.4);
-        });
-      } else {
-        // Synthetic control variables
-        dataPoint['Seasonality'] = 20000 * (0.5 + 0.5 * Math.sin(i / 4));
-        dataPoint['Promotion'] = i % 4 === 0 ? 30000 : 5000;
-      }
-      
-      // Add channel contributions - use real relative contributions if available
-      Object.entries(channelData).forEach(([channel, data]: [string, any]) => {
-        const channelContribution = totalContributions?.channels?.[channel] || 
-          (data.contribution * (channelImpact?.overall_total || 1000000));
-          
-        const channelBase = channelContribution * 0.7;
-        
-        // Different channels have different patterns
-        let multiplier = 0.9 + (Math.random() * 0.2);
-        dataPoint[channel] = channelBase * multiplier;
-      });
-      
-      return dataPoint;
-    });
-  }, [channelData, channelImpact, totalContributions]);
+    // If no real data is available, return empty array
+    // This will trigger a "No data available" message in the UI
+    console.log('No time series data available from PyMC model');
+    return [];
+  }, [channelImpact]);
   
   // Format large numbers
   const formatNumber = (num: number) => {
@@ -186,9 +141,35 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
     return `${(value * 100).toFixed(1)}%`;
   };
   
-  // Calculate distinct metrics for "% of total" vs "% of marketing-driven"
-  // This addresses the requirement to show both metrics separately
+  // Use pre-calculated metrics from the model's channel impact data when available
+  // Otherwise calculate metrics based on available data
   const calculateChannelMetrics = () => {
+    // Use the actual model data if available
+    if (totalContributions?.percentage_metrics && Object.keys(totalContributions.percentage_metrics).length > 0) {
+      console.log("Using pre-calculated percentage metrics from model data");
+      
+      return Object.entries(channelData).map(([channel, data]: [string, any]) => {
+        // Get percentage metrics from model data
+        const percentMetrics = totalContributions.percentage_metrics[channel] || {};
+        
+        // Get the actual contribution value
+        const channelValue = totalContributions?.channels?.[channel] || 0;
+        
+        return {
+          channel,
+          contribution: data.contribution,
+          roi: data.roi,
+          spend: data.spend,
+          value: channelValue,
+          // Use pre-calculated percentages from the model
+          percentOfTotal: percentMetrics.percent_of_total || 0,
+          percentOfMarketing: percentMetrics.percent_of_marketing || 0
+        };
+      });
+    }
+    
+    // If not available, calculate manually
+    console.log("Calculating percentage metrics manually");
     const totalOutcome = channelImpact?.overall_total || 1000000;
     const totalMarketingDriven = totalOutcome - (channelImpact?.baseline || 0);
     
@@ -297,70 +278,83 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
         </CardHeader>
         <CardContent>
           <div className="h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={contributionTimeData}
-                margin={{
-                  top: 10,
-                  right: 30,
-                  left: 0,
-                  bottom: 0
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value) => [`$${Number(value).toLocaleString()}`, '']}
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    borderRadius: '4px',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+            {contributionTimeData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={contributionTimeData}
+                  margin={{
+                    top: 10,
+                    right: 30,
+                    left: 0,
+                    bottom: 0
                   }}
-                />
-                <Legend />
-                {/* Baseline area */}
-                <Area 
-                  type="monotone" 
-                  dataKey="Baseline" 
-                  stackId="1" 
-                  fill="#94a3b8" 
-                  stroke="#94a3b8"
-                  name="Baseline"
-                />
-                
-                {/* Control variables */}
-                <Area 
-                  type="monotone" 
-                  dataKey="Seasonality" 
-                  stackId="1" 
-                  fill="#0ea5e9" 
-                  stroke="#0ea5e9"
-                  name="Seasonality"
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="Promotion" 
-                  stackId="1" 
-                  fill="#10b981" 
-                  stroke="#10b981"
-                  name="Promotion"
-                />
-                
-                {/* Channel areas */}
-                {Object.entries(channelData).map(([channel, _]) => (
-                  <Area 
-                    key={channel}
-                    type="monotone" 
-                    dataKey={channel} 
-                    stackId="1" 
-                    fill={channelColors[channel] || '#6b7280'} 
-                    stroke={channelColors[channel] || '#6b7280'}
-                    name={channel}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value) => [`$${Number(value).toLocaleString()}`, '']}
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      borderRadius: '4px',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+                    }}
                   />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
+                  <Legend />
+                  
+                  {/* Baseline area */}
+                  <Area 
+                    type="monotone" 
+                    dataKey="Baseline" 
+                    stackId="1" 
+                    fill="#94a3b8" 
+                    stroke="#94a3b8"
+                    name="Baseline"
+                  />
+                  
+                  {/* Add all control variables dynamically */}
+                  {contributionTimeData.length > 0 && contributionTimeData[0].control_variables && 
+                    Object.keys(contributionTimeData[0].control_variables).map((controlVar, index) => {
+                      // Use a different color for each control variable
+                      const controlColors = ['#0ea5e9', '#10b981', '#f59e0b', '#6366f1'];
+                      return (
+                        <Area 
+                          key={controlVar}
+                          type="monotone" 
+                          dataKey={`control_variables.${controlVar}`}
+                          stackId="1" 
+                          fill={controlColors[index % controlColors.length]} 
+                          stroke={controlColors[index % controlColors.length]}
+                          name={controlVar}
+                        />
+                      );
+                    })
+                  }
+                  
+                  {/* Channel areas added dynamically */}
+                  {sortedChannels.map((channelData) => (
+                    <Area 
+                      key={channelData.channel}
+                      type="monotone" 
+                      dataKey={`channels.${channelData.channel}`}
+                      stackId="1" 
+                      fill={channelColors[channelData.channel] || '#6b7280'} 
+                      stroke={channelColors[channelData.channel] || '#6b7280'}
+                      name={channelData.channel}
+                    />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              // Show "No data available" message when no time series data exists
+              <div className="h-full flex items-center justify-center flex-col text-muted-foreground">
+                <div className="mb-2">
+                  <AreaChartIcon className="h-12 w-12 opacity-20" />
+                </div>
+                <p>No time series data available from the model</p>
+                <p className="text-sm">Train a model with time series decomposition to see contributions over time</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
