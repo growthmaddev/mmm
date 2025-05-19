@@ -76,18 +76,43 @@ def get_channel_response(
         k = 0.0001
         if debug:
             print(f"DEBUG: Fixed invalid k parameter for {channel_name} to 0.0001", file=sys.stderr)
+    # If k is too small, the saturation curve will be almost flat
+    elif k < 0.00005:
+        k = 0.00005
+        if debug:
+            print(f"DEBUG: Adjusted too small k parameter for {channel_name} to 0.00005", file=sys.stderr)
     
+    # Ensure x0 is reasonable relative to spend
     if x0 <= 0:
         x0 = 10000.0
         if debug:
             print(f"DEBUG: Fixed invalid x0 parameter for {channel_name} to 10000.0", file=sys.stderr)
+    elif x0 > 100000:
+        # Cap extremely large x0 values
+        x0 = 100000.0
+        if debug:
+            print(f"DEBUG: Capped extremely large x0 for {channel_name} to 100000.0", file=sys.stderr)
+    
+    # Adjust x0 to be proportional to reasonable spend levels
+    # If x0 is too high relative to spend, the channel will see minimal saturation effects
+    if spend > 0 and x0 > spend * 10:
+        # Make x0 more aligned with actual spend (3x current spend)
+        old_x0 = x0
+        x0 = spend * 3
+        if debug:
+            print(f"DEBUG: Adjusted disproportionate x0 for {channel_name} from {old_x0} to {x0} (3x current spend)", file=sys.stderr)
             
-    # Ensure beta is positive
+    # Ensure beta is positive and reasonable
     if beta <= 0:
         # Default beta if missing or invalid
         beta = 0.2  # Use a reasonable default value
         if debug:
             print(f"DEBUG: Using default beta coefficient for {channel_name}: 0.2", file=sys.stderr)
+    elif beta < 0.00001:
+        # Very small beta coefficients can cause negligible contributions
+        beta = max(beta, 0.001)  # Set a reasonable minimum for beta
+        if debug:
+            print(f"DEBUG: Adjusted very small beta for {channel_name} to {beta}", file=sys.stderr)
     
     # Apply adstock if parameters are provided
     adstocked_spend = spend
@@ -198,7 +223,7 @@ def optimize_budget(
     min_channel_budget: float = 1000.0,
     debug: bool = True,
     scaling_factor: float = 1.0,  # Use raw contributions (no scaling)
-    diversity_factor: float = 0.5  # Diversity constraint (0-1, higher = more diverse)
+    diversity_factor: float = 0.8  # Increased diversity constraint (0-1, higher = more diverse)
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
