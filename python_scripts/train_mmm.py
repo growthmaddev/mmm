@@ -498,7 +498,7 @@ def train_model(df, config):
                     "r_squared": float(r_squared),
                     "rmse": float(rmse)
                 },
-                "intercept": extract_model_intercept(summary, y)
+                "actual_model_intercept": extract_model_intercept(summary)
             },
             "raw_data": {
                 "predictions": predictions.tolist(),
@@ -518,51 +518,35 @@ def train_model(df, config):
         }))
         sys.exit(1)
 
-def extract_model_intercept(summary_df, target_values):
+def extract_model_intercept(summary_df):
     """
-    Extract the intercept (baseline sales) from the model summary.
+    Extract the exact model intercept (baseline sales) from the model summary.
     
     Args:
         summary_df: DataFrame containing model parameter summaries
-        target_values: Original target values (for fallback calculation)
         
     Returns:
-        float: The extracted intercept value
+        float: The extracted intercept value or None if not found
     """
-    # Look for intercept in different possible locations
+    # Look for intercept parameter with exact name used in PyMC model
     intercept_value = None
     
-    try:
-        # Check various names used for intercept in different PyMC versions
-        if 'intercept' in summary_df.index:
-            intercept_value = float(summary_df.loc['intercept']['mean'])
-            print(f"Found intercept parameter: {intercept_value}", file=sys.stderr)
-        elif 'Intercept' in summary_df.index:
-            intercept_value = float(summary_df.loc['Intercept']['mean'])
-            print(f"Found Intercept parameter: {intercept_value}", file=sys.stderr)
-        elif 'alpha' in summary_df.index:  # Some PyMC models use alpha for intercept
-            intercept_value = float(summary_df.loc['alpha']['mean'])
-            print(f"Found alpha parameter (intercept): {intercept_value}", file=sys.stderr)
-        
-        # If we couldn't find it directly, make a reasonable estimate
-        if intercept_value is None:
-            # Estimate based on mean of target values
-            # This is a common approach when intercept isn't directly available
-            intercept_value = float(np.mean(target_values))
-            print(f"Could not find explicit intercept, estimating from target mean: {intercept_value}", file=sys.stderr)
-        
-        # Ensure the intercept is reasonable (non-negative for sales data)
-        if intercept_value < 0:
-            print(f"Warning: Negative intercept value ({intercept_value}), using absolute value", file=sys.stderr)
-            intercept_value = abs(intercept_value)
-            
-    except Exception as e:
-        print(f"Error extracting intercept, using fallback calculation: {str(e)}", file=sys.stderr)
-        # Default to mean of target as fallback
-        intercept_value = float(np.mean(target_values))
-        
-    print(f"Final intercept value (baseline_sales): {intercept_value}", file=sys.stderr)
-    return intercept_value
+    # Standard intercept term names in PyMC models (in order of likelihood)
+    intercept_param_names = ['intercept', 'Intercept', 'alpha', 'a']
+    
+    for param_name in intercept_param_names:
+        if param_name in summary_df.index:
+            intercept_value = float(summary_df.loc[param_name]['mean'])
+            print(f"Found model intercept as '{param_name}': {intercept_value}", file=sys.stderr)
+            return intercept_value
+    
+    # If we reach here, we couldn't find any recognized intercept term
+    print("ERROR: Could not find model intercept term in summary. Check model specification.", file=sys.stderr)
+    print("Available parameters:", summary_df.index.tolist(), file=sys.stderr)
+    
+    # Return None to indicate that the actual model intercept couldn't be found
+    # This makes the issue transparent rather than silently using a potentially incorrect value
+    return None
 
 def main():
     """Main function to run the MMM training"""
