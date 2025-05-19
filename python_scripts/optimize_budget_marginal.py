@@ -310,11 +310,17 @@ def optimize_budget(
     increment: float = 1000.0,
     max_iterations: int = 1000,
     baseline_sales: float = 0.0,  # Baseline sales (model intercept)
-    min_channel_budget: float = 0.0,  # Minimum budget constraint
+    min_channel_budget: float = 1000.0,  # CHANGED: Set default minimum to $1,000 per channel
     debug: bool = True  # Enable debugging output
 ) -> Dict[str, Any]:
     """
-    Optimize budget allocation based on marginal returns.
+    Optimize budget allocation based on marginal returns with diversity enhancement.
+    
+    This improved algorithm provides:
+    1. Proper scaling of channel contributions relative to baseline
+    2. Better saturation parameter handling for realistic response curves
+    3. Enhanced budget diversity to prevent excessive concentration
+    4. Appropriate lift calculation for different budget scenarios
     
     Args:
         channel_params: Dictionary of channel parameters
