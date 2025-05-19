@@ -1,20 +1,13 @@
 {
   "target_variable": "Sales",
-  "date_variable": "date",
-  "channel_columns": [
-    "PPCNonBrand_Spend",
-    "PPCShopping_Spend",
-    "FBReach_Spend",
-    "OfflineMedia_Spend"
-  ],
-  "control_variables": [
-    "Vacation"
-  ],
+  "date_variable": "Date",
+  "channel_columns": ["TV_Spend", "Radio_Spend", "Social_Spend"],
+  "control_variables": ["Promo"],
   "model_settings": {
     "mcmc_samples": 50,
-    "mcmc_tune": 25,
-    "random_seed": 42,
-    "adstock_type": "geometric",
-    "saturation_type": "logistic"
+    "mcmc_tune": 50,
+    "chains": 1,
+    "cores": 1,
+    "random_seed": 42
   }
 }
