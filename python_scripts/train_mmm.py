@@ -498,7 +498,7 @@ def train_model(df, config):
                     "r_squared": float(r_squared),
                     "rmse": float(rmse)
                 },
-                "actual_model_intercept": extract_model_intercept(summary)
+                "actual_model_intercept": extract_model_intercept(idata, summary)
             },
             "raw_data": {
                 "predictions": predictions.tolist(),
@@ -518,31 +518,66 @@ def train_model(df, config):
         }))
         sys.exit(1)
 
-def extract_model_intercept(summary_df):
+def extract_model_intercept(idata, summary_df):
     """
-    Extract the exact model intercept (baseline sales) from the model summary.
+    Extract the exact model intercept (baseline sales) from the inference data.
+    
+    This function uses a multi-tiered approach to find the intercept:
+    1. First tries direct access from inference data object (most reliable)
+    2. Then looks for standard intercept parameter names in the summary DataFrame
+    3. Returns None if no intercept can be found (for transparency)
     
     Args:
+        idata: InferenceData object containing posterior samples
         summary_df: DataFrame containing model parameter summaries
         
     Returns:
         float: The extracted intercept value or None if not found
     """
-    # Look for intercept parameter with exact name used in PyMC model
     intercept_value = None
     
-    # Standard intercept term names in PyMC models (in order of likelihood)
-    intercept_param_names = ['intercept', 'Intercept', 'alpha', 'a']
+    # First attempt: Direct extraction from inference data (most reliable)
+    # These are common explicit parameter names used when defining model intercepts
+    explicit_intercept_names = ['model_intercept', 'intercept', 'Intercept', 'alpha', 'baseline']
     
-    for param_name in intercept_param_names:
-        if param_name in summary_df.index:
-            intercept_value = float(summary_df.loc[param_name]['mean'])
-            print(f"Found model intercept as '{param_name}': {intercept_value}", file=sys.stderr)
-            return intercept_value
+    try:
+        # Try to directly access from posterior distribution
+        if hasattr(idata, 'posterior'):
+            for param_name in explicit_intercept_names:
+                if param_name in idata.posterior:
+                    # Extract mean of posterior distribution for this parameter
+                    intercept_value = float(idata.posterior[param_name].mean().item())
+                    print(f"SUCCESS: Found intercept directly in idata.posterior['{param_name}']: {intercept_value}", 
+                          file=sys.stderr)
+                    return intercept_value
+            
+            print("Could not find explicit intercept parameter in inference data posterior", file=sys.stderr)
+    except Exception as e:
+        print(f"Error accessing intercept from inference data: {str(e)}", file=sys.stderr)
+    
+    # Second attempt: Standard parameter names in summary DataFrame
+    # Standard intercept term names in PyMC models (in order of likelihood)
+    summary_intercept_names = ['intercept', 'Intercept', 'alpha', 'a', 'baseline', 'b_Intercept']
+    
+    try:
+        for param_name in summary_intercept_names:
+            if param_name in summary_df.index:
+                intercept_value = float(summary_df.loc[param_name]['mean'])
+                print(f"Found model intercept in summary as '{param_name}': {intercept_value}", file=sys.stderr)
+                return intercept_value
+    except Exception as e:
+        print(f"Error extracting intercept from summary DataFrame: {str(e)}", file=sys.stderr)
     
     # If we reach here, we couldn't find any recognized intercept term
-    print("ERROR: Could not find model intercept term in summary. Check model specification.", file=sys.stderr)
-    print("Available parameters:", summary_df.index.tolist(), file=sys.stderr)
+    print("ERROR: Could not find model intercept term. Check model specification.", file=sys.stderr)
+    
+    # Provide helpful diagnostics
+    try:
+        print("Available parameters in summary:", summary_df.index.tolist(), file=sys.stderr)
+        if hasattr(idata, 'posterior'):
+            print("Available variables in posterior:", list(idata.posterior.data_vars), file=sys.stderr)
+    except Exception:
+        print("Could not list available parameters due to error", file=sys.stderr)
     
     # Return None to indicate that the actual model intercept couldn't be found
     # This makes the issue transparent rather than silently using a potentially incorrect value
