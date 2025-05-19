@@ -1,0 +1,38 @@
+Agent, thank you! This sample JSON output from train_mmm.py is incredibly helpful and shows that the Python script is now generating the detailed data we need.
+
+The UI messages ('No data available') and the issues with the contribution table strongly suggest the problem now lies in how client/src/components/charts/ChannelImpactContent.tsx (and its child chart components) are accessing the fields within this new JSON structure.
+
+Please focus on the following frontend modifications:
+
+Contribution Over Time Chart (StackedAreaChart.tsx or similar, within ChannelImpactContent.tsx):
+
+Modify the component to source its data from props.modelData.channel_impact.time_series_decomposition.
+It will need to process dates, baseline, the series within control_variables, and the series within marketing_channels to build the stacked areas.
+The old path props.modelData.channel_impact.time_series_data (which is empty in the sample JSON) should no longer be used for this chart.
+Response Curves Chart (ResponseCurveChart.tsx or similar, within ChannelImpactContent.tsx):
+
+Modify the component to source its data from:
+Either props.modelData.channel_impact.response_curves (which contains arrays of spend/response points).
+Or by using the parameters from props.modelData.channel_impact.channel_parameters (or props.modelData.raw_data.model_parameters) to calculate the curve points within the component if it's designed to do so.
+Ensure it iterates through the available channels in the data.
+Contribution Analysis Table (within ChannelImpactContent.tsx):
+
+Confirm Data Source: Ensure the table is populated using data from props.modelData.channel_impact.total_contributions (for absolute contributions and historical spend) and props.modelData.channel_impact.total_contributions.percentage_metrics if you decide to use the pre-calculated percentages from Python.
+Alternatively, and perhaps more robustly for the percentages:
+Ensure the frontend calculates the Total_Sales_Outcome_Predicted using props.modelData.channel_impact.total_contributions.overall_total.
+Ensure the frontend calculates Total_Marketing_Driven_Sales_Predicted using props.modelData.channel_impact.total_contributions.total_marketing.
+Then, for each channel in the table, the frontend should calculate:
+% of Total Outcome = (channel_total_contribution / Total_Sales_Outcome_Predicted) * 100
+% of Marketing Driven = (channel_total_contribution / Total_Marketing_Driven_Sales_Predicted) * 100
+This frontend calculation ensures the definitions are explicitly what we intend for the UI, using the correct denominators from the JSON. Given the JSON already provides percent_of_total and percent_of_marketing under percentage_metrics, using those directly is also an option if they are confirmed to be calculated correctly with the right denominators in train_mmm.py. The key is consistency and correctness.
+Ensure the Spend column correctly uses props.modelData.channel_impact.total_contributions.historical_spend.
+Remove Fallbacks (Final Check): Double-check that absolutely no synthetic data fallbacks remain in any part of ChannelImpactContent.tsx or its child chart components. The "No data available" messages should trigger if the expected real data fields are missing or empty after attempting to access the correct paths.
+
+Verification Step:
+
+After these frontend changes, please run the application again with Model ID 14 (or the fresh model that produced the sample JSON).
+Provide new screenshots of the "Channel Impact" tab. We expect to see:
+The "Contribution Over Time" chart populated.
+The "Response Curves" chart populated.
+The "Contribution Analysis Table" still showing similar percentage values for this specific model's data (because non-marketing contribution is low), but we should be confident the underlying distinct calculations are now in place for future models with different contribution profiles.
+The JSON output from train_mmm.py looks very good. Let's get the frontend aligned with it!

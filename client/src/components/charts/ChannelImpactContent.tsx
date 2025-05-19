@@ -87,14 +87,59 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
   // Extract response curves data from the model
   const responseCurves = channelImpact?.response_curves || {};
 
-  // Use only real time series data from PyMC model for contribution over time chart
+  // Use the enhanced time series decomposition data from PyMC model for contribution over time chart
   const contributionTimeData = React.useMemo(() => {
-    // Get the real time series data from the model
-    const timeSeriesData = channelImpact?.time_series_data || [];
+    // First try to get data from the new enhanced time_series_decomposition structure
+    const timeSeriesDecomp = channelImpact?.time_series_decomposition;
     
-    // If we have real time series data from the model, use it
+    if (timeSeriesDecomp && 
+        Array.isArray(timeSeriesDecomp.dates) && 
+        timeSeriesDecomp.dates.length > 0) {
+      
+      console.log('Using enhanced time series decomposition data from PyMC model');
+      
+      // Transform the decomposition data into the format needed for the chart
+      return timeSeriesDecomp.dates.map((date: string, index: number) => {
+        // Start with an object containing the date
+        const dataPoint: Record<string, any> = {
+          date: new Date(date).toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            year: '2-digit'
+          })
+        };
+        
+        // Add baseline
+        if (Array.isArray(timeSeriesDecomp.baseline) && timeSeriesDecomp.baseline.length > index) {
+          dataPoint['Baseline'] = timeSeriesDecomp.baseline[index];
+        }
+        
+        // Add control variables
+        if (timeSeriesDecomp.control_variables) {
+          Object.entries(timeSeriesDecomp.control_variables).forEach(([controlVar, values]: [string, any[]]) => {
+            if (Array.isArray(values) && values.length > index) {
+              dataPoint[controlVar] = values[index];
+            }
+          });
+        }
+        
+        // Add marketing channels
+        if (timeSeriesDecomp.marketing_channels) {
+          Object.entries(timeSeriesDecomp.marketing_channels).forEach(([channel, values]: [string, any[]]) => {
+            if (Array.isArray(values) && values.length > index) {
+              dataPoint[channel] = values[index];
+            }
+          });
+        }
+        
+        return dataPoint;
+      });
+    }
+    
+    // Fallback to legacy time_series_data if available (backward compatibility)
+    const timeSeriesData = channelImpact?.time_series_data || [];
     if (timeSeriesData.length > 0) {
-      console.log('Using real time series data from PyMC model');
+      console.log('Using legacy time series data from PyMC model');
       return timeSeriesData;
     } 
     
@@ -118,35 +163,56 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
     return `${(value * 100).toFixed(1)}%`;
   };
   
-  // Use pre-calculated metrics from the model's channel impact data when available
-  // Otherwise calculate metrics based on available data
+  // Use the enhanced data structure from the model for channel metrics
   const calculateChannelMetrics = () => {
-    // Use the actual model data if available
-    if (totalContributions?.percentage_metrics && Object.keys(totalContributions.percentage_metrics).length > 0) {
-      console.log("Using pre-calculated percentage metrics from model data");
+    // First try to use the enhanced model data structure
+    if (totalContributions?.channels && Object.keys(totalContributions.channels).length > 0) {
+      console.log("Using enhanced data structure for channel metrics");
       
-      return Object.entries(channelData).map(([channel, data]: [string, any]) => {
-        // Get percentage metrics from model data
-        const percentMetrics = totalContributions.percentage_metrics[channel] || {};
+      // Get channel list from the enhanced structure
+      const channelsList = Object.keys(totalContributions.channels);
+      
+      return channelsList.map(channel => {
+        // Get contribution value
+        const channelValue = totalContributions.channels[channel] || 0;
         
-        // Get the actual contribution value
-        const channelValue = totalContributions?.channels?.[channel] || 0;
+        // Get historical spend from the enhanced structure
+        const spend = totalContributions.historical_spend?.[channel] || 0;
+        
+        // Calculate ROI using actual values
+        const roi = spend > 0 ? channelValue / spend : 0;
+        
+        // Get percentage metrics - first try pre-calculated values
+        let percentOfTotal = 0;
+        let percentOfMarketing = 0;
+        
+        if (totalContributions.percentage_metrics && totalContributions.percentage_metrics[channel]) {
+          // Use the pre-calculated distinct percentages from the model
+          percentOfTotal = totalContributions.percentage_metrics[channel].percent_of_total || 0;
+          percentOfMarketing = totalContributions.percentage_metrics[channel].percent_of_marketing || 0;
+        } else {
+          // Calculate manually using the correct denominators if not available
+          const totalOutcome = totalContributions.overall_total || 1;
+          const totalMarketing = totalContributions.total_marketing || 1;
+          
+          percentOfTotal = channelValue / totalOutcome;
+          percentOfMarketing = channelValue / totalMarketing;
+        }
         
         return {
           channel,
-          contribution: data.contribution,
-          roi: data.roi,
-          spend: data.spend,
+          contribution: percentOfTotal, // For UI display of percentages
+          roi,
+          spend,
           value: channelValue,
-          // Use pre-calculated percentages from the model
-          percentOfTotal: percentMetrics.percent_of_total || 0,
-          percentOfMarketing: percentMetrics.percent_of_marketing || 0
+          percentOfTotal,
+          percentOfMarketing
         };
       });
     }
     
-    // If not available, calculate manually
-    console.log("Calculating percentage metrics manually");
+    // Fallback to using existing channelData for backward compatibility
+    console.log("Calculating percentage metrics manually (fallback)");
     const totalOutcome = channelImpact?.overall_total || 1000000;
     const totalMarketingDriven = totalOutcome - (channelImpact?.baseline || 0);
     
