@@ -652,7 +652,6 @@ def optimize_budget(
     if debug:
         print(f"DEBUG: Calculating expected outcome starting with baseline ${baseline_sales:,.2f}", file=sys.stderr)
         print(f"DEBUG: Optimized allocation: total budget ${sum(optimized_allocation.values()):,.2f}", file=sys.stderr)
-        print(f"DEBUG: Using scaling factor: {scaling_factor:.2f}x", file=sys.stderr)
     
     # CRITICAL SECTION: Calculate response for each channel with optimized budget
     # This is where we determine how much sales/outcome each channel contributes
