@@ -553,72 +553,154 @@ def optimize_budget(
                 params["beta_coefficient"] = 0.2
                 print(f"DEBUG: Created default beta for {channel}: 0.2000", file=sys.stderr)
     
-    # STEP 2: Ensure saturation parameters are reasonable for all channels
-    for channel, params in channel_params.items():
-        if "saturation_parameters" not in params:
-            # Create default saturation parameters if missing
-            params["saturation_parameters"] = {"L": 1.0, "k": 0.0005, "x0": 50000.0}
-            print(f"DEBUG: Created default saturation parameters for {channel}", file=sys.stderr)
-        
-        # Fix existing saturation parameters if they're invalid
-        sat_params = params["saturation_parameters"]
-        if "L" not in sat_params or sat_params["L"] <= 0.01:
-            sat_params["L"] = 1.0
-            print(f"DEBUG: Fixed L parameter for {channel} to 1.0", file=sys.stderr)
-        
-        if "k" not in sat_params or sat_params["k"] <= 0.00001:
-            sat_params["k"] = 0.0005
-            print(f"DEBUG: Fixed k parameter for {channel} to 0.0005", file=sys.stderr)
-        
-        if "x0" not in sat_params or sat_params["x0"] <= 0:
-            # Set midpoint to a reasonable value related to spend
-            current_spend = current_allocation.get(channel, 10000)
-            sat_params["x0"] = max(10000, current_spend * 2)
-            print(f"DEBUG: Fixed x0 parameter for {channel} to {sat_params['x0']}", file=sys.stderr)
+    # STEP 2: CRITICAL FIX - Ensure saturation parameters are reasonable for all channels
+    # This step is essential for proper optimization of the budget allocation
+    print(f"DEBUG: ***** Fixing saturation parameters for all channels *****", file=sys.stderr)
     
-    # STEP 3: Determine appropriate scaling factor to make contributions meaningful
-    # Calculate raw contributions with current allocation to determine scaling
+    for channel, params in channel_params.items():
+        current_spend = current_allocation.get(channel, 5000)
+        print(f"DEBUG: Fixing saturation parameters for {channel} (current spend: ${current_spend:,})", file=sys.stderr)
+        
+        # Create default parameters if missing
+        if "saturation_parameters" not in params:
+            # Set reasonable default saturation parameters
+            params["saturation_parameters"] = {
+                "L": 1.0,              # Standard normalized ceiling
+                "k": 0.0001,           # More gradual diminishing returns curve
+                "x0": min(50000, max(5000, current_spend * 2))  # Midpoint relative to spend
+            }
+            print(f"DEBUG: Created default saturation parameters for {channel}: L=1.0, k=0.0001, x0={params['saturation_parameters']['x0']}", file=sys.stderr)
+        
+        # CRITICAL FIX: Fix existing saturation parameters to ensure they produce reasonable response curves
+        sat_params = params["saturation_parameters"]
+        
+        # 1. Fix L parameter (ceiling) - critical to ensure meaningful saturation behavior
+        # A higher L means a channel can contribute more before saturating
+        if "L" not in sat_params or sat_params["L"] <= 0.1:
+            original_L = sat_params.get("L", 0)
+            sat_params["L"] = 1.0  # Standard normalized value
+            print(f"DEBUG: Fixed L parameter for {channel} from {original_L} to 1.0", file=sys.stderr)
+        else:
+            print(f"DEBUG: Keeping valid L parameter for {channel}: {sat_params['L']}", file=sys.stderr)
+        
+        # 2. Fix k parameter (steepness) - controls how quickly diminishing returns set in
+        # A smaller k produces a more gradual curve with smoother diminishing returns
+        if "k" not in sat_params or sat_params["k"] <= 0.00001 or sat_params["k"] > 0.01:
+            original_k = sat_params.get("k", 0)
+            # Use smaller k (0.0001) for more gradual diminishing returns 
+            sat_params["k"] = 0.0001
+            print(f"DEBUG: Fixed k parameter for {channel} from {original_k} to 0.0001", file=sys.stderr)
+        else:
+            print(f"DEBUG: Keeping valid k parameter for {channel}: {sat_params['k']}", file=sys.stderr)
+        
+        # 3. CRITICAL FIX: Set x0 (midpoint) to a reasonable value based on current spend
+        # This is the most important parameter for proper allocation
+        # A huge x0 (like 50,000) for a small channel (spend < 10,000) makes it ineffective
+        # This fix ensures each channel's response curve is properly scaled to its spend level
+        if "x0" not in sat_params or sat_params["x0"] <= 0 or sat_params["x0"] > 100000:
+            original_x0 = sat_params.get("x0", 0)
+            
+            # Set x0 relative to channel's actual spend level for balanced optimization
+            # Channels should start saturating at reasonable multiples of their current spend
+            if current_spend < 5000:
+                # Small channels: set x0 to ~3x current spend but at least 5,000
+                sat_params["x0"] = max(5000, current_spend * 3)
+            elif current_spend < 20000:
+                # Medium channels: set x0 to ~2.5x current spend
+                sat_params["x0"] = current_spend * 2.5
+            else:
+                # Large channels: set x0 to ~2x current spend but cap at 50,000
+                sat_params["x0"] = min(50000, current_spend * 2)
+                
+            print(f"DEBUG: Fixed x0 parameter for {channel} from {original_x0} to {sat_params['x0']} (scaled to spend)", file=sys.stderr)
+        else:
+            # Cap unreasonably large x0 values relative to the channel's spend
+            if sat_params["x0"] > current_spend * 5 and current_spend > 0:
+                original_x0 = sat_params["x0"]
+                sat_params["x0"] = current_spend * 3  # More reasonable multiple
+                print(f"DEBUG: Adjusted too large x0 for {channel} from {original_x0} to {sat_params['x0']} (3x current spend)", file=sys.stderr)
+            else:
+                print(f"DEBUG: Keeping valid x0 parameter for {channel}: {sat_params['x0']}", file=sys.stderr)
+                
+        # Log the final parameters being used for this channel
+        print(f"DEBUG: Final saturation parameters for {channel}: L={sat_params['L']}, k={sat_params['k']}, x0={sat_params['x0']}", file=sys.stderr)
+    
+    # STEP 3: CRITICAL FIX - Determine appropriate scaling factor for meaningful contributions
+    # This is essential to make channel contributions properly scaled relative to baseline
+    print(f"DEBUG: ***** Determining proper scaling factor *****", file=sys.stderr)
+    
+    # Calculate raw contributions with current allocation to determine scaling needs
+    print(f"DEBUG: Calculating raw contributions from current allocation to determine scaling", file=sys.stderr)
     total_raw_contribution = 0.0
+    channel_raw_contributions = {}
+    
     for channel, params in channel_params.items():
         spend = current_allocation.get(channel, 0.0)
         beta = params.get("beta_coefficient", 0.0)
         adstock_params = params.get("adstock_parameters", {"alpha": 0.3, "l_max": 3})
-        saturation_params = params.get("saturation_parameters", {"L": 1.0, "k": 0.0005, "x0": 50000.0})
+        saturation_params = params.get("saturation_parameters", {"L": 1.0, "k": 0.0001, "x0": 50000.0})
         adstock_type = params.get("adstock_type", "GeometricAdstock")
         saturation_type = params.get("saturation_type", "LogisticSaturation")
         
         if beta > 0 and spend > 0:
-            # Calculate raw contribution
-            contribution = get_channel_response(
+            # Calculate raw (unscaled) contribution
+            raw_contribution = get_channel_response(
                 spend, beta, adstock_params, saturation_params,
                 adstock_type, saturation_type, False, channel
             )
-            total_raw_contribution += contribution
-            print(f"DEBUG: Raw contribution for {channel}: ${contribution:.6f} at spend ${spend:,.2f}", file=sys.stderr)
+            total_raw_contribution += raw_contribution
+            channel_raw_contributions[channel] = raw_contribution
+            
+            print(f"DEBUG: {channel}: ${spend:,.2f} spend → raw contribution ${raw_contribution:.6f}, beta={beta:.6f}", file=sys.stderr)
     
-    # Calculate scaling factor to make channel contributions meaningful
-    # We typically expect marketing to contribute 20-40% of total sales
-    expected_marketing_contribution_pct = 0.3  # Marketing typically drives ~30% of sales
-    target_marketing_contribution = baseline_sales * expected_marketing_contribution_pct
+    # CRITICAL FIX: Calculate a proper scaling factor to make channel contributions meaningful
+    # This ensures channel contributions are on a similar scale as baseline sales
+    print(f"DEBUG: Baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
+    print(f"DEBUG: Total raw contribution before scaling: ${total_raw_contribution:.6f}", file=sys.stderr)
     
-    # Set scaling factor - default is conservative
-    scaling_factor = 1.0  # No scaling by default
+    # Determine target marketing contribution as percentage of baseline
+    # Marketing typically contributes 20-40% of total sales for most businesses
+    marketing_contribution_pct = 0.3  # Target 30% contribution from marketing
+    target_marketing_contribution = baseline_sales * marketing_contribution_pct
+    
+    # Calculate scaling factor to achieve target marketing contribution
+    scaling_factor = 1.0  # Default (no scaling)
     
     if total_raw_contribution > 0:
-        # Scale to make marketing contribution realistic relative to baseline
-        scaling_factor = target_marketing_contribution / max(0.1, total_raw_contribution)
-        # Limit scaling factor to reasonable bounds
-        scaling_factor = max(1.0, min(10000, scaling_factor))
-        print(f"DEBUG: Calculated scaling factor: {scaling_factor:.2f}x", file=sys.stderr)
-    else:
-        # If we can't determine from raw contributions, use a fixed scaling
-        scaling_factor = 1000.0  # Conservative default
-        print(f"DEBUG: Using default scaling factor: {scaling_factor:.2f}x", file=sys.stderr)
+        # Scale raw contribution to target level
+        scaling_factor = target_marketing_contribution / total_raw_contribution
         
-    print(f"DEBUG: Target marketing contribution: ${target_marketing_contribution:,.2f}", file=sys.stderr)
-    print(f"DEBUG: Baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
-    print(f"DEBUG: Raw total contribution: ${total_raw_contribution:.6f}", file=sys.stderr)
-    print(f"DEBUG: Applied scaling factor: {scaling_factor:.2f}x", file=sys.stderr)
+        # Validate scaling factor is reasonable (not too small or large)
+        if scaling_factor < 1.0:
+            # If calculated factor is too small, use 1.0 at minimum
+            print(f"DEBUG: Calculated scaling factor {scaling_factor:.2f} too small, using 1.0 instead", file=sys.stderr)
+            scaling_factor = 1.0
+        elif scaling_factor > 1000000:
+            # If calculated factor is extremely large, cap it to prevent numeric issues
+            print(f"DEBUG: Calculated scaling factor {scaling_factor:.2f} too large, capping at 1,000,000", file=sys.stderr)
+            scaling_factor = 1000000
+        else:
+            print(f"DEBUG: Using calculated scaling factor: {scaling_factor:.2f}", file=sys.stderr)
+    else:
+        # Default if raw contribution is zero - use median values from typical marketing models
+        print(f"DEBUG: No positive raw contributions found, using default scaling factor of 10,000", file=sys.stderr)
+        scaling_factor = 10000  # Default when raw contribution is zero
+    
+    # Show scaled contributions for transparency
+    print(f"DEBUG: Applied scaling factor: {scaling_factor:.2f}", file=sys.stderr)
+    print(f"DEBUG: Target marketing contribution: ${target_marketing_contribution:,.2f} ({marketing_contribution_pct*100:.0f}% of baseline)", file=sys.stderr)
+    print(f"DEBUG: Predicted scaled contribution: ${total_raw_contribution * scaling_factor:,.2f}", file=sys.stderr)
+    
+    # Show predicted scaled contribution for each channel
+    print(f"DEBUG: Channel contributions after scaling:", file=sys.stderr)
+    for channel, raw_contribution in sorted(channel_raw_contributions.items(), key=lambda x: x[1]*scaling_factor, reverse=True):
+        scaled_contribution = raw_contribution * scaling_factor
+        spend = current_allocation.get(channel, 0.0)
+        if spend > 0:
+            roi = scaled_contribution / spend
+            print(f"DEBUG: {channel}: ${scaled_contribution:,.2f} ({roi:.4f} ROI)", file=sys.stderr)
+        else:
+            print(f"DEBUG: {channel}: ${scaled_contribution:,.2f}", file=sys.stderr)
     
     if debug:
         print(f"DEBUG: Raw total contribution before scaling: {total_raw_contribution:.2f}", file=sys.stderr)
