@@ -365,20 +365,28 @@ def train_model(df, config):
                         
                     print(f"Calculated contribution time series for channel {channel}", file=sys.stderr)
             
-            # Create the complete time series data structure
+            # Create the complete time series data structure with proper hierarchical organization
             for i, date_str in enumerate(date_strings):
                 data_point = {"date": date_str}
                 
-                # Add baseline
+                # Add baseline as a separate attribute
                 data_point["baseline"] = float(baseline_contribution_ts[i])
                 
-                # Add control variables
+                # Add control variables as a nested object
+                control_vars_obj = {}
                 for control_var in control_contributions_ts:
-                    data_point[control_var] = float(control_contributions_ts[control_var][i])
+                    control_vars_obj[control_var] = float(control_contributions_ts[control_var][i])
+                data_point["control_variables"] = control_vars_obj
                 
-                # Add channel contributions
+                # Add channel contributions as a nested object
+                channels_obj = {}
                 for channel in channel_contributions_ts:
-                    data_point[channel] = float(channel_contributions_ts[channel][i])
+                    channels_obj[channel] = float(channel_contributions_ts[channel][i])
+                data_point["channels"] = channels_obj
+                
+                # Calculate total for this time period
+                total_for_period = data_point["baseline"] + sum(control_vars_obj.values()) + sum(channels_obj.values())
+                data_point["total"] = float(total_for_period)
                 
                 time_series_data.append(data_point)
             
