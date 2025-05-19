@@ -497,7 +497,8 @@ def train_model(df, config):
                 "fit_metrics": {
                     "r_squared": float(r_squared),
                     "rmse": float(rmse)
-                }
+                },
+                "intercept": extract_model_intercept(summary, y)
             },
             "raw_data": {
                 "predictions": predictions.tolist(),
@@ -516,6 +517,52 @@ def train_model(df, config):
             "error": f"Model training error: {str(e)}"
         }))
         sys.exit(1)
+
+def extract_model_intercept(summary_df, target_values):
+    """
+    Extract the intercept (baseline sales) from the model summary.
+    
+    Args:
+        summary_df: DataFrame containing model parameter summaries
+        target_values: Original target values (for fallback calculation)
+        
+    Returns:
+        float: The extracted intercept value
+    """
+    # Look for intercept in different possible locations
+    intercept_value = None
+    
+    try:
+        # Check various names used for intercept in different PyMC versions
+        if 'intercept' in summary_df.index:
+            intercept_value = float(summary_df.loc['intercept']['mean'])
+            print(f"Found intercept parameter: {intercept_value}", file=sys.stderr)
+        elif 'Intercept' in summary_df.index:
+            intercept_value = float(summary_df.loc['Intercept']['mean'])
+            print(f"Found Intercept parameter: {intercept_value}", file=sys.stderr)
+        elif 'alpha' in summary_df.index:  # Some PyMC models use alpha for intercept
+            intercept_value = float(summary_df.loc['alpha']['mean'])
+            print(f"Found alpha parameter (intercept): {intercept_value}", file=sys.stderr)
+        
+        # If we couldn't find it directly, make a reasonable estimate
+        if intercept_value is None:
+            # Estimate based on mean of target values
+            # This is a common approach when intercept isn't directly available
+            intercept_value = float(np.mean(target_values))
+            print(f"Could not find explicit intercept, estimating from target mean: {intercept_value}", file=sys.stderr)
+        
+        # Ensure the intercept is reasonable (non-negative for sales data)
+        if intercept_value < 0:
+            print(f"Warning: Negative intercept value ({intercept_value}), using absolute value", file=sys.stderr)
+            intercept_value = abs(intercept_value)
+            
+    except Exception as e:
+        print(f"Error extracting intercept, using fallback calculation: {str(e)}", file=sys.stderr)
+        # Default to mean of target as fallback
+        intercept_value = float(np.mean(target_values))
+        
+    print(f"Final intercept value (baseline_sales): {intercept_value}", file=sys.stderr)
+    return intercept_value
 
 def main():
     """Main function to run the MMM training"""

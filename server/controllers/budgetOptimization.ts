@@ -220,43 +220,53 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       // Extract baseline_sales (intercept) from model results
       let baseline_sales = 0.0;
       
-      // Let's use a more reliable approach to find the model intercept
+      // Extract the intercept (baseline sales) from the model results
+      // This is the value saved by train_mmm.py's extract_model_intercept function
       
-      // First, use our custom implementation for Model ID 14
-      if (modelId === 14) {
-        // For Model ID 14, we know from testing that the right intercept value is ~1,000,000
-        // This represents the baseline sales without any marketing spend
-        baseline_sales = 1000000;
-        console.log(`Using known baseline_sales for Model ID 14: ${baseline_sales}`);
-      }
-      // Otherwise, try to extract from various places based on different PyMC versions
-      else if (modelResults.summary && modelResults.summary.intercept) {
-        // Direct intercept value from model summary (our updated format)
+      console.log('Attempting to extract intercept (baseline_sales) from model results...');
+      
+      // Look in various places where the intercept might be stored
+      if (modelResults.summary && modelResults.summary.intercept !== undefined) {
+        // This is the preferred location where our updated train_mmm.py saves it
         baseline_sales = modelResults.summary.intercept;
-        console.log(`Using model.summary.intercept as baseline_sales: ${baseline_sales}`);
-      } else if (modelResults.intercept) {
-        // Alternative location for intercept
+        console.log(`Found intercept in model.summary.intercept: ${baseline_sales}`);
+      } else if (modelResults.intercept !== undefined) {
+        // Alternative location at root level
         baseline_sales = modelResults.intercept;
-        console.log(`Using model.intercept as baseline_sales: ${baseline_sales}`);
-      } else if (modelResults.summary && modelResults.summary.model_intercept) {
-        // Another alternative location from pymc-marketing
+        console.log(`Found intercept at model.intercept: ${baseline_sales}`);
+      } else if (modelResults.summary && modelResults.summary.model_intercept !== undefined) {
+        // Another possible location used by some PyMC models
         baseline_sales = modelResults.summary.model_intercept;
-        console.log(`Using model.summary.model_intercept as baseline_sales: ${baseline_sales}`);
-      } else if (modelResults.summary && modelResults.summary.model && modelResults.summary.model.intercept) {
-        // Yet another possible location
+        console.log(`Found intercept in model.summary.model_intercept: ${baseline_sales}`);
+      } else if (modelResults.summary && modelResults.summary.model && 
+                 modelResults.summary.model.intercept !== undefined) {
+        // Yet another possible nested location
         baseline_sales = modelResults.summary.model.intercept;
-        console.log(`Using model.summary.model.intercept as baseline_sales: ${baseline_sales}`);
+        console.log(`Found intercept in model.summary.model.intercept: ${baseline_sales}`);
       } else {
-        console.warn('WARNING: Could not find intercept value in model results.');
-        // Use a reasonable default based on target values (typically 30-90% of mean sales)
-        baseline_sales = 1000000; // Default for most marketing models
-        console.log(`Using default baseline_sales: ${baseline_sales}`);
+        // If we still can't find it, log a warning
+        console.warn('WARNING: Could not find explicit intercept value in model results');
+        
+        // Use a reasonable estimate based on the model quality and typical marketing data
+        // For a good model (R² > 70%), baseline is typically 60-90% of total sales
+        const rSquared = modelResults.summary?.fit_metrics?.r_squared || 0;
+        if (rSquared > 0.7) {
+          // For high-quality models, use a more informed estimate
+          // We'll use the sum of channel allocations as a proxy for total marketing spend
+          const totalSpend = Object.values(current_allocation).reduce((sum, val) => sum + (val || 0), 0);
+          baseline_sales = totalSpend * 5; // Estimate: ~5x total marketing spend
+          console.log(`Estimating baseline_sales based on model quality (R²=${rSquared}) and total spend: ${baseline_sales}`);
+        } else {
+          // For lower-quality models, use a conservative estimate
+          baseline_sales = 100000; // Conservative default
+          console.log(`Using conservative default baseline_sales: ${baseline_sales}`);
+        }
       }
       
-      // Make sure baseline_sales is a positive number
-      if (baseline_sales <= 0) {
-        baseline_sales = 1000000;
-        console.log(`Corrected non-positive baseline_sales to default: ${baseline_sales}`);
+      // Ensure baseline_sales is valid and positive
+      if (typeof baseline_sales !== 'number' || isNaN(baseline_sales) || baseline_sales <= 0) {
+        console.warn(`Invalid baseline_sales value: ${baseline_sales}, using fallback`);
+        baseline_sales = 100000; // Fallback to a reasonable positive value
       }
       
       // Add detailed logging to troubleshoot model results structure
