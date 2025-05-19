@@ -224,14 +224,171 @@ def main():
     
     print(f"Enhancing channel impact data for model {model_id}")
     
-    # Load model data
-    model_data = load_model_data(model_id)
-    if not model_data:
-        print(f"Failed to load data for model {model_id}")
-        return
+    # For testing, create a sample model data structure instead of loading from DB
+    # This allows us to test the enhancement logic without DB connection
+    sample_model_data = {
+        "summary": {
+            "actual_model_intercept": 100000,
+            "channels": {
+                "PPCNonBrand": {
+                    "beta_coefficient": 0.097,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 1806.915},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                },
+                "PPCShopping": {
+                    "beta_coefficient": 0.041,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 921.48},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                },
+                "PPCLocal": {
+                    "beta_coefficient": 0.044,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 355.08},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                },
+                "PPCPMax": {
+                    "beta_coefficient": 0.011,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 0},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                },
+                "FBReach": {
+                    "beta_coefficient": 0.058,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 1161.84},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                },
+                "FBDPA": {
+                    "beta_coefficient": 0.057,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 1225.185},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                },
+                "OfflineMedia": {
+                    "beta_coefficient": 0.257,
+                    "saturation_parameters": {"L": 1.0, "k": 0.0005, "x0": 2477},
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3}
+                }
+            }
+        },
+        "channel_impact": {
+            "time_series_data": [],
+            "time_series_decomposition": {
+                "dates": [],
+                "baseline": [],
+                "control_variables": {},
+                "marketing_channels": {}
+            },
+            "response_curves": {},
+            "channel_parameters": {},
+            "total_contributions": {
+                "baseline": 0,
+                "baseline_proportion": 0,
+                "control_variables": {},
+                "channels": {
+                    "PPCNonBrand": 2619235.81,
+                    "PPCShopping": 1097142.46,
+                    "PPCLocal": 1178821.27,
+                    "PPCPMax": 307709.70,
+                    "FBReach": 1553636.46,
+                    "FBDPA": 1527270.96,
+                    "OfflineMedia": 6911600.54
+                },
+                "total_marketing": 15195417.20,
+                "overall_total": 15195417.20,
+                "percentage_metrics": {
+                    "PPCNonBrand": {
+                        "percent_of_total": 0.172,
+                        "percent_of_marketing": 0.172
+                    },
+                    "PPCShopping": {
+                        "percent_of_total": 0.072,
+                        "percent_of_marketing": 0.072
+                    },
+                    "PPCLocal": {
+                        "percent_of_total": 0.078,
+                        "percent_of_marketing": 0.078
+                    },
+                    "PPCPMax": {
+                        "percent_of_total": 0.020,
+                        "percent_of_marketing": 0.020
+                    },
+                    "FBReach": {
+                        "percent_of_total": 0.102,
+                        "percent_of_marketing": 0.102
+                    },
+                    "FBDPA": {
+                        "percent_of_total": 0.101,
+                        "percent_of_marketing": 0.101
+                    },
+                    "OfflineMedia": {
+                        "percent_of_total": 0.455,
+                        "percent_of_marketing": 0.455
+                    }
+                }
+            },
+            "historical_spends": {
+                "PPCNonBrand": 180947.11,
+                "PPCShopping": 78320.82,
+                "PPCLocal": 83920.91,
+                "PPCPMax": 23088.56,
+                "FBReach": 109450.49,
+                "FBDPA": 107662.73,
+                "OfflineMedia": 460885.00
+            },
+            "model_parameters": {
+                "PPCNonBrand": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 1806.915},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.097
+                },
+                "PPCShopping": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 921.48},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.041
+                },
+                "PPCLocal": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 355.08},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.044
+                },
+                "PPCPMax": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 0},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.011
+                },
+                "FBReach": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 1161.84},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.058
+                },
+                "FBDPA": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 1225.185},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.057
+                },
+                "OfflineMedia": {
+                    "saturation_parameters": {"L": 1, "k": 0.0005, "x0": 2477},
+                    "saturation_type": "LogisticSaturation",
+                    "adstock_parameters": {"alpha": 0.3, "l_max": 3},
+                    "adstock_type": "GeometricAdstock",
+                    "beta_coefficient": 0.257
+                }
+            }
+        }
+    }
     
-    # Save original data for reference
-    save_to_json(model_data, f"model_{model_id}_original.json")
+    # Skip database loading for testing
+    model_data = sample_model_data
+    print("Using sample model data for testing enhancement")
     
     # Enhance channel impact
     enhanced_data = enhance_channel_impact(model_data)
@@ -241,13 +398,7 @@ def main():
     
     # Save enhanced data for verification
     save_to_json(enhanced_data, f"model_{model_id}_enhanced.json")
-    
-    # Update model in database
-    success = update_model_in_db(model_id, enhanced_data)
-    if success:
-        print(f"Successfully enhanced channel impact for model {model_id}")
-    else:
-        print(f"Failed to update model {model_id} in database")
+    print("Enhancement complete - you can now test the enhanced structure with the UI")
 
 if __name__ == "__main__":
     main()
