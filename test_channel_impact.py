@@ -47,7 +47,7 @@ def generate_test_data():
         spend = base_spends[channel] * pattern
         
         # Add to dataframe
-        df[f"{channel}_Spend"] = spend.clip(min=0)
+        df[f"{channel}_Spend"] = np.maximum(spend, 0)  # Equivalent to clip with minimum value of 0
     
     # Add sales (target) column with dependency on marketing spends and seasonal factors
     # Start with baseline sales
@@ -79,7 +79,7 @@ def generate_test_data():
     df['Sales'] += np.random.normal(0, 10000, 24)
     
     # Ensure sales are positive
-    df['Sales'] = df['Sales'].clip(min=0)
+    df['Sales'] = np.maximum(df['Sales'].values, 0)
     
     # Round values for readability
     for col in df.columns:

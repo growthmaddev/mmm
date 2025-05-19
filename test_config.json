@@ -1,14 +1,33 @@
 {
   "dateColumn": "Date",
   "targetColumn": "Sales",
-  "channelColumns": [
-    "PPCNonBrand_Spend",
-    "PPCShopping_Spend",
-    "FBReach_Spend"
-  ],
+  "channelColumns": {
+    "PPCBrand_Spend": "PPCBrand_Spend",
+    "PPCNonBrand_Spend": "PPCNonBrand_Spend",
+    "PPCShopping_Spend": "PPCShopping_Spend",
+    "PPCLocal_Spend": "PPCLocal_Spend",
+    "PPCPMax_Spend": "PPCPMax_Spend",
+    "FBReach_Spend": "FBReach_Spend",
+    "FBDPA_Spend": "FBDPA_Spend",
+    "OfflineMedia_Spend": "OfflineMedia_Spend"
+  },
+  "adstockSettings": {
+    "defaultAdstockParams": {
+      "alpha": 0.3,
+      "l_max": 3
+    }
+  },
+  "saturationSettings": {
+    "defaultSaturationParams": {
+      "L": 1.0,
+      "k": 0.0005,
+      "x0": 20000.0
+    }
+  },
   "mcmcSettings": {
     "draws": 50,
     "tune": 50,
-    "chains": 2
+    "chains": 1,
+    "target_accept": 0.95
   }
 }
