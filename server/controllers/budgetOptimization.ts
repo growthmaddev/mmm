@@ -3,9 +3,12 @@ import { storage } from '../storage';
 import { exec } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { promisify } from 'util';
 
 const execPromise = promisify(exec);
+const writeFilePromise = promisify(fs.writeFile);
+const unlinkPromise = promisify(fs.unlink);
 
 interface BudgetOptimizationRequest {
   current_budget: number;
@@ -92,13 +95,11 @@ export const optimizeBudget = async (req: Request, res: Response) => {
         message: 'Missing required parameters' 
       });
     }
-
-    // We'll use the model's actual results with channel ROIs calculated from training
     
-    // Extract channel ROIs from the model results
-    // The model results are stored as a JSON string in the database
-    let modelResults;
-    let channelData = {};
+    // Extract model results which contain channel parameters for optimization
+    let modelResults: any;
+    const channelData: Record<string, any> = {};
+    const modelParameters: Record<string, any> = {};
     
     try {
       // If results is already an object, use it; otherwise, parse it from JSON string
@@ -108,191 +109,198 @@ export const optimizeBudget = async (req: Request, res: Response) => {
         modelResults = model.results || {};
       }
       
-      // Based on the database query we observed earlier, the channel data is in summary.channels
-      channelData = modelResults.summary?.channels || {};
+      // Get channel data from model results
+      if (modelResults.summary && modelResults.summary.channels) {
+        Object.assign(channelData, modelResults.summary.channels);
+      }
       
       console.log('Model results structure:', Object.keys(modelResults).join(', '));
       console.log('Channel data available:', Object.keys(channelData).length > 0 
         ? Object.keys(channelData).join(', ') 
         : 'No channel data found');
       
-      // If no channel data is found, create some sample data for budget optimization
-      // This is temporary until we fix the data path
-      if (Object.keys(channelData).length === 0) {
-        // Create sample channel data with ROIs for demonstration
-        channelData = {
-          'PPCBrand': { contribution: 0.04, roi: 17.5 },
-          'PPCNonBrand': { contribution: 0.16, roi: 18.4 },
-          'PPCShopping': { contribution: 0.07, roi: 17.8 },
-          'PPCLocal': { contribution: 0.07, roi: 17.9 },
-          'PPCPMax': { contribution: 0.02, roi: 16.9 },
-          'FBReach': { contribution: 0.10, roi: 18.0 },
-          'FBDPA': { contribution: 0.10, roi: 18.0 },
-          'OfflineMedia': { contribution: 0.44, roi: 19.1 }
-        };
-        console.log('Created sample channel data for optimization');
-      }
-    } catch (error) {
-      console.error('Error parsing model results:', error);
-      // Create fallback channel data if parsing fails
-      channelData = {
-        'PPCBrand': { contribution: 0.04, roi: 17.5 },
-        'PPCNonBrand': { contribution: 0.16, roi: 18.4 },
-        'PPCShopping': { contribution: 0.07, roi: 17.8 },
-        'PPCLocal': { contribution: 0.07, roi: 17.9 },
-        'PPCPMax': { contribution: 0.02, roi: 16.9 },
-        'FBReach': { contribution: 0.10, roi: 18.0 },
-        'FBDPA': { contribution: 0.10, roi: 18.0 },
-        'OfflineMedia': { contribution: 0.44, roi: 19.1 }
-      };
-      console.log('Using fallback channel data due to parsing error');
-    }
-    
-    // Map channels with their actual ROIs from model results
-    const channelsWithROI = Object.entries(current_allocation).map(([channel, spend]) => {
-      // Try to find ROI data for this channel
-      // First, check exact match
-      let roiValue = 1.0; // Default ROI if no match found
-      let channelKey = channel;
-      
-      // Check if channel exists in results (first without _Spend suffix)
-      if (channelData[channel]) {
-        roiValue = channelData[channel].roi || 1.0;
-      } 
-      // Check if channel with _Spend suffix exists in results
-      else if (channelData[`${channel}_Spend`]) {
-        channelKey = `${channel}_Spend`;
-        roiValue = channelData[`${channel}_Spend`].roi || 1.0;
-      }
-      // Try removing _Spend suffix if it exists
-      else if (channel.endsWith('_Spend') && channelData[channel.replace('_Spend', '')]) {
-        channelKey = channel.replace('_Spend', '');
-        roiValue = channelData[channelKey].roi || 1.0;
-      }
-      
-      console.log(`Channel ${channel}: Found ROI data with key ${channelKey}, ROI = ${roiValue}`);
-      
-      return {
-        channel,
-        roi: roiValue,
-        currentSpend: spend
-      };
-    });
-    
-    // Sort channels by ROI (descending)
-    channelsWithROI.sort((a, b) => b.roi - a.roi);
-    
-    // Initialize optimized allocation
-    const optimizedAllocation: Record<string, number> = {...current_allocation};
-    Object.keys(optimizedAllocation).forEach(key => {
-      optimizedAllocation[key] = 0; // Start with zero allocation
-    });
-    
-    // Calculate total ROI weight for allocation
-    const totalROIWeight = channelsWithROI.reduce((sum, channel) => sum + channel.roi, 0);
-    
-    // Allocate budget proportionally to ROI
-    let remainingBudget = desired_budget;
-    
-    for (const { channel, roi } of channelsWithROI) {
-      // Weight budget allocation by ROI
-      const weightFactor = roi / totalROIWeight;
-      optimizedAllocation[channel] = Math.round(desired_budget * weightFactor);
-      
-      // Update remaining budget
-      remainingBudget -= optimizedAllocation[channel];
-    }
-    
-    // Handle any remaining budget due to rounding
-    if (Math.abs(remainingBudget) > 0) {
-      // Allocate remaining to highest ROI channel
-      optimizedAllocation[channelsWithROI[0].channel] += Math.round(remainingBudget);
-    }
-    
-    // Calculate outcomes using the model's actual ROI values
-    const currentOutcome = Object.entries(current_allocation).reduce((sum, [channel, spend]) => {
-      const channelInfo = channelsWithROI.find(c => c.channel === channel);
-      // Use the ROI value to calculate channel contribution to outcome
-      return sum + (spend * (channelInfo?.roi || 1.0) / 100);
-    }, 0);
-    
-    const expectedOutcome = Object.entries(optimizedAllocation).reduce((sum, [channel, spend]) => {
-      const channelInfo = channelsWithROI.find(c => c.channel === channel);
-      // Use the ROI value to calculate channel contribution to outcome
-      return sum + (spend * (channelInfo?.roi || 1.0) / 100);
-    }, 0);
-    
-    // Add extra information to response for better frontend display
-    const channelBreakdown = Object.entries(optimizedAllocation).map(([channel, spend]) => {
-      const channelInfo = channelsWithROI.find(c => c.channel === channel);
-      const currentSpend = current_allocation[channel] || 0;
-      const percentChange = currentSpend > 0 
-        ? ((spend - currentSpend) / currentSpend) * 100 
-        : 100;
+      // Extract model parameters for each channel
+      for (const channel in channelData) {
+        const data = channelData[channel];
+        const channelParams: any = {};
         
-      return {
-        channel,
-        current_spend: currentSpend,
-        optimized_spend: spend,
-        percent_change: percentChange,
-        roi: channelInfo?.roi || 1.0,
-        contribution: (spend * (channelInfo?.roi || 1.0) / 100)
-      };
-    });
-    
-    // Calculate expected lift
-    const expectedLift = (expectedOutcome - currentOutcome) / currentOutcome;
-    
-    // Extract target variable from responseVariables
-    let targetVariable = 'Sales'; // Default
-    try {
-      if (typeof model.responseVariables === 'string') {
-        const responseVars = JSON.parse(model.responseVariables);
-        targetVariable = responseVars.target || 'Sales';
-      } else if (model.responseVariables && model.responseVariables.target) {
-        targetVariable = model.responseVariables.target;
+        // Extract beta coefficient
+        if (data.beta_coefficient) {
+          channelParams.beta_coefficient = data.beta_coefficient;
+        }
+        
+        // Extract adstock parameters
+        if (data.adstock_parameters) {
+          channelParams.adstock_parameters = data.adstock_parameters;
+        }
+        
+        // Extract adstock type
+        if (data.adstock_type) {
+          channelParams.adstock_type = data.adstock_type;
+        } else {
+          channelParams.adstock_type = "GeometricAdstock";  // Default
+        }
+        
+        // Extract saturation parameters
+        if (data.saturation_parameters) {
+          channelParams.saturation_parameters = data.saturation_parameters;
+        }
+        
+        // Extract saturation type
+        if (data.saturation_type) {
+          channelParams.saturation_type = data.saturation_type;
+        } else {
+          channelParams.saturation_type = "LogisticSaturation";  // Default
+        }
+        
+        // Add to model parameters collection
+        modelParameters[channel] = channelParams;
+      }
+      
+      // If we couldn't find model parameters, create fallback parameters based on ROI
+      if (Object.keys(modelParameters).length === 0) {
+        // Use channel data with ROI to estimate saturation/adstock parameters
+        for (const channel in channelData) {
+          const data = channelData[channel];
+          const roi = data.roi || 1.0;
+          
+          // Create estimated parameters based on ROI
+          modelParameters[channel] = {
+            beta_coefficient: roi * 100,  // Estimate beta based on ROI
+            adstock_parameters: {
+              alpha: 0.3,  // Default decay rate
+              l_max: 3     // Default max lag
+            },
+            adstock_type: "GeometricAdstock",
+            saturation_parameters: {
+              L: 1.0,       // Normalized max value
+              k: 0.0005,    // Steepness parameter
+              x0: 50000.0   // Midpoint estimate
+            },
+            saturation_type: "LogisticSaturation"
+          };
+        }
+      }
+      
+      // Still no parameters? Create default ones for each channel in current_allocation
+      if (Object.keys(modelParameters).length === 0) {
+        // Create default parameters for each channel
+        for (const channel in current_allocation) {
+          modelParameters[channel] = {
+            beta_coefficient: 1500.0,  // Generic default
+            adstock_parameters: {
+              alpha: 0.3,  // Default decay rate
+              l_max: 3     // Default max lag
+            },
+            adstock_type: "GeometricAdstock",
+            saturation_parameters: {
+              L: 1.0,       // Normalized max value
+              k: 0.0005,    // Steepness parameter
+              x0: 50000.0   // Midpoint estimate
+            },
+            saturation_type: "LogisticSaturation"
+          };
+        }
       }
     } catch (error) {
-      console.error('Error parsing response variables:', error);
+      console.error('Error processing model results:', error);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to process model results for optimization',
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
     
-    // Prepare and return the results with detailed breakdown
-    const result: OptimizationResult = {
-      optimized_allocation: optimizedAllocation,
-      expected_outcome: Math.round(expectedOutcome),
-      expected_lift: expectedLift,
-      current_outcome: Math.round(currentOutcome),
-      channel_breakdown: channelBreakdown,
-      target_variable: targetVariable
-    };
+    // Create temporary input file for Python script
+    const tempInputFile = path.join(os.tmpdir(), `budget_input_${Date.now()}.json`);
+    const pythonScriptPath = path.join(process.cwd(), 'python_scripts', 'optimize_budget_marginal.py');
     
-    console.log("=== OPTIMIZATION RESULT ===");
-    console.log(JSON.stringify(result, null, 2));
-    console.log("=== END OPTIMIZATION RESULT ===");
-    
-    // For direct API testing with curl
-    console.log('To test directly with curl:');
-    console.log(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify({
-      current_budget: current_budget,
-      desired_budget: desired_budget,
-      current_allocation: current_allocation
-    })}' http://localhost:3000/api/models/${modelId}/optimize-budget`);
-    
-    // Debug what's being sent to the client
-    const resultStr = JSON.stringify(result);
-    console.log(`Result string length: ${resultStr.length}`);
-    console.log(`First 100 chars: ${resultStr.substring(0, 100)}`);
-    
-    // Explicitly set content type and send serialized JSON
-    res.setHeader('Content-Type', 'application/json');
-    return res.send(resultStr);
-    
-  } catch (error) {
-    console.error('Budget optimization error:', error);
+    try {
+      // Prepare input data for Python script
+      const inputData = {
+        model_parameters: modelParameters,
+        current_budget: current_budget,
+        desired_budget: desired_budget,
+        current_allocation: current_allocation
+      };
+      
+      // Write input data to temporary file
+      await writeFilePromise(tempInputFile, JSON.stringify(inputData, null, 2));
+      
+      // Execute the Python script
+      console.log(`Executing Python script: ${pythonScriptPath} ${tempInputFile}`);
+      const { stdout, stderr } = await execPromise(`python3 ${pythonScriptPath} ${tempInputFile}`);
+      
+      if (stderr) {
+        console.error('Python script error output:', stderr);
+      }
+      
+      // Parse the output from the Python script
+      let pythonOutput: any;
+      try {
+        pythonOutput = JSON.parse(stdout);
+        
+        if (!pythonOutput.success) {
+          throw new Error(pythonOutput.error || 'Unknown error in budget optimization script');
+        }
+      } catch (parseError) {
+        console.error('Error parsing Python script output:', parseError);
+        console.error('Raw output:', stdout);
+        throw new Error('Failed to parse budget optimization results');
+      } finally {
+        // Clean up the temporary file
+        try {
+          await unlinkPromise(tempInputFile);
+        } catch (unlinkError) {
+          console.warn('Failed to delete temporary file:', unlinkError);
+        }
+      }
+      
+      // Extract the optimization result
+      const result: OptimizationResult = {
+        optimized_allocation: pythonOutput.optimized_allocation,
+        expected_outcome: pythonOutput.expected_outcome,
+        expected_lift: pythonOutput.expected_lift,
+        current_outcome: pythonOutput.current_outcome,
+        channel_breakdown: pythonOutput.channel_breakdown,
+        target_variable: pythonOutput.target_variable || 'Sales'
+      };
+      
+      console.log("=== OPTIMIZATION RESULT ===");
+      console.log(JSON.stringify(result, null, 2));
+      console.log("=== END OPTIMIZATION RESULT ===");
+      
+      // For direct API testing with curl
+      console.log('To test directly with curl:');
+      console.log(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify({
+        current_budget: current_budget,
+        desired_budget: desired_budget,
+        current_allocation: current_allocation
+      })}' http://localhost:3000/api/models/${modelId}/optimize-budget`);
+      
+      // Debug what's being sent to the client
+      const resultStr = JSON.stringify(result);
+      console.log(`Result string length: ${resultStr.length}`);
+      console.log(`First 100 chars: ${resultStr.substring(0, 100)}`);
+      
+      // Explicitly set content type and send serialized JSON
+      res.setHeader('Content-Type', 'application/json');
+      return res.send(resultStr);
+      
+    } catch (error) {
+      console.error('Budget optimization error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'An error occurred during budget optimization',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  } catch (outerError) {
+    console.error('Unexpected error in budget optimization:', outerError);
     return res.status(500).json({ 
       success: false, 
-      message: 'An error occurred during budget optimization',
-      error: error instanceof Error ? error.message : String(error)
+      message: 'An unexpected error occurred',
+      error: outerError instanceof Error ? outerError.message : String(outerError)
     });
   }
 };
