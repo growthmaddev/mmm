@@ -220,53 +220,27 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       // Extract baseline_sales (intercept) from model results
       let baseline_sales = 0.0;
       
-      // Extract the intercept (baseline sales) from the model results
-      // This is the value saved by train_mmm.py's extract_model_intercept function
+      // Extract the exact model intercept from model results
+      // This is the actual intercept value extracted by train_mmm.py
+      console.log('Looking for actual model intercept in model results...');
       
-      console.log('Attempting to extract intercept (baseline_sales) from model results...');
-      
-      // Look in various places where the intercept might be stored
-      if (modelResults.summary && modelResults.summary.intercept !== undefined) {
-        // This is the preferred location where our updated train_mmm.py saves it
-        baseline_sales = modelResults.summary.intercept;
-        console.log(`Found intercept in model.summary.intercept: ${baseline_sales}`);
-      } else if (modelResults.intercept !== undefined) {
-        // Alternative location at root level
-        baseline_sales = modelResults.intercept;
-        console.log(`Found intercept at model.intercept: ${baseline_sales}`);
-      } else if (modelResults.summary && modelResults.summary.model_intercept !== undefined) {
-        // Another possible location used by some PyMC models
-        baseline_sales = modelResults.summary.model_intercept;
-        console.log(`Found intercept in model.summary.model_intercept: ${baseline_sales}`);
-      } else if (modelResults.summary && modelResults.summary.model && 
-                 modelResults.summary.model.intercept !== undefined) {
-        // Yet another possible nested location
-        baseline_sales = modelResults.summary.model.intercept;
-        console.log(`Found intercept in model.summary.model.intercept: ${baseline_sales}`);
+      // Look for the explicit model intercept using the single, unambiguous key
+      if (modelResults.summary && modelResults.summary.actual_model_intercept !== undefined) {
+        baseline_sales = modelResults.summary.actual_model_intercept;
+        console.log(`Found actual model intercept: ${baseline_sales}`);
       } else {
-        // If we still can't find it, log a warning
-        console.warn('WARNING: Could not find explicit intercept value in model results');
+        // If we can't find the proper intercept, this is a critical issue
+        console.error('CRITICAL ERROR: Could not find actual_model_intercept in model results');
+        console.error('This indicates a problem with model extraction in train_mmm.py');
         
-        // Use a reasonable estimate based on the model quality and typical marketing data
-        // For a good model (R² > 70%), baseline is typically 60-90% of total sales
-        const rSquared = modelResults.summary?.fit_metrics?.r_squared || 0;
-        if (rSquared > 0.7) {
-          // For high-quality models, use a more informed estimate
-          // We'll use the sum of channel allocations as a proxy for total marketing spend
-          const totalSpend = Object.values(current_allocation).reduce((sum, val) => sum + (val || 0), 0);
-          baseline_sales = totalSpend * 5; // Estimate: ~5x total marketing spend
-          console.log(`Estimating baseline_sales based on model quality (R²=${rSquared}) and total spend: ${baseline_sales}`);
-        } else {
-          // For lower-quality models, use a conservative estimate
-          baseline_sales = 100000; // Conservative default
-          console.log(`Using conservative default baseline_sales: ${baseline_sales}`);
-        }
-      }
-      
-      // Ensure baseline_sales is valid and positive
-      if (typeof baseline_sales !== 'number' || isNaN(baseline_sales) || baseline_sales <= 0) {
-        console.warn(`Invalid baseline_sales value: ${baseline_sales}, using fallback`);
-        baseline_sales = 100000; // Fallback to a reasonable positive value
+        // Proceed with baseline_sales = 0.0 to make the issue transparent
+        baseline_sales = 0.0;
+        
+        console.warn('Using baseline_sales = 0.0 which means optimization results will:');
+        console.warn('1. Only show contributions from marketing channels');
+        console.warn('2. Have unrealistically low outcome values');
+        console.warn('3. Show inflated lift percentages');
+        console.warn('RECOMMEND: Re-train this model to properly extract the intercept');
       }
       
       // Add detailed logging to troubleshoot model results structure
