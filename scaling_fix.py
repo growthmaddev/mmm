@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Enhanced Budget Optimizer for production use
+Scaled Budget Optimizer
 
-This file contains the optimized budget allocation function that implements the key improvements:
-1. Proper scaling of channel contributions
-2. More realistic saturation parameter handling
-3. Enhanced budget diversity
-4. Corrected lift calculation
+This script provides a revised approach to the budget optimizer with proper scaling
+of contribution values to make them meaningful in comparison to baseline sales.
 """
 
-import sys
 import json
+import sys
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Any, Optional
 
-def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0005, x0: float = 50000.0) -> float:
+def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0001, x0: float = 50000.0) -> float:
     """
     Logistic saturation function with better numerical stability.
     
@@ -39,35 +36,26 @@ def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0005, x0: float =
 def get_channel_response(
     spend: float, 
     beta: float, 
-    adstock_params: Dict[str, float],
     saturation_params: Dict[str, float],
-    adstock_type: str = "GeometricAdstock",
-    saturation_type: str = "LogisticSaturation",
+    adstock_params: Optional[Dict[str, float]] = None,
+    scaling_factor: float = 5000.0,  # Apply scaling to make contributions meaningful
     debug: bool = False,
-    channel_name: str = "",  # Added for better debug output
-    scaling_factor: float = 5000.0  # CRITICAL: Apply scaling to make contributions meaningful
+    channel_name: str = ""
 ) -> float:
     """
-    Calculate the expected response for a channel at a given spend level.
-    
-    This function implements the core MMM transformation pipeline:
-    1. Adstock transformation (time-lagged effects)
-    2. Saturation transformation (diminishing returns)
-    3. Beta coefficient application (effectiveness multiplier)
+    Calculate expected response for a channel given spend and parameters.
     
     Args:
-        spend: Spend amount
-        beta: Channel coefficient (effectiveness multiplier)
-        adstock_params: Dictionary of adstock parameters
-        saturation_params: Dictionary of saturation parameters
-        adstock_type: Type of adstock function to use
-        saturation_type: Type of saturation function to use
-        debug: Whether to output debug information
+        spend: Amount spent on the channel
+        beta: Channel coefficient (effectiveness)
+        saturation_params: Saturation parameters (L, k, x0)
+        adstock_params: Adstock parameters (if applicable)
+        scaling_factor: Multiplier to scale contributions for meaningful comparison
+        debug: Whether to print debug information
         channel_name: Name of channel (for debugging)
-        scaling_factor: Multiplier to scale contributions to meaningful level
         
     Returns:
-        Expected response (e.g., sales contribution)
+        Expected response value
     """
     # Early returns
     if spend <= 0.0:
@@ -106,8 +94,7 @@ def get_channel_response(
     # Apply beta coefficient to get final response
     response = beta * saturated_spend
     
-    # CRITICAL FIX: Apply scaling factor to make contributions meaningful
-    # This scales tiny values (0.00001-0.1) to meaningful units (50-500)
+    # Apply scaling factor to make contributions comparable to baseline sales
     scaled_response = response * scaling_factor
     
     # Debug output
@@ -126,23 +113,23 @@ def calculate_marginal_return(
     channel_params: Dict[str, Any],
     current_spend: float,
     increment: float = 1000.0,
+    scaling_factor: float = 5000.0,
     debug: bool = False,
-    channel_name: str = "",  # Added for debugging
-    scaling_factor: float = 5000.0  # CRITICAL: Apply same scaling as in get_channel_response
+    channel_name: str = ""
 ) -> float:
     """
-    Calculate the marginal return for a channel at the current spend level.
+    Calculate marginal return for additional spend on a channel.
     
     Args:
-        channel_params: Dictionary of channel parameters
+        channel_params: Parameters for the channel
         current_spend: Current spend amount
-        increment: Increment amount for numerical differentiation
-        debug: Whether to output debug information
-        channel_name: Channel name for debugging
-        scaling_factor: Multiplier to scale contributions for meaningful values
+        increment: Amount to increment for calculation
+        scaling_factor: Multiplier to scale contributions
+        debug: Whether to print debug information
+        channel_name: Name of channel (for debugging)
         
     Returns:
-        Marginal return (additional contribution per additional dollar spent)
+        Marginal return (additional response per additional dollar)
     """
     # Extract parameters
     beta = channel_params.get("beta_coefficient", 0)
@@ -151,16 +138,14 @@ def calculate_marginal_return(
     
     # Calculate response at current spend
     response_current = get_channel_response(
-        current_spend, beta, adstock_params, sat_params,
-        debug=False, channel_name=channel_name,
-        scaling_factor=scaling_factor
+        current_spend, beta, sat_params, adstock_params,
+        scaling_factor=scaling_factor, debug=False, channel_name=channel_name
     )
     
     # Calculate response at incremented spend
     response_incremented = get_channel_response(
-        current_spend + increment, beta, adstock_params, sat_params,
-        debug=False, channel_name=channel_name,
-        scaling_factor=scaling_factor
+        current_spend + increment, beta, sat_params, adstock_params,
+        scaling_factor=scaling_factor, debug=False, channel_name=channel_name
     )
     
     # Calculate marginal return (response difference per dollar)
@@ -181,44 +166,38 @@ def calculate_marginal_return(
     
     return marginal_return
 
-def enhanced_optimize_budget(
+def optimize_budget(
     channel_params: Dict[str, Dict[str, Any]],
     desired_budget: float,
     current_allocation: Optional[Dict[str, float]] = None,
     increment: float = 1000.0,
     max_iterations: int = 1000,
-    baseline_sales: float = 0.0,  
-    min_channel_budget: float = 1000.0,  # Minimum per channel
-    debug: bool = True,
-    contribution_scaling_factor: float = 5000.0  # CRITICAL: Adjust this to scale contributions to meaningful level
+    baseline_sales: float = 0.0,
+    min_channel_budget: float = 1000.0,
+    scaling_factor: float = 5000.0,  # Apply scaling to make contributions meaningful
+    debug: bool = True
 ) -> Dict[str, Any]:
     """
-    Enhanced budget optimizer that implements all major improvements from testing.
-    
-    This implementation incorporates:
-    1. Proper scaling of channel contributions to meaningful values
-    2. Better saturation parameter handling with realistic x0 scaling
-    3. Enhanced budget diversity to prevent over-concentration
-    4. Appropriate lift calculation for different budget scenarios
+    Optimize budget allocation across channels based on marginal returns.
     
     Args:
-        channel_params: Dictionary of channel parameters
+        channel_params: Parameters for each channel
         desired_budget: Total budget to allocate
         current_allocation: Current budget allocation
-        increment: Increment amount for each iteration
-        max_iterations: Maximum number of iterations
-        baseline_sales: Baseline sales (model intercept)
-        min_channel_budget: Minimum budget for each channel
-        debug: Whether to output debug information
-        contribution_scaling_factor: Scale factor for channel contributions
+        increment: Budget increment for allocation
+        max_iterations: Maximum iterations to run
+        baseline_sales: Baseline sales (intercept)
+        min_channel_budget: Minimum budget per channel
+        scaling_factor: Multiplier to scale contributions
+        debug: Whether to print debug information
         
     Returns:
-        Dictionary containing optimized allocation and predicted outcome
+        Dictionary containing optimized allocation and results
     """
     if debug:
-        print(f"DEBUG: Starting enhanced budget optimization with ${desired_budget:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Starting budget optimization with ${desired_budget:,.2f}", file=sys.stderr)
         print(f"DEBUG: Baseline sales (intercept): ${baseline_sales:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Using contribution scaling factor: {contribution_scaling_factor:,.0f}", file=sys.stderr)
+        print(f"DEBUG: Using scaling factor: {scaling_factor:,.0f}", file=sys.stderr)
     
     # Initialize with defaults if needed
     if current_allocation is None:
@@ -248,15 +227,15 @@ def enhanced_optimize_budget(
             print(f"DEBUG: Saturation parameters: {sat_params}", file=sys.stderr)
             print(f"DEBUG: Adstock parameters: {adstock_params}", file=sys.stderr)
         
-        # Calculate contribution with scaling
+        # Calculate contribution
         contribution = get_channel_response(
             spend,
             params.get("beta_coefficient", 0),
-            params.get("adstock_parameters", {}),
             params.get("saturation_parameters", {}),
+            params.get("adstock_parameters", {}),
+            scaling_factor=scaling_factor,
             debug=debug,
-            channel_name=channel,
-            scaling_factor=contribution_scaling_factor
+            channel_name=channel
         )
         
         current_contributions[channel] = contribution
@@ -297,10 +276,6 @@ def enhanced_optimize_budget(
         # STEP 3: Iteratively allocate remaining budget based on marginal returns
         iteration = 0
         
-        # ENHANCEMENT: Implement diversity protection
-        diversity_protection = True
-        max_budget_percent = 0.40  # No channel can get more than 40% of total budget
-        
         while remaining_budget >= increment and iteration < max_iterations:
             # Calculate marginal returns for all channels
             marginal_returns = {}
@@ -308,19 +283,12 @@ def enhanced_optimize_budget(
             for channel, params in channel_params.items():
                 current_spend = optimized_allocation[channel]
                 
-                # ENHANCEMENT: Apply diversity protection
-                if diversity_protection:
-                    # Skip channels that have reached their maximum allocation
-                    if current_spend >= (desired_budget * max_budget_percent):
-                        marginal_returns[channel] = 0
-                        continue
-                
-                # Calculate marginal return with scaling
+                # Calculate marginal return
                 mr = calculate_marginal_return(
                     params, current_spend, increment,
+                    scaling_factor=scaling_factor,
                     debug=(debug and iteration % 100 == 0),  # Debug every 100 iterations
-                    channel_name=channel,
-                    scaling_factor=contribution_scaling_factor
+                    channel_name=channel
                 )
                 
                 marginal_returns[channel] = mr
@@ -364,15 +332,15 @@ def enhanced_optimize_budget(
         if not params:
             continue
         
-        # Calculate optimized contribution with scaling
+        # Calculate optimized contribution
         contribution = get_channel_response(
             spend,
             params.get("beta_coefficient", 0),
-            params.get("adstock_parameters", {}),
             params.get("saturation_parameters", {}),
+            params.get("adstock_parameters", {}),
+            scaling_factor=scaling_factor,
             debug=debug,
-            channel_name=channel,
-            scaling_factor=contribution_scaling_factor
+            channel_name=channel
         )
         
         optimized_contributions[channel] = contribution
@@ -397,7 +365,7 @@ def enhanced_optimize_budget(
     # Calculate optimized outcome (baseline + contributions)
     optimized_outcome = baseline_sales + total_optimized_contribution
     
-    # STEP 5: CRITICAL FIX - Calculate lift correctly
+    # STEP 5: Calculate lift
     absolute_lift = optimized_outcome - current_outcome
     percentage_lift = (absolute_lift / current_outcome) * 100 if current_outcome > 0 else 0
     
@@ -410,9 +378,8 @@ def enhanced_optimize_budget(
         print(f"DEBUG: Expected outcome: ${optimized_outcome:.2f}", file=sys.stderr)
         print(f"DEBUG: Absolute improvement: ${absolute_lift:+,.2f}", file=sys.stderr)
         print(f"DEBUG: Percentage lift: {percentage_lift:+.2f}%", file=sys.stderr)
-        
-        # Round to nearest 0.1% for display
-        print(f"DEBUG: Final lift (rounded): {round(percentage_lift * 10) / 10:+.1f}%", file=sys.stderr)
+        # Round to nearest 0.01% for display
+        print(f"DEBUG: Final lift (adjusted): {round(percentage_lift * 100) / 100:+.2f}%", file=sys.stderr)
     
     # STEP 6: Generate channel breakdown for API response
     channel_breakdown = []
@@ -449,25 +416,30 @@ def enhanced_optimize_budget(
         allocations_pct = [(ch, spend, (spend/total_allocation)*100) for ch, spend in allocations]
         allocations_pct.sort(key=lambda x: x[1], reverse=True)
         
-        top_three = allocations_pct[:3]
-        top_three_pct = sum(pct for _, _, pct in top_three)
+        top_two = allocations_pct[:2]
+        top_two_pct = sum(pct for _, _, pct in top_two)
         
         print(f"\nDEBUG: === CONCENTRATION ANALYSIS ===", file=sys.stderr)
-        for ch, spend, pct in top_three:
-            print(f"DEBUG: {ch}: ${spend:,.0f} ({pct:.1f}%)", file=sys.stderr)
-        print(f"DEBUG: Combined top 3: {top_three_pct:.1f}%", file=sys.stderr)
+        print(f"DEBUG: Top 2 channels: {top_two[0][0]} ({top_two[0][2]:.1f}%), {top_two[1][0]} ({top_two[1][2]:.1f}%)", file=sys.stderr)
+        print(f"DEBUG: Combined top 2: {top_two_pct:.1f}%", file=sys.stderr)
         
-        if top_three_pct > 85:
-            print(f"DEBUG: WARNING - High concentration (>85% in top 3 channels)", file=sys.stderr)
+        if top_two_pct > 75:
+            print(f"DEBUG: WARNING - High concentration (>75% in top 2 channels)", file=sys.stderr)
     
     # Create final result dictionary
     result = {
         "optimized_allocation": optimized_allocation,
         "expected_outcome": round(optimized_outcome),
-        "expected_lift": round(percentage_lift * 10) / 10,  # Round to 1 decimal place
+        "expected_lift": round(percentage_lift * 100) / 100,  # Round to 2 decimal places
         "current_outcome": round(current_outcome),
         "channel_breakdown": channel_breakdown,
         "target_variable": "Sales"  # Default name
     }
     
     return result
+
+# Test data for manual testing
+if __name__ == "__main__":
+    # Sample model config and allocation for testing
+    from test_optimizer import test_optimizer
+    test_optimizer()

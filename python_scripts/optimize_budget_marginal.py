@@ -101,7 +101,31 @@ def get_channel_response(
         print(f"  - Saturated spend: {saturated_spend:.6f}", file=sys.stderr)
         print(f"  - Response: {response:.6f}", file=sys.stderr)
     
-    return response
+    # Apply scaling factor to make contributions meaningful
+
+    
+    scaled_response = response * scaling_factor
+
+    
+    
+
+    
+    # Debug output for scaling
+
+    
+    if debug:
+
+    
+        print(f"  - Raw response: {response:.6f}", file=sys.stderr)
+
+    
+        print(f"  - Scaled response (x{scaling_factor}): {scaled_response:.2f}", file=sys.stderr)
+
+    
+    
+
+    
+    return scaled_response
 
 def calculate_marginal_return(
     channel_params: Dict[str, Any],
@@ -130,14 +154,40 @@ def calculate_marginal_return(
     
     # Calculate response at current spend
     response_current = get_channel_response(
-        current_spend, beta, sat_params, adstock_params,
-        debug=False, channel_name=channel_name
+
+        current_spend,
+
+        beta,
+
+        sat_params,
+
+        adstock_params,
+
+        debug=False,
+
+        channel_name=channel_name,
+
+        scaling_factor=scaling_factor
+
     )
     
     # Calculate response at incremented spend
     response_incremented = get_channel_response(
-        current_spend + increment, beta, sat_params, adstock_params,
-        debug=False, channel_name=channel_name
+
+        current_spend + increment,
+
+        beta,
+
+        sat_params,
+
+        adstock_params,
+
+        debug=False,
+
+        channel_name=channel_name,
+
+        scaling_factor=scaling_factor
+
     )
     
     # Calculate marginal return (response difference per dollar)
@@ -151,9 +201,9 @@ def calculate_marginal_return(
     if debug:
         print(f"DEBUG: {channel_name} marginal return calculation:", file=sys.stderr)
         print(f"  - Current spend: ${current_spend:,.2f}", file=sys.stderr)
-        print(f"  - Response at current: {response_current:.6f}", file=sys.stderr)
-        print(f"  - Response at +{increment:,.0f}: {response_incremented:.6f}", file=sys.stderr)
-        print(f"  - Difference: {response_diff:.6f}", file=sys.stderr)
+        print(f"  - Response at current: {response_current:.2f}", file=sys.stderr)
+        print(f"  - Response at +{increment:,.0f}: {response_incremented:.2f}", file=sys.stderr)
+        print(f"  - Difference: {response_diff:.2f}", file=sys.stderr)
         print(f"  - Marginal return: {marginal_return:.6f} per dollar", file=sys.stderr)
     
     return marginal_return
@@ -218,12 +268,21 @@ def optimize_budget(
         
         # Calculate contribution
         contribution = get_channel_response(
+
             spend,
+
             params.get("beta_coefficient", 0),
+
             params.get("saturation_parameters", {}),
+
             params.get("adstock_parameters", {}),
+
             debug=debug,
-            channel_name=channel
+
+            channel_name=channel,
+
+            scaling_factor=scaling_factor
+
         )
         
         current_contributions[channel] = contribution
@@ -321,12 +380,21 @@ def optimize_budget(
         
         # Calculate optimized contribution
         contribution = get_channel_response(
+
             spend,
+
             params.get("beta_coefficient", 0),
+
             params.get("saturation_parameters", {}),
+
             params.get("adstock_parameters", {}),
+
             debug=debug,
-            channel_name=channel
+
+            channel_name=channel,
+
+            scaling_factor=scaling_factor
+
         )
         
         optimized_contributions[channel] = contribution
