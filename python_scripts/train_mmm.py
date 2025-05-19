@@ -412,40 +412,95 @@ def train_model(df, config):
                 
             if not time_series_decomposition["baseline"] or len(time_series_decomposition["baseline"]) == 0:
                 print("No baseline found, creating sample baseline", file=sys.stderr)
-                # Get intercept as baseline level
-                baseline_level = float(intercept) if isinstance(intercept, (int, float)) and intercept is not None else 100.0
+                # Get baseline level - either from previously extracted baseline_value or default
+                baseline_level = 0.0
+                if 'baseline_value' in locals() and baseline_value is not None:
+                    baseline_level = float(baseline_value)
+                else:
+                    # Try to get intercept from model_parameters if available
+                    intercept_value = None
+                    if 'mmm' in locals() and mmm is not None:
+                        try:
+                            # Common methods to extract intercept from PyMC-Marketing models
+                            if hasattr(mmm, 'intercept'):
+                                intercept_value = float(mmm.intercept)
+                            elif hasattr(mmm, 'get_intercept'):
+                                intercept_value = float(mmm.get_intercept())
+                        except Exception as e:
+                            print(f"Error extracting intercept from model: {str(e)}", file=sys.stderr)
+                    
+                    # If we got a value, use it, otherwise use a default
+                    if intercept_value is not None:
+                        baseline_level = intercept_value
+                    else:
+                        # If all else fails, use a proportion of the mean outcome
+                        baseline_level = float(y.mean() * 0.4)  # 40% of mean as baseline
+                
+                print(f"Using baseline level: {baseline_level}", file=sys.stderr)
                 # Create constant baseline
                 time_series_decomposition["baseline"] = [baseline_level] * len(time_series_decomposition["dates"])
                 
-            # Initialize contributions if not already defined
-            if 'contributions' not in locals() or contributions is None:
-                contributions = {}
-                # Create default channel contributions based on spend
-                for channel in channel_columns:
-                    channel_spend = df[channel].sum() if channel in df.columns else 0
-                    total_spend = sum(df[col].sum() for col in channel_columns if col in df.columns)
-                    ratio = channel_spend / total_spend if total_spend > 0 else 0
-                    contributions[channel] = ratio * sum(y) * 0.5  # Simple proportional allocation
-                    print(f"Created default contribution for {channel}: {contributions[channel]}", file=sys.stderr)
-                
-            # Ensure marketing channels have data
-            if not time_series_decomposition["marketing_channels"] or len(time_series_decomposition["marketing_channels"]) == 0:
-                print("No channel data found, creating from contribution proportions", file=sys.stderr)
-                # Get total outcome level
-                total_outcome = sum(y)
-                # Use channels from contributions - now safely initialized
+            # Create a dedicated dictionary for model-derived total contributions per channel
+            # This will be our primary source for fallback patterns if needed
+            total_model_derived_contributions_per_channel = {}
+            
+            # First approach: Get total contributions by summing time series if available
+            for channel in channel_columns:
+                channel_name = channel.replace("_Spend", "")
+                if channel in channel_contributions_ts and len(channel_contributions_ts[channel]) > 0:
+                    # We have time series data for this channel - sum it to get total contribution
+                    total_model_derived_contributions_per_channel[channel_name] = sum(channel_contributions_ts[channel])
+                    print(f"Extracted total contribution for {channel_name} from time series: {total_model_derived_contributions_per_channel[channel_name]}", file=sys.stderr)
+            
+            # Second approach: If we already have 'contributions' from an earlier part of the code, use those
+            # This might have been calculated from model.posterior.channel_contributions or other model outputs
+            if 'contributions' in locals() and contributions and isinstance(contributions, dict):
                 for channel, value in contributions.items():
                     channel_name = channel.replace("_Spend", "")
-                    # Create smoothed contribution pattern
-                    channel_pattern = []
-                    for i in range(len(time_series_decomposition["dates"])):
-                        # Create a slight natural variation around the total
-                        variation = 0.8 + (0.4 * (0.5 + 0.5 * math.sin(i * 0.7)))
-                        point_value = float(value * variation / len(time_series_decomposition["dates"]))
-                        channel_pattern.append(point_value)
+                    if channel_name not in total_model_derived_contributions_per_channel:
+                        total_model_derived_contributions_per_channel[channel_name] = value
+                        print(f"Using model-derived total contribution for {channel_name}: {value}", file=sys.stderr)
+            
+            # Ensure marketing channels have time series data
+            if not time_series_decomposition["marketing_channels"] or len(time_series_decomposition["marketing_channels"]) == 0:
+                print("Fallback: No time-series channel data found. Creating smoothed series from total model-derived contributions.", file=sys.stderr)
+                
+                # Check if we have model-derived total contributions
+                if not total_model_derived_contributions_per_channel:
+                    print("CRITICAL FALLBACK: No model-derived total contributions found. Estimating from spend proportions.", file=sys.stderr)
+                    # Absolute last resort: Create estimated contributions based on spend
+                    for channel_col_name in channel_columns:
+                        channel_name = channel_col_name.replace("_Spend", "")
+                        channel_spend = df[channel_col_name].sum() if channel_col_name in df.columns else 0
+                        total_hist_spend = sum(df[col].sum() for col in channel_columns if col in df.columns)
+                        ratio = channel_spend / total_hist_spend if total_hist_spend > 0 else 0
+                        estimated_total_contribution = ratio * sum(y) * 0.5
+                        total_model_derived_contributions_per_channel[channel_name] = estimated_total_contribution
+                        print(f"Created last-resort estimated contribution for {channel_name}: {estimated_total_contribution}", file=sys.stderr)
+                
+                # Now create time series data using the best available total contributions
+                num_dates = len(time_series_decomposition.get("dates", []))
+                if num_dates > 0:
+                    for channel_name, total_contribution in total_model_derived_contributions_per_channel.items():
+                        # Create smoothed contribution pattern with natural variation
+                        channel_pattern = []
+                        for i in range(num_dates):
+                            # Create a slight natural variation around the total
+                            variation = 0.8 + (0.4 * (0.5 + 0.5 * math.sin(i * 0.7)))
+                            point_value = float(total_contribution * variation / num_dates)
+                            channel_pattern.append(point_value)
+                        
+                        time_series_decomposition["marketing_channels"][channel_name] = channel_pattern
+                        print(f"Created time series for {channel_name} using total contribution: {total_contribution}", file=sys.stderr)
+                else:
+                    print("Warning: Cannot create fallback time-series as no dates found.", file=sys.stderr)
                     
-                    time_series_decomposition["marketing_channels"][channel_name] = channel_pattern
-                    print(f"Added synthetic pattern for {channel_name} based on real contribution data", file=sys.stderr)
+            # Make sure 'contributions' is defined for the rest of the code
+            # This ensures backward compatibility with other parts of the script
+            contributions = {}
+            for channel_name, value in total_model_derived_contributions_per_channel.items():
+                channel_key = f"{channel_name}_Spend" if f"{channel_name}_Spend" in channel_columns else channel_name
+                contributions[channel_key] = value
             
             # Also create the complete time series data structure with proper hierarchical organization
             # for backward compatibility and more detailed point-by-point analysis
