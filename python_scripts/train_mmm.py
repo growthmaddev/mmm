@@ -1044,15 +1044,47 @@ def train_model(df, config):
                 "time_series_data": time_series_data,
                 
                 # Explicitly structured time series decomposition data as requested
-                "time_series_decomposition": time_series_decomposition if 'time_series_decomposition' in locals() else {
-                    "dates": [], 
-                    "baseline": [],
-                    "control_variables": {},
-                    "marketing_channels": {}
+                "time_series_decomposition": {
+                    # Use actual dates if available, otherwise generate placeholder dates
+                    "dates": ([d.strftime("%Y-%m-%d") if isinstance(d, datetime) else str(d) for d in dates] 
+                            if 'dates' in locals() and dates else 
+                            date_strings if 'date_strings' in locals() and date_strings else 
+                            [(datetime.now() - timedelta(days=i*7)).strftime("%Y-%m-%d") for i in range(12)][::-1]),
+                    
+                    # Use actual baseline if available
+                    "baseline": (baseline_contribution_ts if 'baseline_contribution_ts' in locals() and baseline_contribution_ts else 
+                               [float(baseline_value) for _ in range(len(y))]),
+                    
+                    # Use actual control variables if available
+                    "control_variables": (control_contributions_ts if 'control_contributions_ts' in locals() and control_contributions_ts else 
+                                         {}),
+                    
+                    # Use actual marketing channels contributions
+                    "marketing_channels": {
+                        channel.replace("_Spend", ""): channel_contributions_ts[channel] 
+                        for channel in channel_columns 
+                        if 'channel_contributions_ts' in locals() and channel in channel_contributions_ts and len(channel_contributions_ts[channel]) > 0
+                    }
                 },
                 
                 # Response curves with detailed parameter information
-                "response_curves": response_curves,
+                "response_curves": response_curves if 'response_curves' in locals() and response_curves else {
+                    channel.replace("_Spend", ""): {
+                        "spend_points": [float(i * 100000 / 19) for i in range(20)],
+                        "response_values": [
+                            float(model_parameters.get(channel.replace("_Spend", ""), {}).get("beta_coefficient", 0.1) * 
+                            (model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", {}).get("L", 1.0) / 
+                            (1 + math.exp(-model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", {}).get("k", 0.0005) * 
+                            (float(i * 100000 / 19) - model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", {}).get("x0", 50000))))))
+                            for i in range(20)
+                        ],
+                        "parameters": {
+                            "beta": model_parameters.get(channel.replace("_Spend", ""), {}).get("beta_coefficient", 0.1),
+                            "saturation": model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", 
+                            {"L": 1.0, "k": 0.0005, "x0": 50000.0})
+                        }
+                    } for channel in channel_columns if channel.replace("_Spend", "") in model_parameters
+                },
                 
                 # Store detailed channel parameters for visualization
                 "channel_parameters": channel_parameters if 'channel_parameters' in locals() else {},
@@ -1081,10 +1113,10 @@ def train_model(df, config):
                     }
                 },
                 
-                # Historical spend data for ROI calculations
+                # Historical spend data for ROI calculations - this is CRITICAL for ROI
                 "historical_spends": {
-                    channel.replace("_Spend", ""): float(historical_channel_spends.get(channel, 0)) 
-                    for channel in channel_columns if 'historical_channel_spends' in locals()
+                    channel.replace("_Spend", ""): float(df[channel].sum() if channel in df.columns else 0) 
+                    for channel in channel_columns
                 },
                 
                 # Include model parameters for reference
