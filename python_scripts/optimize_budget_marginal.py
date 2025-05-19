@@ -179,12 +179,25 @@ def optimize_budget(
     for channel, spend in current_allocation.items():
         params = channel_params.get(channel, {})
         beta = params.get("beta_coefficient", 0)
+        original_beta = beta
+        
+        # Print original parameters for analysis
+        if debug:
+            print(f"\nDEBUG: === CHANNEL {channel} PARAMETERS ===", file=sys.stderr)
+            print(f"DEBUG: Original beta coefficient: {original_beta}", file=sys.stderr)
+            
+            # Print other key parameters
+            adstock_params = params.get("adstock_parameters", {})
+            print(f"DEBUG: Adstock parameters: {adstock_params}", file=sys.stderr)
+            
         sat_params = params.get("saturation_parameters", {})
+        if debug:
+            print(f"DEBUG: Saturation parameters: {sat_params}", file=sys.stderr)
         
         # Calculate contribution
         contribution = get_channel_response(
             spend, beta, sat_params, 
-            debug=(debug and channel == "PPCBrand"),  # Debug output for PPCBrand
+            debug=debug,  # Debug output for all channels
             channel_name=channel
         )
         
