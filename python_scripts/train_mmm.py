@@ -321,26 +321,91 @@ def train_model(df, config):
                     print(f"Extracted contribution time series for control variable {control_var}", file=sys.stderr)
                     
             # Try to extract channel contributions from the PyMC-Marketing model
+            # This section is critical for ensuring we have real model-derived data
             try:
+                contributions_found = False
+                
                 # First try to access channel_contributions directly from idata.posterior
                 # This is how newer PyMC-Marketing versions store channel contributions
                 if 'channel_contributions' in idata.posterior:
                     print("Found channel_contributions in idata.posterior", file=sys.stderr)
                     for i, channel in enumerate(channel_columns):
-                        channel_contrib = idata.posterior['channel_contributions'].sel(channel=i).mean(dim=['chain', 'draw']).values
-                        channel_contributions_ts[channel] = [float(val) for val in channel_contrib]
-                        
-                # If not found, try alternative approaches to extract or calculate channel contributions
-                else:
-                    print("Channel contributions not directly available, calculating alternatives", file=sys.stderr)
+                        try:
+                            channel_contrib = idata.posterior['channel_contributions'].sel(channel=i).mean(dim=['chain', 'draw']).values
+                            # Ensure we have valid data
+                            if len(channel_contrib) == len(df):
+                                channel_contributions_ts[channel] = [float(val) for val in channel_contrib]
+                                print(f"Extracted {len(channel_contrib)} contribution values for {channel}", file=sys.stderr)
+                                contributions_found = True
+                        except Exception as e:
+                            print(f"Error extracting {channel} contributions: {str(e)}", file=sys.stderr)
+                
+                # Second attempt: Try to extract individual media components from posterior predictive
+                if not contributions_found and hasattr(idata, 'posterior_predictive'):
+                    print("Trying to extract from posterior_predictive...", file=sys.stderr)
+                    if 'media_contributions' in idata.posterior_predictive:
+                        print("Found media_contributions in posterior_predictive", file=sys.stderr)
+                        for i, channel in enumerate(channel_columns):
+                            try:
+                                # Different versions may format this differently
+                                if 'channel' in idata.posterior_predictive.media_contributions.dims:
+                                    channel_contrib = idata.posterior_predictive.media_contributions.sel(channel=i).mean(dim=['chain', 'draw']).values
+                                else:
+                                    # Try accessing by index if channel dimension not present
+                                    channel_contrib = idata.posterior_predictive.media_contributions[:, :, i].mean(dim=['chain', 'draw']).values
+                                
+                                if len(channel_contrib) == len(df):
+                                    channel_contributions_ts[channel] = [float(val) for val in channel_contrib]
+                                    print(f"Extracted {len(channel_contrib)} contribution values from posterior_predictive for {channel}", file=sys.stderr)
+                                    contributions_found = True
+                            except Exception as e:
+                                print(f"Error extracting from posterior_predictive for {channel}: {str(e)}", file=sys.stderr)
+                
+                # Third attempt: Try to calculate from model parameters
+                if not contributions_found and len(model_parameters) > 0:
+                    print("Calculating contributions from model parameters...", file=sys.stderr)
+                    for channel in channel_columns:
+                        try:
+                            # Get channel parameters
+                            channel_clean = channel.replace("_Spend", "")
+                            params = model_parameters.get(channel_clean, {})
+                            beta = params.get('beta_coefficient', None)
+                            
+                            if beta is not None:
+                                # Apply transforms to the spend data to calculate contributions
+                                sat_params = params.get('saturation_parameters', {})
+                                L = sat_params.get('L', 1.0)
+                                k = sat_params.get('k', 0.0005)
+                                x0 = sat_params.get('x0', 10000.0)
+                                
+                                # Calculate contribution for each time period
+                                contrib_ts = []
+                                for spend_val in df[channel].values:
+                                    # Apply saturation transformation
+                                    saturation = L / (1 + np.exp(-k * (spend_val - x0)))
+                                    response = beta * saturation
+                                    contrib_ts.append(float(response))
+                                
+                                channel_contributions_ts[channel] = contrib_ts
+                                print(f"Calculated {len(contrib_ts)} contribution values from model parameters for {channel}", file=sys.stderr)
+                                contributions_found = True
+                        except Exception as e:
+                            print(f"Error calculating from parameters for {channel}: {str(e)}", file=sys.stderr)
+                
+                # If we still don't have contributions, flag this clearly
+                if not contributions_found:
+                    print("WARNING: Could not extract or calculate real model-derived channel contributions", file=sys.stderr)
+                    # We'll continue to the manual calculation below
+                    
             except Exception as channel_extract_error:
                 print(f"Error extracting channel contributions from idata: {str(channel_extract_error)}", file=sys.stderr)
             
-            # If we couldn't extract from the model, calculate manual contributions
+            # LAST RESORT: If we couldn't extract from the model, calculate manual contributions
+            # This should only be used if all attempts above failed
             channel_contributions_dict = {}  # Use a local variable to avoid conflicts
-            if not channel_contributions_ts:
-                print("Using manual calculation for channel contributions", file=sys.stderr)
-                # Calculate contributions manually
+            if not any(channel_contributions_ts.values()):
+                print("FALLBACK: Using manual calculation for channel contributions", file=sys.stderr)
+                # Calculate contributions manually based on spend patterns and total sales
                 for channel in channel_columns:
                     # Estimate contribution based on spend proportion and importance
                     channel_spend = df[channel].sum()
@@ -366,7 +431,7 @@ def train_model(df, config):
                     else:
                         channel_contributions_ts[channel] = [0.0] * len(dates)
                         
-                    print(f"Calculated contribution time series for channel {channel}", file=sys.stderr)
+                    print(f"FALLBACK: Calculated contribution time series for channel {channel}", file=sys.stderr)
                 
                 # Store contribution values for later use
                 # Create a list to ensure scope issues don't occur
@@ -576,6 +641,8 @@ def train_model(df, config):
         # Ensure model_parameters is initialized
         if 'model_parameters' not in locals() or model_parameters is None:
             model_parameters = {}
+            
+        print("Generating response curves from real model parameters...", file=sys.stderr)
         
         # For each channel, generate a response curve using the model parameters
         for channel in channel_columns:
