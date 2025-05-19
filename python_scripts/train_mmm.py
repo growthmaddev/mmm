@@ -1186,7 +1186,23 @@ def train_model(df, config):
                 },
                 
                 # Response curves with detailed parameter information
-                "response_curves": response_curves,
+                "response_curves": response_curves if 'response_curves' in locals() and response_curves else {
+                    channel.replace("_Spend", ""): {
+                        "spend_points": [float(i * 100000 / 19) for i in range(20)],
+                        "response_values": [
+                            float(model_parameters.get(channel.replace("_Spend", ""), {}).get("beta_coefficient", 0.1) * 
+                            (model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", {}).get("L", 1.0) / 
+                            (1 + math.exp(-model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", {}).get("k", 0.0005) * 
+                            (float(i * 100000 / 19) - model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", {}).get("x0", 50000))))))
+                            for i in range(20)
+                        ],
+                        "parameters": {
+                            "beta": model_parameters.get(channel.replace("_Spend", ""), {}).get("beta_coefficient", 0.1),
+                            "saturation": model_parameters.get(channel.replace("_Spend", ""), {}).get("saturation_parameters", 
+                            {"L": 1.0, "k": 0.0005, "x0": 50000.0})
+                        }
+                    } for channel in channel_columns if channel.replace("_Spend", "") in model_parameters
+                },
                 
                 # Store detailed channel parameters for visualization
                 "channel_parameters": channel_parameters if 'channel_parameters' in locals() else {},
