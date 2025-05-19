@@ -39,7 +39,8 @@ def get_channel_response(
     saturation_params: Dict[str, float],
     adstock_params: Optional[Dict[str, float]] = None,
     debug: bool = False,
-    channel_name: str = ""
+    channel_name: str = "",
+    scaling_factor: float = 5000.0  # CRITICAL: Apply scaling to make contributions meaningful
 ) -> float:
     """
     Calculate expected response for a channel given spend and parameters.
@@ -92,6 +93,9 @@ def get_channel_response(
     # Apply beta coefficient to get final response
     response = beta * saturated_spend
     
+    # Apply scaling factor to make contributions meaningful
+    scaled_response = response * scaling_factor
+    
     # Debug output
     if debug:
         print(f"DEBUG: {channel_name} response calculation:", file=sys.stderr)
@@ -99,31 +103,8 @@ def get_channel_response(
         print(f"  - Beta: {beta:.6f}", file=sys.stderr)
         print(f"  - Saturation params: L={L:.2f}, k={k:.6f}, x0={x0:,.0f}", file=sys.stderr)
         print(f"  - Saturated spend: {saturated_spend:.6f}", file=sys.stderr)
-        print(f"  - Response: {response:.6f}", file=sys.stderr)
-    
-    # Apply scaling factor to make contributions meaningful
-
-    
-    scaled_response = response * scaling_factor
-
-    
-    
-
-    
-    # Debug output for scaling
-
-    
-    if debug:
-
-    
         print(f"  - Raw response: {response:.6f}", file=sys.stderr)
-
-    
         print(f"  - Scaled response (x{scaling_factor}): {scaled_response:.2f}", file=sys.stderr)
-
-    
-    
-
     
     return scaled_response
 
@@ -132,7 +113,8 @@ def calculate_marginal_return(
     current_spend: float,
     increment: float = 1000.0,
     debug: bool = False,
-    channel_name: str = ""
+    channel_name: str = "",
+    scaling_factor: float = 5000.0  # CRITICAL: Apply same scaling as in get_channel_response
 ) -> float:
     """
     Calculate marginal return for additional spend on a channel.
@@ -216,7 +198,8 @@ def optimize_budget(
     max_iterations: int = 1000,
     baseline_sales: float = 0.0,
     min_channel_budget: float = 1000.0,
-    debug: bool = True
+    debug: bool = True,
+    scaling_factor: float = 5000.0  # CRITICAL: Scaling factor to make contributions meaningful
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
