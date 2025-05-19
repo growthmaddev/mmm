@@ -1,0 +1,38 @@
+{
+  "scenario_a": {
+    "optimized_allocation": {
+      "PPCBrand": 46000.0,
+      "PPCNonBrand": 1000.0,
+      "PPCShopping": 56000.0,
+      "PPCLocal": 58000.0,
+      "PPCPMax": 37000.0,
+      "FBReach": 1000.0,
+      "FBDPA": 1000.0,
+      "OfflineMedia": 1000.0
+    },
+    "expected_outcome": 100001,
+    "expected_lift": 0.0,
+    "current_outcome": 100001,
+    "baseline_sales": 100000.0,
+    "total_contribution": 1.1751900025002366,
+    "total_current_contribution": 0.7397357932339967
+  },
+  "scenario_b": {
+    "optimized_allocation": {
+      "PPCBrand": 53000.0,
+      "PPCNonBrand": 1000.0,
+      "PPCShopping": 63000.0,
+      "PPCLocal": 65000.0,
+      "PPCPMax": 44000.0,
+      "FBReach": 1000.0,
+      "FBDPA": 72000.0,
+      "OfflineMedia": 1000.0
+    },
+    "expected_outcome": 100001,
+    "expected_lift": 0.0,
+    "current_outcome": 100001,
+    "baseline_sales": 100000.0,
+    "total_contribution": 1.4615742704836059,
+    "total_current_contribution": 0.7397357932339967
+  }
+}

@@ -661,15 +661,28 @@ def optimize_budget(
             params["beta_coefficient"] = beta
             print(f"DEBUG: Created synthetic beta for {channel} in calculation step: {beta:.6f}", file=sys.stderr)
             
-        # Force reasonable saturation parameters
+        # CRITICAL FIX: Improve saturation parameters for realistic response curves
+        # The MMM model might produce extreme saturation parameters that cause issues
         if "saturation_parameters" in params:
             sat_params = params["saturation_parameters"]
+            
+            # Force L (ceiling) to be reasonable (1.0 is standard normalized value)
             if sat_params.get("L", 0) <= 0.01:
                 sat_params["L"] = 1.0
+                
+            # Force k (steepness) to be reasonable
+            # Higher k = steeper curve, use 0.0001 for smoother curves with more gradual diminishing returns
             if sat_params.get("k", 0) <= 0.00001:
-                sat_params["k"] = 0.0005
-            if sat_params.get("x0", 0) <= 0:
-                sat_params["x0"] = max(10000, spend * 1.5)
+                sat_params["k"] = 0.0001  # Use smaller k for more gradual diminishing returns
+                
+            # CRITICAL FIX: Set x0 (midpoint) to a reasonable value based on spend
+            # Using large x0 values (50k+) makes small channels never saturate 
+            # This causes the optimizer to over-allocate to big channels
+            current_spend = current_allocation.get(channel, 5000)
+            # Set x0 to 2x current spend, but cap between 5k-50k for reasonable curves
+            if sat_params.get("x0", 0) <= 0 or sat_params.get("x0", 0) > 100000:
+                sat_params["x0"] = min(50000, max(5000, current_spend * 2))
+                print(f"DEBUG: Adjusted x0 for {channel} to {sat_params['x0']} (2x current spend)", file=sys.stderr)
         
         # Calculate raw contribution first (without scaling) 
         raw_contribution = get_channel_response(
