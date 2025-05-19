@@ -1,0 +1,202 @@
+{
+  "scenario_a": {
+    "optimized_allocation": {
+      "PPCBrand": 66202.41171932152,
+      "PPCNonBrand": 1020.3960408224641,
+      "PPCShopping": 77293.75266802711,
+      "PPCLocal": 1068.949375258377,
+      "PPCPMax": 53149.63564534143,
+      "FBReach": 1017.3824345300814,
+      "FBDPA": 1018.8747561507049,
+      "OfflineMedia": 1013.5973605483094
+    },
+    "expected_outcome": 332047,
+    "expected_lift": 27.71,
+    "current_outcome": 260000,
+    "channel_breakdown": [
+      {
+        "channel": "PPCBrand",
+        "current_spend": 8697,
+        "optimized_spend": 66202.41171932152,
+        "percent_change": 661.2097472613721,
+        "roi": 0.6600119610188143,
+        "contribution": 43694.383583044335
+      },
+      {
+        "channel": "PPCNonBrand",
+        "current_spend": 33283,
+        "optimized_spend": 1020.3960408224641,
+        "percent_change": -96.93418249309718,
+        "roi": 0.3331656277996859,
+        "contribution": 339.9608875449302
+      },
+      {
+        "channel": "PPCShopping",
+        "current_spend": 13942,
+        "optimized_spend": 77293.75266802711,
+        "percent_change": 454.3950126813019,
+        "roi": 0.5368814928738102,
+        "contribution": 41497.58532222944
+      },
+      {
+        "channel": "PPCLocal",
+        "current_spend": 14980,
+        "optimized_spend": 1068.949375258377,
+        "percent_change": -92.86415637344207,
+        "roi": 1.0995183769596018,
+        "contribution": 1175.3294821360707
+      },
+      {
+        "channel": "PPCPMax",
+        "current_spend": 3911,
+        "optimized_spend": 53149.63564534143,
+        "percent_change": 1258.9781550841583,
+        "roi": 0.8374228139531709,
+        "contribution": 44508.71744270757
+      },
+      {
+        "channel": "FBReach",
+        "current_spend": 19743,
+        "optimized_spend": 1017.3824345300814,
+        "percent_change": -94.84687010824048,
+        "roi": 0.2848651609244253,
+        "contribution": 289.81681093409526
+      },
+      {
+        "channel": "FBDPA",
+        "current_spend": 19408,
+        "optimized_spend": 1018.8747561507049,
+        "percent_change": -94.75023311958624,
+        "roi": 0.3091218818905252,
+        "contribution": 314.9564820320559
+      },
+      {
+        "channel": "OfflineMedia",
+        "current_spend": 87821,
+        "optimized_spend": 1013.5973605483094,
+        "percent_change": -98.84583714538856,
+        "roi": 0.2234937332995205,
+        "contribution": 226.53265817148178
+      }
+    ],
+    "target_variable": "Sales",
+    "summary_points": [
+      "Expected outcome: $332,047 (+27.7% improvement)",
+      "Biggest increases: PPCPMax (1259%), PPCBrand (661%), PPCShopping (454%)",
+      "Biggest decreases: OfflineMedia (-99%), PPCNonBrand (-97%), FBReach (-95%)",
+      "Budget change: $-0 (-0.0%)"
+    ],
+    "performance_metrics": {
+      "total_current_budget": 201785,
+      "total_optimized_budget": 201784.99999999997,
+      "budget_change_pct": -1.4423188273030058e-14,
+      "absolute_improvement": 72047,
+      "current_marketing_roi": 0.2973461852962312,
+      "optimized_marketing_roi": 0.6543959296716804,
+      "improvement_per_incremental_dollar": 0.0,
+      "baseline_sales": 200000.0,
+      "total_channel_contribution": 132047.2826688,
+      "total_current_contribution": 60000.00000000001
+    }
+  },
+  "scenario_b": {
+    "optimized_allocation": {
+      "PPCBrand": 69000.0,
+      "PPCNonBrand": 1000.0,
+      "PPCShopping": 85000.0,
+      "PPCLocal": 87000.0,
+      "PPCPMax": 55000.0,
+      "FBReach": 1000.0,
+      "FBDPA": 1000.0,
+      "OfflineMedia": 1000.0
+    },
+    "expected_outcome": 377381,
+    "expected_lift": 45.15,
+    "current_outcome": 260000,
+    "channel_breakdown": [
+      {
+        "channel": "PPCBrand",
+        "current_spend": 8697,
+        "optimized_spend": 69000.0,
+        "percent_change": 693.3770265608831,
+        "roi": 0.6419953287818128,
+        "contribution": 44297.67768594508
+      },
+      {
+        "channel": "PPCNonBrand",
+        "current_spend": 33283,
+        "optimized_spend": 1000.0,
+        "percent_change": -96.99546314935553,
+        "roi": 0.3394754162791866,
+        "contribution": 339.4754162791866
+      },
+      {
+        "channel": "PPCShopping",
+        "current_spend": 13942,
+        "optimized_spend": 85000.0,
+        "percent_change": 509.66862716970303,
+        "roi": 0.5146465857337454,
+        "contribution": 43744.95978736837
+      },
+      {
+        "channel": "PPCLocal",
+        "current_spend": 14980,
+        "optimized_spend": 87000.0,
+        "percent_change": 480.7743658210948,
+        "roi": 0.4981249870954064,
+        "contribution": 43336.87387730036
+      },
+      {
+        "channel": "PPCPMax",
+        "current_spend": 3911,
+        "optimized_spend": 55000.0,
+        "percent_change": 1306.2899514190744,
+        "roi": 0.8151161787358208,
+        "contribution": 44831.38983047014
+      },
+      {
+        "channel": "FBReach",
+        "current_spend": 19743,
+        "optimized_spend": 1000.0,
+        "percent_change": -94.93491364027756,
+        "roi": 0.2894642272485083,
+        "contribution": 289.4642272485083
+      },
+      {
+        "channel": "FBDPA",
+        "current_spend": 19408,
+        "optimized_spend": 1000.0,
+        "percent_change": -94.8474855729596,
+        "roi": 0.3145407180295329,
+        "contribution": 314.54071802953285
+      },
+      {
+        "channel": "OfflineMedia",
+        "current_spend": 87821,
+        "optimized_spend": 1000.0,
+        "percent_change": -98.86132018537708,
+        "roi": 0.2263169441861244,
+        "contribution": 226.3169441861244
+      }
+    ],
+    "target_variable": "Sales",
+    "summary_points": [
+      "Expected outcome: $377,381 (+45.1% improvement)",
+      "Biggest increases: PPCPMax (1306%), PPCBrand (693%), PPCShopping (510%)",
+      "Biggest decreases: OfflineMedia (-99%), PPCNonBrand (-97%), FBReach (-95%)",
+      "Budget change: $+98,215 (+48.7%)"
+    ],
+    "performance_metrics": {
+      "total_current_budget": 201785,
+      "total_optimized_budget": 300000.0,
+      "budget_change_pct": 48.67309264811557,
+      "absolute_improvement": 117381,
+      "current_marketing_roi": 0.2973461852962312,
+      "optimized_marketing_roi": 0.591268994956091,
+      "improvement_per_incremental_dollar": 1.1951433080486686,
+      "baseline_sales": 200000.0,
+      "total_channel_contribution": 177380.69848682728,
+      "total_current_contribution": 60000.00000000001
+    }
+  }
+}
