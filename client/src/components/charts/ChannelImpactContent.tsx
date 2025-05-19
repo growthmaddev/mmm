@@ -288,7 +288,7 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
             <li className="flex items-start">
               <div className="min-w-8 mr-2">✓</div>
               <div className="text-sm">
-                {sortedByROI[sortedByROI.length - 1][0]} has the lowest ROI at {(sortedByROI[sortedByROI.length - 1][1].roi).toFixed(2)}x and may benefit from reduced spending.
+                {sortedByROI[sortedByROI.length - 1][0]} has the lowest ROI at {((sortedByROI[sortedByROI.length - 1][1] as any).roi).toFixed(2)}x and may benefit from reduced spending.
               </div>
             </li>
           </ul>

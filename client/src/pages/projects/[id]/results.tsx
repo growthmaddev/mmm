@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, Info, Sparkles } from "lucide-react";
-import ChannelImpact from "@/components/projects/ChannelImpact";
+import ChannelImpactContent from "@/components/charts/ChannelImpactContent";
 
 export default function ModelResults() {
   const { id } = useParams();
@@ -380,11 +380,9 @@ export default function ModelResults() {
                 </TabsContent>
                 
                 <TabsContent value="channel-impact" className="pt-4">
-                  {/* Import the ChannelImpact component at the top of the file */}
                   {model && model.results ? (
                     <div>
-                      {/* Use our new ChannelImpact component */}
-                      <ChannelImpact model={model} />
+                      <ChannelImpactContent model={model} />
                     </div>
                   ) : (
                     <div className="text-center py-10">
