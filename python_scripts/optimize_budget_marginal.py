@@ -73,6 +73,18 @@ def calculate_marginal_return(
     """Calculate the marginal return for additional spend on a channel."""
     # Extract parameters
     beta = channel_params.get("beta_coefficient", 0)
+    
+    # CRITICAL FIX: Ensure beta coefficient is positive and meaningful
+    # If beta is too small, channel won't contribute meaningfully
+    if beta <= 0.001:
+        # Use a small positive default based on channel
+        if "Brand" in channel_name:
+            beta = 0.05  # Higher default for brand channels
+        elif "PPC" in channel_name:
+            beta = 0.03  # Medium default for PPC channels
+        else:
+            beta = 0.01  # Lower default for other channels
+    
     adstock_params = channel_params.get("adstock_parameters", {})
     saturation_params = channel_params.get("saturation_parameters", {})
     adstock_type = channel_params.get("adstock_type", "GeometricAdstock")
@@ -186,18 +198,19 @@ def optimize_budget(
     if debug:
         print(f"DEBUG: Total current contribution: ${total_current_contribution:,.2f}", file=sys.stderr)
     
-    # STRONGER DIVERSITY: Calculate minimum guaranteed allocation for each channel
+    # BALANCED DIVERSITY: Calculate minimum guaranteed allocation for each channel
     # Allocate a percentage of budget to each channel regardless of ROI
     num_channels = len(channel_params)
     total_min_allocation = min_channel_budget * num_channels
     
     if enforce_strong_diversity:
-        # For strong diversity, allocate 40% of budget evenly across all channels
-        diversity_budget = desired_budget * 0.4
+        # For better diversity, allocate 25% of budget evenly across all channels
+        # This leaves 75% to be allocated based on performance
+        diversity_budget = desired_budget * 0.25
         guaranteed_per_channel = max(min_channel_budget, diversity_budget / num_channels)
         
         if debug:
-            print(f"DEBUG: Strong diversity enforcement: Allocating ${diversity_budget:,.0f} evenly", file=sys.stderr)
+            print(f"DEBUG: Balanced diversity enforcement: Allocating ${diversity_budget:,.0f} evenly", file=sys.stderr)
             print(f"DEBUG: Guaranteed allocation per channel: ${guaranteed_per_channel:,.0f}", file=sys.stderr)
     else:
         # For regular approach, just use minimum budget
