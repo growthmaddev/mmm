@@ -360,15 +360,34 @@ def optimize_budget(
     print(f"Expected outcome: ${expected_outcome:,.2f}", file=sys.stderr)
     print(f"Absolute improvement: ${absolute_lift:+,.2f}", file=sys.stderr)
     print(f"Expected lift: {percent_lift:+.2f}%", file=sys.stderr)
-    else:
-        # STEP 3: Iteratively allocate budget based on marginal returns
-        iteration = 0
-        
-        while remaining_budget >= increment and iteration < max_iterations:
-            iteration += 1
-            
-            # Calculate marginal returns for all channels
-            marginal_returns = {}
+    
+    # Create result dictionary
+    result = {
+        "optimized_allocation": optimized_allocation,
+        "expected_outcome": round(expected_outcome),
+        "expected_lift": round(percent_lift * 100) / 100,  # Round to 2 decimal places
+        "current_outcome": round(current_outcome),
+        "baseline_sales": baseline_sales,
+        "total_contribution": total_contribution,
+        "total_current_contribution": total_current_contribution
+    }
+    
+    return result
+
+def main():
+    """
+    Main function to run the budget optimization as a standalone script.
+    
+    Usage:
+        python optimize_budget_marginal.py input.json
+    
+    Input JSON format:
+    {
+        "model_results_json_str": "string containing model results JSON",
+        "current_allocation": {"channel1": value, ...},
+        "desired_budget": total_budget_value
+    }
+    """
             
             for channel, params in channel_params.items():
                 current_spend = optimized_allocation[channel]
