@@ -116,7 +116,8 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
         
         // Add control variables
         if (timeSeriesDecomp.control_variables) {
-          Object.entries(timeSeriesDecomp.control_variables).forEach(([controlVar, values]: [string, any[]]) => {
+          Object.entries(timeSeriesDecomp.control_variables).forEach((entry) => {
+            const [controlVar, values] = entry;
             if (Array.isArray(values) && values.length > index) {
               dataPoint[controlVar] = values[index];
             }
@@ -125,7 +126,8 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
         
         // Add marketing channels
         if (timeSeriesDecomp.marketing_channels) {
-          Object.entries(timeSeriesDecomp.marketing_channels).forEach(([channel, values]: [string, any[]]) => {
+          Object.entries(timeSeriesDecomp.marketing_channels).forEach((entry) => {
+            const [channel, values] = entry;
             if (Array.isArray(values) && values.length > index) {
               dataPoint[channel] = values[index];
             }
