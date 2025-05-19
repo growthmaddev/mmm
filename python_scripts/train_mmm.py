@@ -582,8 +582,8 @@ def train_model(df, config):
                     print(f"Extracted total contribution for {channel_name} from time series: {total_model_derived_contributions_per_channel[channel_name]}", file=sys.stderr)
             
             # Second approach: If we already have 'contributions' from an earlier part of the code, use those
-            # This might have been calculated from model.posterior.channel_contributions or other model outputs
-            if 'contributions' in locals() and contributions and isinstance(contributions, dict):
+            # Use contributions dictionary that we've initialized earlier
+            if contributions and isinstance(contributions, dict):
                 for channel, value in contributions.items():
                     channel_name = channel.replace("_Spend", "")
                     if channel_name not in total_model_derived_contributions_per_channel:
@@ -671,9 +671,8 @@ def train_model(df, config):
         # Manually calculate channel contributions using simplified approach
         total_marketing_contribution = 0
         
-        # First check if we have already calculated contributions in an earlier step
-        if not hasattr(locals(), 'contributions') or contributions is None:
-            contributions = {}
+        # Initialize contributions variable to avoid UnboundLocalError
+        contributions = {}
         
         for channel in channel_columns:
             # If we already have time series data for this channel, sum it
