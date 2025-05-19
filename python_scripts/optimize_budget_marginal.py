@@ -223,7 +223,7 @@ def optimize_budget(
     min_channel_budget: float = 1000.0,
     debug: bool = True,
     scaling_factor: float = 1.0,  # Use raw contributions (no scaling)
-    diversity_factor: float = 0.8  # Increased diversity constraint (0-1, higher = more diverse)
+    diversity_factor: float = 0.3  # Reduced diversity constraint to avoid extreme allocations
 ) -> Dict[str, Any]:
     """
     Optimize budget allocation across channels based on marginal returns.
@@ -306,26 +306,48 @@ def optimize_budget(
         print(f"DEBUG: Total initial contribution: {total_current_contribution:.6f}", file=sys.stderr)
         print(f"DEBUG: Initial outcome (baseline + contribution): ${current_outcome:,.2f}", file=sys.stderr)
     
-    # STEP 2: Start optimization with minimum allocation to each channel
-    # Initialize all channels with minimum budget
-    optimized_allocation = {channel: min_channel_budget for channel in channel_params}
+    # STEP 2: Initialize allocation based on scenario
+    # For budget increases, start with proportional scaling of current allocation
+    if desired_budget > sum(current_allocation.values()) * 1.05:  # Budget increase >5%
+        if debug:
+            print(f"DEBUG: Budget increase detected, using proportional initial allocation", file=sys.stderr)
+            
+        # Calculate scaling factor based on desired budget
+        budget_ratio = desired_budget / sum(current_allocation.values()) if sum(current_allocation.values()) > 0 else 1.0
+        
+        # Initialize with scaled values from current allocation
+        optimized_allocation = {}
+        for channel in channel_params:
+            current = current_allocation.get(channel, min_channel_budget)
+            # Scale by budget ratio with a dampening factor to avoid extreme scaling
+            optimized_allocation[channel] = max(current * min(budget_ratio, 1.5), min_channel_budget)
+            
+        if debug:
+            print(f"DEBUG: Budget ratio: {budget_ratio:.2f}", file=sys.stderr)
+            print(f"DEBUG: Initial allocation based on proportional scaling", file=sys.stderr)
+            
+    else:
+        # For same or reduced budget, start with minimum allocation
+        optimized_allocation = {channel: min_channel_budget for channel in channel_params}
     
     # Calculate remaining budget
     remaining_budget = desired_budget - sum(optimized_allocation.values())
     
     if debug:
         print(f"\nDEBUG: === STARTING ITERATIVE OPTIMIZATION ===", file=sys.stderr)
-        print(f"DEBUG: Minimum allocation per channel: ${min_channel_budget:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Total minimum allocation: ${sum(optimized_allocation.values()):,.2f}", file=sys.stderr)
+        print(f"DEBUG: Initial allocation total: ${sum(optimized_allocation.values()):,.2f}", file=sys.stderr)
         print(f"DEBUG: Remaining budget to allocate: ${remaining_budget:,.2f}", file=sys.stderr)
     
     # Check if we can proceed
     if remaining_budget < 0:
         if debug:
-            print(f"DEBUG: ERROR - Not enough budget to allocate minimum to each channel", file=sys.stderr)
-        # Just allocate evenly in this case
-        allocation_per_channel = desired_budget / len(channel_params)
-        optimized_allocation = {channel: allocation_per_channel for channel in channel_params}
+            print(f"DEBUG: WARNING - Initial allocation exceeds budget, adjusting...", file=sys.stderr)
+        # Adjust allocation to fit within budget
+        scale_factor = desired_budget / sum(optimized_allocation.values())
+        optimized_allocation = {channel: max(value * scale_factor, min_channel_budget) 
+                               for channel, value in optimized_allocation.items()}
+        remaining_budget = desired_budget - sum(optimized_allocation.values())
+    
     # Special case: If desired budget equals current budget, start with current allocation
     # but ensure minimum allocation per channel
     elif abs(desired_budget - sum(current_allocation.values())) < 0.01:
