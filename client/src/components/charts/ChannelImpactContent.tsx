@@ -465,15 +465,15 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {sortedChannels.map(([channel, data]: [string, any]) => {
-                const efficiency = data.contribution / (data.spend / 100000);
+              {sortedChannels.map((channelData) => {
+                const efficiency = channelData.percentOfTotal / (channelData.spend / 100000);
                 return (
-                  <div key={channel} className="space-y-1">
+                  <div key={channelData.channel} className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <span className="font-medium">{channel}</span>
+                      <span className="font-medium">{channelData.channel}</span>
                       <div className="flex space-x-4">
-                        <span>Spend: {formatNumber(data.spend)}</span>
-                        <span>Contribution: {formatPercent(data.contribution)}</span>
+                        <span>Spend: {formatNumber(channelData.spend)}</span>
+                        <span>Contribution: {formatPercent(channelData.percentOfTotal)}</span>
                       </div>
                     </div>
                     <div className="h-2 bg-slate-100 rounded overflow-hidden">
@@ -481,7 +481,7 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
                         className="h-full rounded"
                         style={{ 
                           width: `${Math.min(100, efficiency * 10)}%`,
-                          backgroundColor: channelColors[channel] || '#6b7280'
+                          backgroundColor: channelColors[channelData.channel] || '#6b7280'
                         }}
                       ></div>
                     </div>
@@ -511,19 +511,19 @@ const ChannelImpactContent = ({ model }: { model: any }) => {
             <li className="flex items-start">
               <div className="min-w-8 mr-2">✓</div>
               <div className="text-sm">
-                {topContributionChannel} is your most impactful channel, driving {formatPercent(channelData[topContributionChannel]?.contribution / totalContribution)} of marketing contribution.
+                {topContributionChannel} is your most impactful channel, driving {formatPercent(sortedChannels.length > 0 ? sortedChannels[0].percentOfMarketing : 0)} of marketing contribution.
               </div>
             </li>
             <li className="flex items-start">
               <div className="min-w-8 mr-2">✓</div>
               <div className="text-sm">
-                {topROIChannel} provides the highest ROI at {(channelData[topROIChannel]?.roi || 0).toFixed(2)}x, making it your most efficient channel.
+                {topROIChannel} provides the highest ROI at {sortedByROI.length > 0 ? sortedByROI[0].roi.toFixed(2) : "0.00"}x, making it your most efficient channel.
               </div>
             </li>
             <li className="flex items-start">
               <div className="min-w-8 mr-2">✓</div>
               <div className="text-sm">
-                {sortedByROI[sortedByROI.length - 1][0]} has the lowest ROI at {((sortedByROI[sortedByROI.length - 1][1] as any).roi).toFixed(2)}x and may benefit from reduced spending.
+                {sortedByROI.length > 0 ? sortedByROI[sortedByROI.length - 1].channel : "N/A"} has the lowest ROI at {sortedByROI.length > 0 ? sortedByROI[sortedByROI.length - 1].roi.toFixed(2) : "0.00"}x and may benefit from reduced spending.
               </div>
             </li>
           </ul>
