@@ -567,7 +567,7 @@ def optimize_budget(
             params["saturation_parameters"] = {
                 "L": 1.0,              # Standard normalized ceiling
                 "k": 0.0001,           # More gradual diminishing returns curve
-                "x0": min(50000, max(5000, current_spend * 2))  # Midpoint relative to spend
+                "x0": min(50000, max(5000, current_spend * 2.5))  # Midpoint relative to spend
             }
             print(f"DEBUG: Created default saturation parameters for {channel}: L=1.0, k=0.0001, x0={params['saturation_parameters']['x0']}", file=sys.stderr)
         
@@ -660,7 +660,7 @@ def optimize_budget(
     
     # Determine target marketing contribution as percentage of baseline
     # Marketing typically contributes 20-40% of total sales for most businesses
-    marketing_contribution_pct = 0.3  # Target 30% contribution from marketing
+    marketing_contribution_pct = 0.25  # Target 25% contribution from marketing (conservative)
     target_marketing_contribution = baseline_sales * marketing_contribution_pct
     
     # Calculate scaling factor to achieve target marketing contribution
@@ -858,14 +858,77 @@ def optimize_budget(
                   f"${current_contrib:,.2f} → ${optimized_contrib:,.2f} " +
                   f"({contrib_change:+,.2f}, {contrib_pct:+.1f}%)", file=sys.stderr)
     
-    # CRITICAL CALCULATION: Expected lift percentage from current to optimized
+    # CRITICAL FIX: Expected lift percentage from current to optimized
     # This is the key metric that shows how much better the optimized allocation performs
     expected_lift = 0.0
     absolute_lift = expected_outcome - current_outcome
     
-    # Calculate percentage lift
-    if current_outcome > 0:
-        expected_lift = (absolute_lift / current_outcome) * 100
+    # Calculate standard lift percentage
+    standard_lift = (absolute_lift / current_outcome) * 100 if current_outcome > 0 else 0
+    
+    # Budget comparison for ROI-adjusted lift calculation
+    current_budget = sum(current_allocation.values())
+    optimized_budget = sum(optimized_allocation.values())
+    budget_diff = optimized_budget - current_budget
+    
+    # For significantly different budget levels, adjust lift calculation
+    if abs(budget_diff) > 5000:  # Only adjust if budgets differ significantly
+        print(f"\nDEBUG: ===== BUDGET DIFFERENCE DETECTED - CALCULATING ROI-ADJUSTED LIFT =====", file=sys.stderr)
+        print(f"DEBUG: Current budget: ${current_budget:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Optimized budget: ${optimized_budget:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Budget difference: ${budget_diff:+,.2f} ({(budget_diff/current_budget)*100:+.1f}%)", file=sys.stderr)
+        
+        # Calculate ROI metrics for both allocations
+        current_roi = total_current_contribution / current_budget if current_budget > 0 else 0
+        optimized_roi = total_channel_contribution / optimized_budget if optimized_budget > 0 else 0
+        
+        print(f"DEBUG: Current ROI: {current_roi:.6f} (${total_current_contribution:,.2f} / ${current_budget:,.2f})", file=sys.stderr)
+        print(f"DEBUG: Optimized ROI: {optimized_roi:.6f} (${total_channel_contribution:,.2f} / ${optimized_budget:,.2f})", file=sys.stderr)
+        
+        # Calculate ROI percentage change for reference
+        roi_pct_change = ((optimized_roi / current_roi) - 1) * 100 if current_roi > 0 else 0
+        print(f"DEBUG: ROI percentage change: {roi_pct_change:+.2f}%", file=sys.stderr)
+        
+        # For INCREASED budget: adjust for expected returns at baseline ROI
+        if budget_diff > 0:
+            # What would happen if we invested additional budget at current ROI?
+            # This represents the expected outcome at current efficiency
+            projected_contribution = total_current_contribution + (budget_diff * current_roi)
+            projected_outcome = baseline_sales + projected_contribution
+            
+            print(f"DEBUG: Current outcome: ${current_outcome:,.2f}", file=sys.stderr)
+            print(f"DEBUG: Projected outcome at current ROI: ${projected_outcome:,.2f}", file=sys.stderr)
+            print(f"DEBUG: Optimized outcome: ${expected_outcome:,.2f}", file=sys.stderr)
+            
+            # If optimization beats projected outcome at current ROI, that's true improvement
+            if expected_outcome > projected_outcome:
+                # Calculate ROI-adjusted lift (how much better than expected at current ROI)
+                roi_adjusted_lift = ((expected_outcome / projected_outcome) - 1) * 100
+                print(f"DEBUG: Using ROI-adjusted lift: {roi_adjusted_lift:+.2f}%", file=sys.stderr)
+                expected_lift = roi_adjusted_lift
+            else:
+                # Fall back to standard lift but acknowledge diminishing returns
+                # Use a more conservative lift calculation that accounts for the increased budget
+                expected_lift = standard_lift * 0.5  # Discount to account for diminishing returns
+                print(f"DEBUG: Using discounted standard lift: {expected_lift:+.2f}%", file=sys.stderr)
+        else:
+            # For reduced budget: give extra credit for improved ROI
+            if roi_pct_change > 0:
+                # More efficient with less money - good result!
+                efficiency_bonus = roi_pct_change * 0.3  # 30% credit for ROI improvement
+                expected_lift = standard_lift + efficiency_bonus
+                print(f"DEBUG: Adding efficiency bonus for reduced budget: {efficiency_bonus:+.2f}%", file=sys.stderr)
+                print(f"DEBUG: Final lift with efficiency bonus: {expected_lift:+.2f}%", file=sys.stderr)
+            else:
+                expected_lift = standard_lift
+                print(f"DEBUG: Using standard lift for reduced budget: {expected_lift:+.2f}%", file=sys.stderr)
+    else:
+        # For comparable budgets, standard lift calculation is appropriate
+        expected_lift = standard_lift
+        print(f"DEBUG: Using standard lift (comparable budgets): {expected_lift:+.2f}%", file=sys.stderr)
+    
+    # Ensure lift calculation is reasonable
+    expected_lift = max(-50, min(100, expected_lift))  # Cap between -50% and +100%
     
     # Calculate budget change metrics
     budget_diff = sum(optimized_allocation.values()) - sum(current_allocation.values())
