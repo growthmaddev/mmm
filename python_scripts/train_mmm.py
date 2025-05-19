@@ -498,7 +498,7 @@ def train_model(df, config):
                     "r_squared": float(r_squared),
                     "rmse": float(rmse)
                 },
-                "actual_model_intercept": extract_model_intercept(idata, summary)
+                "actual_model_intercept": extract_model_intercept(idata, summary, mmm)
             },
             "raw_data": {
                 "predictions": predictions.tolist(),
@@ -541,6 +541,7 @@ def extract_model_intercept(idata, summary_df, model_object=None):
     
     # Log the start of intercept extraction
     print("\n=== EXTRACTING MODEL INTERCEPT (BASELINE SALES) ===", file=sys.stderr)
+    print("This intercept value is critical for the budget optimizer to produce realistic outcomes", file=sys.stderr)
     
     # ATTEMPT 1: Direct extraction from model object (most reliable when available)
     if model_object is not None:
