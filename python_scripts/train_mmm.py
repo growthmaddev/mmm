@@ -573,6 +573,10 @@ def train_model(df, config):
         print("Generating response curves for channels...", file=sys.stderr)
         response_curves = {}
         
+        # Ensure model_parameters is initialized
+        if 'model_parameters' not in locals() or model_parameters is None:
+            model_parameters = {}
+        
         # For each channel, generate a response curve using the model parameters
         for channel in channel_columns:
             channel_name = channel.replace("_Spend", "")
@@ -581,30 +585,89 @@ def train_model(df, config):
             beta = None
             saturation_params = None
             
-            # Try to get parameters from model_parameters dictionary
-            if model_parameters and channel_name in model_parameters:
-                beta = model_parameters[channel_name].get('beta_coefficient')
-                saturation_params = model_parameters[channel_name].get('saturation_parameters')
+            # Try to get parameters from model_parameters dictionary - multiple name variations
+            if channel_name in model_parameters:
+                channel_params = model_parameters[channel_name]
+                # Check different parameter naming conventions
+                if 'beta_coefficient' in channel_params:
+                    beta = channel_params['beta_coefficient']
+                elif 'beta' in channel_params:
+                    beta = channel_params['beta']
+                    
+                # Check for saturation parameters
+                if 'saturation_parameters' in channel_params:
+                    saturation_params = channel_params['saturation_parameters']
             
-            # If we don't have parameters from model_parameters, use default values
+            # Try to extract from PyMC model estimates
+            if beta is None and 'mmm' in locals() and mmm is not None:
+                try:
+                    print(f"Trying to extract channel coefficient for {channel_name} from PyMC model", file=sys.stderr)
+                    # Different ways PyMC-Marketing might store channel coefficients
+                    if hasattr(mmm, 'channel_coefficients'):
+                        idx = channel_columns.index(channel)
+                        if idx < len(mmm.channel_coefficients):
+                            beta = float(mmm.channel_coefficients[idx])
+                            print(f"Found coefficient in mmm.channel_coefficients: {beta}", file=sys.stderr)
+                except Exception as extract_error:
+                    print(f"Error extracting coefficient from model: {str(extract_error)}", file=sys.stderr)
+            
+            # Check if we can calculate from total_model_derived_contributions instead
+            if beta is None and 'total_model_derived_contributions_per_channel' in locals():
+                if channel_name in total_model_derived_contributions_per_channel:
+                    print(f"Calculating beta from model-derived contributions for {channel_name}", file=sys.stderr)
+                    # Use the model-derived contribution divided by historical spend
+                    total_spend = df[channel].sum() if channel in df.columns and len(df[channel]) > 0 else 1
+                    contribution = total_model_derived_contributions_per_channel[channel_name]
+                    beta = contribution / total_spend if total_spend > 0 else 0.1
+                    print(f"Calculated beta from contributions: {beta}", file=sys.stderr)
+            
+            # Final fallback for beta if all else fails
             if beta is None:
-                print(f"Using default beta for {channel_name}", file=sys.stderr)
-                # Use contribution value divided by spend to estimate beta
-                total_spend = df[channel].sum() if channel in df.columns else 1
-                contribution = contributions.get(channel, 0) if contributions else 0
-                beta = contribution / total_spend if total_spend > 0 else 0.1
+                print(f"Using fallback beta calculation for {channel_name}", file=sys.stderr)
+                # Calculate from historical data
+                total_spend = df[channel].sum() if channel in df.columns and len(df[channel]) > 0 else 1
+                # Try to get contribution from main contributions dictionary
+                if channel in contributions and contributions[channel] > 0:
+                    contribution = contributions[channel]
+                else:
+                    # Last resort estimate based on spend proportion
+                    channel_spend = df[channel].sum() if channel in df.columns else 1
+                    total_spend = sum(df[col].sum() for col in channel_columns if col in df.columns)
+                    contribution_ratio = channel_spend / total_spend if total_spend > 0 else 0
+                    contribution = contribution_ratio * y.sum() * 0.5
                 
+                beta = contribution / total_spend if total_spend > 0 else 0.1
+                print(f"Fallback beta calculation: {beta}", file=sys.stderr)
+                
+            # Get or create saturation parameters based on actual data
             if saturation_params is None:
-                print(f"Using default saturation parameters for {channel_name}", file=sys.stderr)
-                # Default saturation parameters
-                saturation_params = {
-                    "L": 1.0,       # Normalized max value
-                    "k": 0.0005,    # Steepness parameter
-                    "x0": 50000.0   # Midpoint (inflection point)
-                }
+                print(f"Creating data-informed saturation parameters for {channel_name}", file=sys.stderr)
+                # Use actual channel data to inform saturation parameters
+                if channel in df.columns and len(df[channel]) > 0:
+                    avg_spend = df[channel].mean()
+                    max_spend = df[channel].max()
+                    # Create realistic saturation curve
+                    saturation_params = {
+                        "L": 1.0,                      # Normalized max value
+                        "k": 0.0005,                   # Steepness parameter
+                        "x0": max(avg_spend * 2, 5000)  # Set inflection point around 2x average spend
+                    }
+                    print(f"Created saturation based on actual spend patterns: x0={saturation_params['x0']}", file=sys.stderr)
+                else:
+                    # Default if no data
+                    saturation_params = {
+                        "L": 1.0,
+                        "k": 0.0005,
+                        "x0": 50000.0
+                    }
+                    print(f"Used default saturation parameters - no channel data available", file=sys.stderr)
             
-            # Calculate max spend based on historical data
-            max_spend = df[channel].max() * 3 if channel in df.columns else 100000
+            # Calculate max spend for response curve points - use actual data when available
+            if channel in df.columns and len(df[channel]) > 0:
+                actual_max_spend = df[channel].max() * 3
+                max_spend = max(actual_max_spend, saturation_params.get("x0", 50000) * 2)
+            else:
+                max_spend = 100000  # Default if no data
             
             # Generate spend points (20 points from 0 to max_spend)
             spend_points = [float(i * max_spend / 19) for i in range(20)]
@@ -623,7 +686,7 @@ def train_model(df, config):
                         try:
                             saturation = L / (1 + math.exp(-k * (spend - x0)))
                             response = beta * saturation
-                        except OverflowError:
+                        except (OverflowError, ZeroDivisionError):
                             # Handle numerical overflow in the exponential
                             if spend > x0:
                                 saturation = L  # Fully saturated
@@ -647,6 +710,7 @@ def train_model(df, config):
                     "saturation": saturation_params
                 }
             }
+            print(f"Generated response curve for {channel_name} with {len(spend_points)} points", file=sys.stderr)
         channel_parameters = {}
         
         try:
