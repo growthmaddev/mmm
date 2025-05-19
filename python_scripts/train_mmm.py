@@ -1331,16 +1331,19 @@ def extract_model_intercept(idata, summary_df, model_object=None):
 
 def main():
     """Main function to run the MMM training"""
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         print(json.dumps({
             "success": False,
-            "error": "Usage: python train_mmm.py <data_file_path> <config_json>"
+            "error": "Usage: python train_mmm.py <data_file_path> <config_json> [output_file]"
         }))
         sys.exit(1)
     
     # Get command line arguments
     data_file_path = sys.argv[1]
     config_json = sys.argv[2]
+    
+    # Optional output file
+    output_file = sys.argv[3] if len(sys.argv) > 3 else None
     
     # Print debug information for troubleshooting
     print(f"Starting MMM training with data: {data_file_path}, config: {config_json}", file=sys.stderr)
