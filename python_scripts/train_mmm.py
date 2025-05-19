@@ -518,27 +518,55 @@ def train_model(df, config):
         }))
         sys.exit(1)
 
-def extract_model_intercept(idata, summary_df):
+def extract_model_intercept(idata, summary_df, model_object=None):
     """
     Extract the exact model intercept (baseline sales) from the inference data.
     
-    This function uses a multi-tiered approach to find the intercept:
-    1. First tries direct access from inference data object (most reliable)
-    2. Then looks for standard intercept parameter names in the summary DataFrame
-    3. Returns None if no intercept can be found (for transparency)
+    This function uses a comprehensive approach to find the intercept across different PyMC model variants:
+    1. First tries direct access from model object if available (most reliable)
+    2. Then tries direct access from inference data object (very reliable)
+    3. Searches for intercept parameters with various naming patterns in summary DataFrame
+    4. Attempts pattern matching for intercept-like parameters in available variables
+    5. Returns None if no intercept can be found (for transparency)
     
     Args:
         idata: InferenceData object containing posterior samples
         summary_df: DataFrame containing model parameter summaries
+        model_object: Optional PyMC or PyMC-Marketing model object, if available
         
     Returns:
         float: The extracted intercept value or None if not found
     """
     intercept_value = None
     
-    # First attempt: Direct extraction from inference data (most reliable)
-    # These are common explicit parameter names used when defining model intercepts
-    explicit_intercept_names = ['model_intercept', 'intercept', 'Intercept', 'alpha', 'baseline']
+    # Log the start of intercept extraction
+    print("\n=== EXTRACTING MODEL INTERCEPT (BASELINE SALES) ===", file=sys.stderr)
+    
+    # ATTEMPT 1: Direct extraction from model object (most reliable when available)
+    if model_object is not None:
+        try:
+            # Try standard property access patterns for PyMC-Marketing model variants
+            if hasattr(model_object, 'intercept'):
+                intercept_value = float(model_object.intercept)
+                print(f"SUCCESS: Found intercept directly in model_object.intercept: {intercept_value}", file=sys.stderr)
+                return intercept_value
+                
+            # Try access via model parameters dict if available
+            if hasattr(model_object, 'params') and 'intercept' in getattr(model_object, 'params', {}):
+                intercept_value = float(model_object.params['intercept'])
+                print(f"SUCCESS: Found intercept in model_object.params['intercept']: {intercept_value}", file=sys.stderr)
+                return intercept_value
+                
+            print("Could not find intercept directly in model object", file=sys.stderr)
+        except Exception as e:
+            print(f"Error accessing intercept from model object: {str(e)}", file=sys.stderr)
+    
+    # ATTEMPT 2: Direct extraction from inference data posterior (very reliable)
+    # Comprehensive list of common explicit parameter names used for model intercepts
+    explicit_intercept_names = [
+        'model_intercept', 'intercept', 'Intercept', 'alpha', 'baseline', 
+        'b_Intercept', 'b__Intercept', 'b_0', 'mu_alpha', 'mu_intercept'
+    ]
     
     try:
         # Try to directly access from posterior distribution
@@ -551,25 +579,60 @@ def extract_model_intercept(idata, summary_df):
                           file=sys.stderr)
                     return intercept_value
             
+            # Try pattern matching with "intercept" in parameter name
+            for var_name in idata.posterior.data_vars:
+                if 'intercept' in var_name.lower():
+                    intercept_value = float(idata.posterior[var_name].mean().item())
+                    print(f"SUCCESS: Found intercept via pattern matching in idata.posterior['{var_name}']: {intercept_value}", 
+                          file=sys.stderr)
+                    return intercept_value
+            
             print("Could not find explicit intercept parameter in inference data posterior", file=sys.stderr)
     except Exception as e:
         print(f"Error accessing intercept from inference data: {str(e)}", file=sys.stderr)
     
-    # Second attempt: Standard parameter names in summary DataFrame
-    # Standard intercept term names in PyMC models (in order of likelihood)
-    summary_intercept_names = ['intercept', 'Intercept', 'alpha', 'a', 'baseline', 'b_Intercept']
+    # ATTEMPT 3: Standard parameter names in summary DataFrame
+    # Expanded list of standard intercept term names in PyMC models (in order of likelihood)
+    summary_intercept_names = [
+        'intercept', 'Intercept', 'alpha', 'a', 'baseline', 'b_Intercept', 
+        'b__Intercept', 'b_0', 'mu_alpha', 'mu_intercept', 'const'
+    ]
     
     try:
         for param_name in summary_intercept_names:
             if param_name in summary_df.index:
                 intercept_value = float(summary_df.loc[param_name]['mean'])
-                print(f"Found model intercept in summary as '{param_name}': {intercept_value}", file=sys.stderr)
+                print(f"SUCCESS: Found model intercept in summary as '{param_name}': {intercept_value}", file=sys.stderr)
+                return intercept_value
+                
+        # Try pattern matching with prefix/suffix combinations commonly used
+        for idx in summary_df.index:
+            if 'intercept' in idx.lower() or idx.lower().endswith('_0') or idx.lower() == 'const':
+                intercept_value = float(summary_df.loc[idx]['mean'])
+                print(f"SUCCESS: Found model intercept via pattern matching in summary as '{idx}': {intercept_value}", 
+                      file=sys.stderr)
                 return intercept_value
     except Exception as e:
         print(f"Error extracting intercept from summary DataFrame: {str(e)}", file=sys.stderr)
     
+    # ATTEMPT 4: Last-resort inference from variable shapes and patterns
+    try:
+        # Check for common regression coefficient array patterns
+        # Often coefficients[0] is the intercept in regression models
+        coefficient_patterns = ['beta', 'coefficients', 'coef', 'b']
+        
+        for pattern in coefficient_patterns:
+            for idx in summary_df.index:
+                if pattern in idx.lower() and idx.endswith('__0'):
+                    intercept_value = float(summary_df.loc[idx]['mean'])
+                    print(f"SUCCESS: Inferred model intercept from coefficient array '{idx}': {intercept_value}", 
+                          file=sys.stderr)
+                    return intercept_value
+    except Exception as e:
+        print(f"Error attempting to infer intercept from coefficient patterns: {str(e)}", file=sys.stderr)
+    
     # If we reach here, we couldn't find any recognized intercept term
-    print("ERROR: Could not find model intercept term. Check model specification.", file=sys.stderr)
+    print("WARNING: Could not find model intercept term. Check model specification.", file=sys.stderr)
     
     # Provide helpful diagnostics
     try:
@@ -581,6 +644,7 @@ def extract_model_intercept(idata, summary_df):
     
     # Return None to indicate that the actual model intercept couldn't be found
     # This makes the issue transparent rather than silently using a potentially incorrect value
+    print("CRITICAL: Returning None for model intercept. Budget optimizer will use 0.0 as fallback.", file=sys.stderr)
     return None
 
 def main():

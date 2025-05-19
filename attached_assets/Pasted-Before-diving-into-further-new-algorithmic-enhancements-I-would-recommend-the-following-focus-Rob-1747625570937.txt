@@ -1,0 +1,16 @@
+Before diving into further new algorithmic enhancements, I would recommend the following focus:
+
+Robustness of Intercept Extraction for Future Models (in python_scripts/train_mmm.py):
+
+While the current "actual_model_intercept" handling is good, the most important aspect for future models is ensuring that python_scripts/train_mmm.py consistently and accurately extracts the true intercept from any new model structure or potential variations in PyMC-Marketing output.
+This might involve standardizing how the main intercept term is named when defining models in train_mmm.py and ensuring the extraction logic in train_mmm.py reliably targets that specific named parameter from the model's inference data (idata). This is more of a best practice for the model training script.
+Consolidate and Test the End-to-End Workflow:
+
+Ensure the current, improved version of the budget optimizer is seamlessly integrated into the full user workflow from the UI.
+Conduct thorough testing with Model ID 14 (and perhaps another test model if available) covering various scenarios initiated from the UI to ensure stability and consistent behavior. This includes checking how results are displayed and if any UI-related adjustments are needed for the (now more accurate) backend figures.
+Consider Configuration for Advanced Use (Lower Priority / Future):
+
+Parameters like min_channel_budget, increment for budget allocation, max_iterations, and the specific coefficients within the dynamic diversity formula (e.g., 0.1, 1.0, 2.0) are currently hardcoded defaults in python_scripts/optimize_budget_marginal.py.
+For future flexibility, these could be made configurable (e.g., passed via the JSON input from the controller, perhaps with an "advanced settings" section in the UI). However, this adds complexity and can be deferred. The current defaults seem to be working well.
+Recommendation for Now:
+Unless there are specific known issues still pending or user feedback prompting immediate algorithmic changes, I suggest prioritizing the stability and robustness of the current end-to-end solution. This means ensuring the train_mmm.py intercept saving is as future-proof as possible and thoroughly testing the existing optimizer within the full application flow.
