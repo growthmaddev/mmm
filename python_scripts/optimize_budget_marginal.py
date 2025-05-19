@@ -511,12 +511,19 @@ def main():
     Usage:
         python optimize_budget_marginal.py input.json
     
-    Input JSON format:
+    Input JSON format from controller:
     {
+        "model_parameters": {
+            "channel1": {
+                "beta_coefficient": value,
+                "saturation_parameters": {"L": val, "k": val, "x0": val},
+                "adstock_parameters": {...}
+            },
+            ...
+        },
         "current_allocation": {"channel1": spend1, "channel2": spend2, ...},
         "desired_budget": total_budget,
-        "channel_params": {...},
-        "baseline_sales": intercept_value
+        "current_budget": current_budget_value
     }
     """
     # Check arguments
@@ -535,24 +542,35 @@ def main():
     # Extract required parameters
     current_allocation = data.get("current_allocation", {})
     desired_budget = data.get("desired_budget", 0)
-    channel_params = data.get("channel_params", {})
-    baseline_sales = data.get("baseline_sales", 0)
+    model_parameters = data.get("model_parameters", {})
+    
+    # Default baseline, controller doesn't send this
+    baseline_sales = 0
     
     # Run optimization
     try:
         result = optimize_budget(
-            channel_params=channel_params,
+            channel_params=model_parameters,
             desired_budget=desired_budget,
             current_allocation=current_allocation,
             baseline_sales=baseline_sales,
             debug=True  # Enable debug output
         )
         
+        # Add success flag expected by the controller
+        result["success"] = True
+        result["target_variable"] = "Sales"
+        
         # Print result as JSON to stdout
         print(json.dumps(result, indent=2))
         
     except Exception as e:
         print(f"Error during optimization: {e}", file=sys.stderr)
+        error_result = {
+            "success": False,
+            "error": str(e)
+        }
+        print(json.dumps(error_result))
         sys.exit(1)
 
 if __name__ == "__main__":
