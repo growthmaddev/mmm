@@ -293,39 +293,11 @@ def optimize_budget(
         print(f"DEBUG: Initial outcome (baseline + contribution): ${current_outcome:,.2f}", file=sys.stderr)
     
     # STEP 2: Initialize allocation based on scenario
-    # Special case: If desired budget matches current allocation, return current allocation
+    # Note: We're no longer returning current allocation for same budget scenario
+    # Instead, we'll run the optimization algorithm and potentially improve allocation
     current_total = sum(current_allocation.values())
-    if abs(desired_budget - current_total) < 0.01:
-        if debug:
-            print(f"DEBUG: Desired budget matches current budget exactly, returning current allocation", file=sys.stderr)
-        
-        # Calculate expected outcome and lift
-        expected_outcome = current_outcome
-        expected_lift = 0.0
-        
-        result = {
-            "optimized_allocation": current_allocation,
-            "expected_outcome": expected_outcome,
-            "expected_lift": expected_lift,
-            "current_outcome": current_outcome,
-            "channel_breakdown": []
-        }
-        
-        # Add channel breakdown
-        for channel, spend in current_allocation.items():
-            contribution = current_contributions.get(channel, 0)
-            roi = contribution / spend if spend > 0 else 0
-            
-            result["channel_breakdown"].append({
-                "channel": channel,
-                "current_spend": spend,
-                "optimized_spend": spend,
-                "percent_change": 0,
-                "roi": roi,
-                "contribution": contribution / total_current_contribution if total_current_contribution > 0 else 0
-            })
-        
-        return result
+    if abs(desired_budget - current_total) < 0.01 and debug:
+        print(f"DEBUG: Desired budget matches current budget, but will still run optimization to find best allocation", file=sys.stderr)
     
     # For other scenarios, start with minimum allocation for each channel
     optimized_allocation = {channel: min_channel_budget for channel in channel_params}
