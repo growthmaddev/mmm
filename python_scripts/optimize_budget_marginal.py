@@ -116,7 +116,7 @@ def calculate_marginal_return(
     increment: float = 1000.0,
     debug: bool = False,
     channel_name: str = "",
-    scaling_factor: float = 5000.0  # CRITICAL: Apply same scaling as in get_channel_response
+    scaling_factor: float = 1.0  # Use raw contribution values (no scaling)
 ) -> float:
     """
     Calculate marginal return for additional spend on a channel.
@@ -136,42 +136,31 @@ def calculate_marginal_return(
     sat_params = channel_params.get("saturation_parameters", {})
     adstock_params = channel_params.get("adstock_parameters", {})
     
+    if debug:
+        print(f"DEBUG: Calculating marginal return for {channel_name} at ${current_spend:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Using beta coefficient: {beta:.6f}", file=sys.stderr)
+        print(f"DEBUG: Using saturation parameters: {sat_params}", file=sys.stderr)
+    
     # Calculate response at current spend
     response_current = get_channel_response(
-
         current_spend,
-
         beta,
-
         sat_params,
-
         adstock_params,
-
         debug=False,
-
         channel_name=channel_name,
-
         scaling_factor=scaling_factor
-
     )
     
     # Calculate response at incremented spend
     response_incremented = get_channel_response(
-
         current_spend + increment,
-
         beta,
-
         sat_params,
-
         adstock_params,
-
         debug=False,
-
         channel_name=channel_name,
-
         scaling_factor=scaling_factor
-
     )
     
     # Calculate marginal return (response difference per dollar)
@@ -185,9 +174,9 @@ def calculate_marginal_return(
     if debug:
         print(f"DEBUG: {channel_name} marginal return calculation:", file=sys.stderr)
         print(f"  - Current spend: ${current_spend:,.2f}", file=sys.stderr)
-        print(f"  - Response at current: {response_current:.2f}", file=sys.stderr)
-        print(f"  - Response at +{increment:,.0f}: {response_incremented:.2f}", file=sys.stderr)
-        print(f"  - Difference: {response_diff:.2f}", file=sys.stderr)
+        print(f"  - Response at current: {response_current:.6f}", file=sys.stderr)
+        print(f"  - Response at +{increment:,.0f}: {response_incremented:.6f}", file=sys.stderr)
+        print(f"  - Difference: {response_diff:.6f}", file=sys.stderr)
         print(f"  - Marginal return: {marginal_return:.6f} per dollar", file=sys.stderr)
     
     return marginal_return
@@ -201,7 +190,7 @@ def optimize_budget(
     baseline_sales: float = 0.0,
     min_channel_budget: float = 1000.0,
     debug: bool = True,
-    scaling_factor: float = 5000.0,  # CRITICAL: Scaling factor to make contributions meaningful
+    scaling_factor: float = 1.0,  # Use raw contributions (no scaling)
     diversity_factor: float = 0.5  # Diversity constraint (0-1, higher = more diverse)
 ) -> Dict[str, Any]:
     """
@@ -346,13 +335,17 @@ def optimize_budget(
                     # Calculate percentage of total budget allocated to this channel
                     channel_percentage = current_spend / total_allocated if total_allocated > 0 else 0
                     
-                    # Apply diversity penalty to channels with higher allocation percentage
-                    # Higher diversity_factor means stronger penalty for concentration
-                    diversity_adjustment = 1.0 - (channel_percentage * diversity_factor)
+                    # Adjusted diversity factor using the specified formula
+                    # Use max(0.1, 1.0 - (allocation_percentages * 1.5))
+                    diversity_adjustment = max(0.1, 1.0 - (channel_percentage * 1.5))
                     adjusted_mr = mr * diversity_adjustment
                     
-                    if debug and iteration % 100 == 0:
-                        print(f"DEBUG: Channel {channel} - Base MR: {mr:.6f}, Allocation: {channel_percentage:.2%}, Adjusted MR: {adjusted_mr:.6f}", file=sys.stderr)
+                    if debug and iteration % 50 == 0:
+                        print(f"DEBUG: Channel {channel}:", file=sys.stderr)
+                        print(f"  - Base MR: {mr:.6f}", file=sys.stderr)
+                        print(f"  - Allocation: {channel_percentage:.2%}", file=sys.stderr)
+                        print(f"  - Diversity adjustment: {diversity_adjustment:.4f}", file=sys.stderr)
+                        print(f"  - Adjusted MR: {adjusted_mr:.6f}", file=sys.stderr)
                     
                     mr = adjusted_mr
                 
@@ -438,21 +431,23 @@ def optimize_budget(
     # Calculate optimized outcome (baseline + contributions)
     optimized_outcome = baseline_sales + total_optimized_contribution
     
-    # STEP 5: Calculate lift
+    # STEP 5: Calculate lift using the basic formula
+    # Simplify lift calculation: expected_lift = ((expected_outcome - current_outcome) / current_outcome) * 100
     absolute_lift = optimized_outcome - current_outcome
-    percentage_lift = (absolute_lift / current_outcome) * 100 if current_outcome > 0 else 0
+    # Use the basic formula for percentage lift calculation
+    percentage_lift = ((optimized_outcome - current_outcome) / current_outcome) if current_outcome > 0 else 0
     
     if debug:
         print(f"\nDEBUG: === FINAL RESULTS ===", file=sys.stderr)
         print(f"DEBUG: Baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Current contribution: {total_current_contribution:.2f}", file=sys.stderr)
-        print(f"DEBUG: Optimized contribution: {total_optimized_contribution:.2f}", file=sys.stderr)
-        print(f"DEBUG: Current outcome: ${current_outcome:.2f}", file=sys.stderr)
-        print(f"DEBUG: Expected outcome: ${optimized_outcome:.2f}", file=sys.stderr)
+        print(f"DEBUG: Current raw contribution: {total_current_contribution:.6f}", file=sys.stderr)
+        print(f"DEBUG: Optimized raw contribution: {total_optimized_contribution:.6f}", file=sys.stderr)
+        print(f"DEBUG: Current outcome (baseline + contribution): ${current_outcome:.2f}", file=sys.stderr)
+        print(f"DEBUG: Expected outcome (baseline + contribution): ${optimized_outcome:.2f}", file=sys.stderr)
         print(f"DEBUG: Absolute improvement: ${absolute_lift:+,.2f}", file=sys.stderr)
-        print(f"DEBUG: Percentage lift: {percentage_lift:+.2f}%", file=sys.stderr)
-        # Round to nearest 0.01% for display
-        print(f"DEBUG: Final lift (adjusted): {round(percentage_lift * 100) / 100:+.2f}%", file=sys.stderr)
+        print(f"DEBUG: Percentage lift (raw): {percentage_lift*100:+.6f}%", file=sys.stderr)
+        # Round to nearest 0.01 for display
+        print(f"DEBUG: Percentage lift (rounded for display): {round(percentage_lift * 100) / 100:+.2f}%", file=sys.stderr)
     
     # STEP 6: Generate channel breakdown for API response
     channel_breakdown = []
@@ -469,6 +464,15 @@ def optimize_budget(
             
         # Calculate ROI
         roi = contribution / optimized_spend if optimized_spend > 0 else 0
+        
+        # Enhanced logging for channel breakdown
+        if debug:
+            print(f"DEBUG: Channel {channel} breakdown:", file=sys.stderr)
+            print(f"  - Current spend: ${current_spend:,.2f}", file=sys.stderr)
+            print(f"  - Optimized spend: ${optimized_spend:,.2f}", file=sys.stderr)
+            print(f"  - Change: {percent_change:+.1f}%", file=sys.stderr)
+            print(f"  - Raw contribution: {contribution:.6f}", file=sys.stderr)
+            print(f"  - ROI: {roi:.6f}", file=sys.stderr)
         
         channel_breakdown.append({
             "channel": channel,
