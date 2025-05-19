@@ -1,0 +1,29 @@
+Agent, thank you for the hard work. The UI now correctly indicates when data is missing, which is good. However, the messages 'No time series data available' and 'No response curve data available,' along with the identical percentages in the contribution table, tell us that python_scripts/train_mmm.py is not yet providing all the necessary detailed outputs in the expected structure.
+
+Please revisit python_scripts/train_mmm.py with the following explicit goals:
+
+Time-Series Decomposition Data (for 'Contribution Over Time' chart):
+
+Ensure you are extracting and saving:
+A list/array of dates for the time axis.
+A time-series list/array for baseline contribution (derived from actual_model_intercept).
+A time-series list/array for the contribution of each control variable (calculated as control_variable_coefficient * control_variable_historical_data_series).
+A time-series list/array for the contribution of each marketing channel (typically from the posterior mean of channel_contributions in idata).
+This data should be saved in a clearly structured way in the output JSON (e.g., within a time_series_decomposition object with keys like dates, baseline, control_variables: {control_name: series, ...}, marketing_channels: {channel_name: series, ...}).
+Response Curve Data (for 'Response Curves' chart):
+
+Ensure you are extracting and saving for each marketing channel:
+Its posterior mean beta coefficient.
+Its posterior mean saturation parameters (L, k, x0 – ensure these are the final usable values, not intermediate PyMC-Marketing parameters like alpha/lam unless those are what the frontend chart will directly use to reconstruct the curve).
+Its posterior mean adstock parameters.
+Save this in a structure like channel_parameters: {channel_name: {beta: ..., L: ..., k: ..., x0: ..., adstock_params: ...}, ...}.
+Aggregated Data for Tables & Percentages:
+
+Ensure you are calculating and saving:
+Total contribution for baseline, each control variable, and each marketing channel (by summing their time-series contributions).
+Total historical spend for each marketing channel.
+This will allow the frontend to correctly calculate Total_Sales_Outcome_Predicted and Total_Marketing_Driven_Sales_Predicted for the distinct percentage metrics.
+Verification Step (CRUCIAL):
+
+After modifying python_scripts/train_mmm.py, please run it for Model ID 14 and provide a snippet of the actual JSON output file it generates. We need to inspect this JSON to confirm that all the above data fields are present and correctly structured before you attempt to modify the API or frontend again.
+Let's ensure train_mmm.py is producing a complete and correctly structured data artifact first. This will then make the API and frontend integration straightforward.

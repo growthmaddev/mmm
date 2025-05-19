@@ -365,7 +365,30 @@ def train_model(df, config):
                         
                     print(f"Calculated contribution time series for channel {channel}", file=sys.stderr)
             
-            # Create the complete time series data structure with proper hierarchical organization
+            # Store the raw time series data in dedicated structures for frontend consumption
+            # This follows the explicitly requested structure in the requirements
+            time_series_decomposition = {
+                "dates": date_strings,
+                "baseline": [float(val) for val in baseline_contribution_ts],
+                "control_variables": {},
+                "marketing_channels": {}
+            }
+            
+            # Add control variables time series
+            for control_var in control_contributions_ts:
+                time_series_decomposition["control_variables"][control_var] = [
+                    float(val) for val in control_contributions_ts[control_var]
+                ]
+            
+            # Add channel contributions time series
+            for channel in channel_contributions_ts:
+                channel_name = channel.replace("_Spend", "")
+                time_series_decomposition["marketing_channels"][channel_name] = [
+                    float(val) for val in channel_contributions_ts[channel]
+                ]
+            
+            # Also create the complete time series data structure with proper hierarchical organization
+            # for backward compatibility and more detailed point-by-point analysis
             for i, date_str in enumerate(date_strings):
                 data_point = {"date": date_str}
                 
@@ -381,7 +404,8 @@ def train_model(df, config):
                 # Add channel contributions as a nested object
                 channels_obj = {}
                 for channel in channel_contributions_ts:
-                    channels_obj[channel] = float(channel_contributions_ts[channel][i])
+                    channel_name = channel.replace("_Spend", "")
+                    channels_obj[channel_name] = float(channel_contributions_ts[channel][i])
                 data_point["channels"] = channels_obj
                 
                 # Calculate total for this time period
@@ -420,9 +444,10 @@ def train_model(df, config):
         r_squared = r2_score(y, predictions)
         rmse = np.sqrt(mean_squared_error(y, predictions))
         
-        # Generate response curves for each channel
+        # Generate response curves for each channel with complete parameter information
         print("Generating response curves for channels...", file=sys.stderr)
         response_curves = {}
+        channel_parameters = {}
         
         try:
             # Extract historical spend data for ROI calculations
@@ -430,16 +455,43 @@ def train_model(df, config):
             for channel in channel_columns:
                 historical_channel_spends[channel] = float(df[channel].sum())
             
-            # For each channel, generate a response curve
+            # For each channel, generate a response curve and store all parameters
             for channel in channel_columns:
+                channel_clean = channel.replace("_Spend", "")
                 # Get channel parameters - first try to use extracted parameters
-                beta_coeff = model_parameters.get(channel, {}).get("beta_coefficient", 1000.0)
+                if channel_clean in model_parameters:
+                    channel_params = model_parameters[channel_clean]
+                else:
+                    channel_params = {}
+                
+                beta_coeff = channel_params.get("beta_coefficient", 1000.0)
                 
                 # Get saturation parameters
-                sat_params = model_parameters.get(channel, {}).get("saturation_parameters", {})
+                sat_params = channel_params.get("saturation_parameters", {})
                 L = sat_params.get("L", 1.0)  # Maximum response level
                 k = sat_params.get("k", 0.0005)  # Steepness parameter
                 x0 = sat_params.get("x0", 50000.0)  # Midpoint parameter
+                
+                # Get adstock parameters
+                adstock_params = channel_params.get("adstock_parameters", {})
+                adstock_type = channel_params.get("adstock_type", "GeometricAdstock")
+                saturation_type = channel_params.get("saturation_type", "LogisticSaturation")
+                
+                # Store complete parameter set for this channel in a dedicated structure
+                channel_parameters[channel_clean] = {
+                    "beta_coefficient": float(beta_coeff),
+                    "saturation_parameters": {
+                        "L": float(L),
+                        "k": float(k),
+                        "x0": float(x0),
+                        "type": saturation_type
+                    },
+                    "adstock_parameters": {
+                        **{k: float(v) for k, v in adstock_params.items()},
+                        "type": adstock_type
+                    },
+                    "historical_spend": float(historical_channel_spends.get(channel, 0))
+                }
                 
                 # Generate spend points for the curve
                 # Use actual channel spend range if available
@@ -460,10 +512,11 @@ def train_model(df, config):
                             "response": float(response)
                         })
                     
-                    response_curves[channel] = curve_points
-                    print(f"Generated response curve for channel {channel} with {len(curve_points)} points", file=sys.stderr)
+                    # Store the response curve under the clean channel name
+                    response_curves[channel_clean] = curve_points
+                    print(f"Generated response curve for channel {channel_clean} with {len(curve_points)} points", file=sys.stderr)
                 else:
-                    print(f"No spending data for channel {channel}, skipping response curve", file=sys.stderr)
+                    print(f"No spending data for channel {channel_clean}, skipping response curve", file=sys.stderr)
                     
         except Exception as curve_error:
             print(f"Error generating response curves: {str(curve_error)}", file=sys.stderr)
