@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-Budget Optimizer with proven logic from test_optimizer.py
+Budget Optimizer with proven logic from budget_optimizer_direct_fix.py
 
-Implements the successful optimization approach that achieved +27% lift
-for same budget and +45% lift for increased budget with good channel diversity.
+Implements the successful optimization approach as per the golden script
+that achieved +27% lift for same budget and +45% lift for increased budget 
+with good channel diversity.
 """
 
 import sys
 import json
-import math
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 
-def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0001, x0: float = 50000.0) -> float:
+def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0005, x0: float = 50000.0) -> float:
     """
-    Logistic saturation function with better numerical stability.
+    Logistic saturation function.
     
     Args:
         x: Input value (typically spend amount)
@@ -25,23 +25,14 @@ def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0001, x0: float =
     Returns:
         Saturated value between 0 and L
     """
-    try:
-        # Apply logistic function: L / (1 + e^(-k(x-x0)))
-        exponent = -k * (x - x0)
-        
-        # Handle extreme values to avoid overflow/underflow
-        if exponent > 100:  # Very large positive exponent
-            return 0.0
-        elif exponent < -100:  # Very large negative exponent
-            return L
-        
-        return L / (1.0 + math.exp(exponent))
-    except (OverflowError, ValueError) as e:
-        # If any error occurs, handle gracefully
-        if x >= x0:
-            return L  # If x is beyond midpoint, return maximum
-        else:
-            return 0.0  # Otherwise return minimum
+    # Avoid overflow in exp
+    exponent = k * (x - x0)
+    if exponent > 100:
+        return L
+    elif exponent < -100:
+        return 0
+    
+    return L / (1 + np.exp(-exponent))
 
 def get_channel_response(
     spend: float, 
