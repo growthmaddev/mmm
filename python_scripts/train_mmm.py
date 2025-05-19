@@ -231,32 +231,19 @@ def train_model(df, config):
                         print(f"Error details:\n- Approach 1: {str(e1)}\n- Approach 2: {str(e2)}\n- Approach 3: {str(e3)}\n- Approach 4: {str(e4)}", file=sys.stderr)
                         raise Exception("Could not initialize MMM model with any known approach")
             
-        # Sample with reduced parameters for faster completion and debugging
+        # Sample with extremely reduced parameters for fast prototype
         try:
-            print("=================== STARTING MODEL FITTING ===================", file=sys.stderr)
-            print(f"Data dimensions: X shape={X.shape if hasattr(X, 'shape') else 'Unknown'}, y length={len(y)}", file=sys.stderr)
-            print(f"Channel columns: {channel_columns}", file=sys.stderr)
-            print(f"Target column: {target_column}", file=sys.stderr)
-            
-            # Use minimal MCMC parameters for faster completion during debugging
-            # These are intentionally small to ensure the model completes training quickly
-            fit_start_time = time.time()
-            
+            # Use better MCMC parameters while still keeping runtime reasonable
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=25,      # Reduced for faster completion during debugging
-                tune=15,       # Reduced for faster completion during debugging
-                chains=2,      # Reduced for faster completion during debugging
-                cores=1,       # Single core for compatibility
+                draws=1000,     # Increased for more stable estimates
+                tune=500,       # Increased for better adaptation
+                chains=4,       # Using 4 chains as recommended for robust convergence diagnostics
+                cores=1,        # Single core for compatibility
                 progressbar=False,  # No progress bar in API mode
-                target_accept=0.95  # Higher target accept to reduce divergences
+                target_accept=0.95  # Further increased to reduce divergences
             )
-            
-            fit_duration = time.time() - fit_start_time
-            print(f"=================== MODEL FITTING COMPLETED in {fit_duration:.2f} seconds ===================", file=sys.stderr)
-            print(f"Inference data object type: {type(idata)}", file=sys.stderr)
-            print(f"Available groups in idata: {idata.groups() if hasattr(idata, 'groups') else 'Unknown'}", file=sys.stderr)
         except Exception as e:
             print(f"Fit method error: {str(e)}", file=sys.stderr)
             print(json.dumps({"status": "error", "progress": 0, "error": f"Model fitting failed: {str(e)}"}))
@@ -582,8 +569,8 @@ def train_model(df, config):
                     print(f"Extracted total contribution for {channel_name} from time series: {total_model_derived_contributions_per_channel[channel_name]}", file=sys.stderr)
             
             # Second approach: If we already have 'contributions' from an earlier part of the code, use those
-            # Use contributions dictionary that we've initialized earlier
-            if contributions and isinstance(contributions, dict):
+            # This might have been calculated from model.posterior.channel_contributions or other model outputs
+            if 'contributions' in locals() and contributions and isinstance(contributions, dict):
                 for channel, value in contributions.items():
                     channel_name = channel.replace("_Spend", "")
                     if channel_name not in total_model_derived_contributions_per_channel:
@@ -671,8 +658,9 @@ def train_model(df, config):
         # Manually calculate channel contributions using simplified approach
         total_marketing_contribution = 0
         
-        # Initialize contributions variable to avoid UnboundLocalError
-        contributions = {}
+        # First check if we have already calculated contributions in an earlier step
+        if not hasattr(locals(), 'contributions') or contributions is None:
+            contributions = {}
         
         for channel in channel_columns:
             # If we already have time series data for this channel, sum it
