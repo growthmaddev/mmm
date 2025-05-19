@@ -7,354 +7,552 @@ fixes from our test scripts that have proven to yield better results.
 """
 
 import sys
-import re
+import os
+import shutil
+from datetime import datetime
 
 def update_budget_optimizer():
     """Update optimize_budget_marginal.py with critical improvements"""
-    # File paths
-    source_file = 'python_scripts/optimize_budget_marginal.py'
-    backup_file = 'python_scripts/optimize_budget_marginal.py.bak'
+    # Check if optimize_budget_marginal.py exists
+    optimizer_path = os.path.join('python_scripts', 'optimize_budget_marginal.py')
+    if not os.path.isfile(optimizer_path):
+        print(f"ERROR: {optimizer_path} not found")
+        return False
     
-    # Read the original file
-    with open(source_file, 'r') as f:
-        content = f.read()
+    # Create backup first
+    backup_dir = os.path.join('python_scripts', 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
     
-    # Create a backup
-    with open(backup_file, 'w') as f:
-        f.write(content)
+    backup_filename = f"optimize_budget_marginal_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
+    backup_path = os.path.join(backup_dir, backup_filename)
     
-    print(f"Created backup at {backup_file}")
+    try:
+        shutil.copy2(optimizer_path, backup_path)
+        print(f"Created backup at {backup_path}")
+    except Exception as e:
+        print(f"WARNING: Could not create backup: {str(e)}")
     
-    # Apply our critical fixes
+    # Replace with our improved version that uses the successful logic
+    # from test_optimizer.py with better lift calculation
+    new_optimizer_content = """#!/usr/bin/env python3
+\"""
+Optimized Budget Allocation System
+
+This script implements a budget optimizer based on marginal returns, using the
+successful approach proven in our test scripts.
+
+Key improvements:
+1. Proper response curve calculation using fitted parameters
+2. Accurate lift calculation that reflects real performance gains
+3. Balanced allocation approach that prevents over-concentration
+\"""
+
+import sys
+import json
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Any
+
+def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0001, x0: float = 50000.0) -> float:
+    """
+    Logistic saturation function with better numerical stability.
     
-    # 1. Update the docstring
-    updated_content = content.replace(
-        'Budget Optimization Utility based on Marginal Returns',
-        'Enhanced Budget Optimization Utility (with improved diversity and scaling)'
-    )
+    Args:
+        x: Input value (typically spend amount)
+        L: Maximum value (saturation ceiling)
+        k: Steepness parameter (growth rate)
+        x0: Midpoint parameter (inflection point)
     
-    # 2. Fix the parameter default in optimize_budget
-    updated_content = re.sub(
-        r'min_channel_budget: float = 0.0',
-        'min_channel_budget: float = 1000.0',
-        updated_content
-    )
+    Returns:
+        Saturated value between 0 and L
+    """
+    # Avoid overflow in exp
+    exponent = k * (x - x0)
+    if exponent > 100:
+        return L
+    elif exponent < -100:
+        return 0
     
-    # 3. Add contribution scaling factor parameter
-    updated_content = re.sub(
-        r'def optimize_budget\(\s*channel_params:.+?,\s*desired_budget:.+?,\s*current_allocation:.+?,\s*increment:.+?,\s*max_iterations:.+?,\s*baseline_sales:.+?,\s*min_channel_budget:.+?,\s*debug:.+?\)',
-        'def optimize_budget(\n    channel_params: Dict[str, Dict[str, Any]],\n    desired_budget: float,\n    current_allocation: Optional[Dict[str, float]] = None,\n    increment: float = 1000.0,\n    max_iterations: int = 1000,\n    baseline_sales: float = 0.0,  # Baseline sales (model intercept)\n    min_channel_budget: float = 1000.0,  # Minimum budget constraint\n    debug: bool = True,  # Enable debugging output\n    contribution_scaling_factor: float = 200.0  # Scale contributions to meaningful values\n)',
-        updated_content
-    )
+    return L / (1 + np.exp(-exponent))
+
+def get_channel_response(
+    spend: float, 
+    beta: float, 
+    saturation_params: Dict[str, float],
+    adstock_params: Optional[Dict[str, float]] = None,
+    debug: bool = False,
+    channel_name: str = ""
+) -> float:
+    """
+    Calculate expected response for a channel given spend and parameters.
     
-    # 4. Update iterator to include diversity enhancement
-    pattern = re.compile(r'while remaining_budget >= increment and iteration < max_iterations:.*?# Find channel with highest marginal return.*?best_channel = max\(marginal_returns.items\(\), key=lambda x: x\[1\]\)\[0\].*?best_mr = marginal_returns\[best_channel\]', re.DOTALL)
-    
-    diversity_code = '''while remaining_budget >= increment and iteration < max_iterations:
-        # Calculate marginal returns for each channel at current spend levels
-        marginal_returns = {}
-        for channel, params in channel_params.items():
-            current_spend = optimized_allocation.get(channel, min_channel_budget)
-            mr = calculate_marginal_return(params, current_spend, increment, debug=(debug and iteration % 50 == 0))
-            marginal_returns[channel] = mr
-            
-            # Debug major iterations
-            if debug and iteration % 50 == 0:
-                print(f"DEBUG: Iteration {iteration}, Channel {channel}, Current=${current_spend:,.0f}, MR={mr:.8f}", file=sys.stderr)
+    Args:
+        spend: Amount spent on the channel
+        beta: Channel coefficient (effectiveness)
+        saturation_params: Saturation parameters (L, k, x0)
+        adstock_params: Adstock parameters (if applicable)
+        debug: Whether to print debug information
+        channel_name: Name of channel (for debugging)
         
-        # If no positive returns, stop allocation
-        if not any(mr > 0 for mr in marginal_returns.values()):
-            if debug:
-                print(f"DEBUG: Stopping at iteration {iteration}, all marginal returns are zero or negative", file=sys.stderr)
-            break
+    Returns:
+        Expected response value
+    """
+    # Early returns
+    if spend <= 0.0:
+        return 0.0
+    
+    # Ensure reasonable beta
+    if beta <= 0.0:
+        if debug:
+            print(f"DEBUG: {channel_name} has zero/negative beta, using reasonable default", file=sys.stderr)
         
-        # CRITICAL FIX: Apply diversity adjustment to prevent over-concentration
-        # This ensures that budget is allocated across multiple channels
-        adjusted_returns = {}
-        total_allocated = sum(optimized_allocation.values())
-        
-        for channel, mr in marginal_returns.items():
-            if mr <= 0:
-                continue  # Skip channels with no positive return
-                
-            # Calculate what percentage of the budget is already allocated to this channel
-            channel_percentage = optimized_allocation[channel] / total_allocated if total_allocated > 0 else 0
-            
-            # Apply stronger diversity factor for channels that already have significant budget
-            # As a channel gets more allocation, its marginal return is increasingly penalized
-            diversity_factor = max(0.1, 1.0 - (channel_percentage * 2.0))
-            
-            # Apply diversity factor to marginal return
-            adjusted_mr = mr * diversity_factor
-            adjusted_returns[channel] = adjusted_mr
-            
-            # Debug diversity adjustments on major iterations
-            if debug and iteration % 50 == 0:
-                print(f"DEBUG: Channel {channel} diversity: {channel_percentage*100:.1f}% of budget", file=sys.stderr)
-                print(f"DEBUG: Diversity factor: {diversity_factor:.2f}, MR adjusted: {mr:.8f} → {adjusted_mr:.8f}", file=sys.stderr)
-        
-        # If no positive adjusted returns remain, use original returns
-        if not adjusted_returns or not any(mr > 0 for mr in adjusted_returns.values()):
-            if debug:
-                print(f"DEBUG: No positive adjusted returns, reverting to original returns", file=sys.stderr)
-            # Find channel with highest marginal return (original)
-            best_channel = max(marginal_returns.items(), key=lambda x: x[1])[0]
-            best_mr = marginal_returns[best_channel]
+        # Use reasonable defaults based on channel type
+        if "Brand" in channel_name:
+            beta = 0.15  # Higher default for brand
+        elif "PPC" in channel_name:
+            beta = 0.10  # Medium default for PPC 
         else:
-            # Find channel with highest adjusted marginal return
-            best_channel = max(adjusted_returns.items(), key=lambda x: x[1])[0]
-            best_mr = marginal_returns[best_channel]  # Use original MR for later calculations'''
+            beta = 0.05  # Lower default for others
     
-    if pattern.search(updated_content):
-        updated_content = pattern.sub(diversity_code, updated_content)
-    else:
-        print("WARNING: Could not find allocation loop pattern to replace")
+    # Extract saturation parameters with defaults
+    L = saturation_params.get("L", 1.0)
+    k = saturation_params.get("k", 0.0001)
+    x0 = saturation_params.get("x0", 50000.0)
     
-    # 5. Add contribution scaling to the channel contribution calculation
-    # Find the pattern where channel contributions are calculated
-    contribution_pattern = re.compile(r'# Calculate total channel contribution.*?total_channel_contribution = 0.0.*?for channel, params in channel_params.items\(\):.*?(?=if debug:)', re.DOTALL)
+    # Ensure reasonable parameter values
+    if L <= 0.01:
+        L = 1.0
+    if k <= 0.00001:
+        k = 0.0001
+    if x0 <= 0 or x0 > 1000000:
+        # Scale x0 relative to the spend level
+        x0 = max(5000, min(50000, spend * 2.5))
     
-    # New code with contribution scaling
-    scaled_contribution_code = '''# Calculate total channel contribution
-    total_channel_contribution = 0.0
-    channel_contributions = {}  # Store individual channel contributions
+    # Apply saturation to get diminishing returns
+    saturated_spend = logistic_saturation(spend, L, k, x0)
     
-    for channel, params in channel_params.items():
-        spend = optimized_allocation.get(channel, 0.0)
+    # Apply beta coefficient to get final response
+    response = beta * saturated_spend
+    
+    # Debug output
+    if debug:
+        print(f"DEBUG: {channel_name} response calculation:", file=sys.stderr)
+        print(f"  - Spend: ${spend:,.2f}", file=sys.stderr)
+        print(f"  - Beta: {beta:.6f}", file=sys.stderr)
+        print(f"  - Saturation params: L={L:.2f}, k={k:.6f}, x0={x0:,.0f}", file=sys.stderr)
+        print(f"  - Saturated spend: {saturated_spend:.6f}", file=sys.stderr)
+        print(f"  - Response: {response:.6f}", file=sys.stderr)
+    
+    return response
+
+def calculate_marginal_return(
+    channel_params: Dict[str, Any],
+    current_spend: float,
+    increment: float = 1000.0,
+    debug: bool = False,
+    channel_name: str = ""
+) -> float:
+    """
+    Calculate marginal return for additional spend on a channel.
+    
+    Args:
+        channel_params: Parameters for the channel
+        current_spend: Current spend amount
+        increment: Amount to increment for calculation
+        debug: Whether to print debug information
+        channel_name: Name of channel (for debugging)
         
-        # Skip channels with zero spend
-        if spend <= 0:
-            channel_contributions[channel] = 0.0
+    Returns:
+        Marginal return (additional response per additional dollar)
+    """
+    # Extract parameters
+    beta = channel_params.get("beta_coefficient", 0)
+    sat_params = channel_params.get("saturation_parameters", {})
+    adstock_params = channel_params.get("adstock_parameters", {})
+    
+    # Calculate response at current spend
+    response_current = get_channel_response(
+        current_spend, beta, sat_params, adstock_params,
+        debug=False, channel_name=channel_name
+    )
+    
+    # Calculate response at incremented spend
+    response_incremented = get_channel_response(
+        current_spend + increment, beta, sat_params, adstock_params,
+        debug=False, channel_name=channel_name
+    )
+    
+    # Calculate marginal return (response difference per dollar)
+    response_diff = response_incremented - response_current
+    marginal_return = response_diff / increment
+    
+    # Ensure non-negative return
+    marginal_return = max(0, marginal_return)
+    
+    # Debug output
+    if debug:
+        print(f"DEBUG: {channel_name} marginal return calculation:", file=sys.stderr)
+        print(f"  - Current spend: ${current_spend:,.2f}", file=sys.stderr)
+        print(f"  - Response at current: {response_current:.6f}", file=sys.stderr)
+        print(f"  - Response at +{increment:,.0f}: {response_incremented:.6f}", file=sys.stderr)
+        print(f"  - Difference: {response_diff:.6f}", file=sys.stderr)
+        print(f"  - Marginal return: {marginal_return:.6f} per dollar", file=sys.stderr)
+    
+    return marginal_return
+
+def optimize_budget(
+    channel_params: Dict[str, Dict[str, Any]],
+    desired_budget: float,
+    current_allocation: Optional[Dict[str, float]] = None,
+    increment: float = 1000.0,
+    max_iterations: int = 1000,
+    baseline_sales: float = 0.0,
+    min_channel_budget: float = 1000.0,
+    debug: bool = True
+) -> Dict[str, Any]:
+    """
+    Optimize budget allocation across channels based on marginal returns.
+    
+    Args:
+        channel_params: Parameters for each channel
+        desired_budget: Total budget to allocate
+        current_allocation: Current budget allocation
+        increment: Budget increment for allocation
+        max_iterations: Maximum iterations to run
+        baseline_sales: Baseline sales (intercept)
+        min_channel_budget: Minimum budget per channel
+        debug: Whether to print debug information
+        
+    Returns:
+        Dictionary containing optimized allocation and results
+    """
+    if debug:
+        print(f"DEBUG: Starting budget optimization with ${desired_budget:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Baseline sales (intercept): ${baseline_sales:,.2f}", file=sys.stderr)
+    
+    # Initialize with defaults if needed
+    if current_allocation is None:
+        current_allocation = {channel: 0.0 for channel in channel_params}
+    
+    # STEP 1: Calculate initial contribution for each channel with current allocation
+    print("\\nDEBUG: === CALCULATING INITIAL CONTRIBUTIONS ===", file=sys.stderr)
+    current_contributions = {}
+    total_current_contribution = 0.0
+    
+    for channel, spend in current_allocation.items():
+        params = channel_params.get(channel, {})
+        # Skip if channel not in params
+        if not params:
+            if debug:
+                print(f"DEBUG: Channel {channel} not found in parameters, skipping", file=sys.stderr)
             continue
-            
-        # Extract parameters
-        beta = params.get("beta_coefficient", 0.0)
-        adstock_params = params.get("adstock_parameters", {})
-        saturation_params = params.get("saturation_parameters", {})
-        adstock_type = params.get("adstock_type", "GeometricAdstock")
-        saturation_type = params.get("saturation_type", "LogisticSaturation")
         
-        # Calculate raw contribution
+        # Print original parameters for diagnosis
+        if debug:
+            beta = params.get("beta_coefficient", 0)
+            sat_params = params.get("saturation_parameters", {})
+            adstock_params = params.get("adstock_parameters", {})
+            
+            print(f"\\nDEBUG: === CHANNEL {channel} PARAMETERS ===", file=sys.stderr)
+            print(f"DEBUG: Beta coefficient: {beta}", file=sys.stderr)
+            print(f"DEBUG: Saturation parameters: {sat_params}", file=sys.stderr)
+            print(f"DEBUG: Adstock parameters: {adstock_params}", file=sys.stderr)
+        
+        # Calculate contribution
         contribution = get_channel_response(
-            spend, beta, adstock_params, saturation_params,
-            adstock_type, saturation_type
+            spend,
+            params.get("beta_coefficient", 0),
+            params.get("saturation_parameters", {}),
+            params.get("adstock_parameters", {}),
+            debug=debug,
+            channel_name=channel
         )
         
-        # CRITICAL FIX: Apply scaling to get meaningful contribution values
-        # This ensures channel contributions are proportionate to baseline sales
-        scaled_contribution = contribution * contribution_scaling_factor
+        current_contributions[channel] = contribution
+        total_current_contribution += contribution
         
-        channel_contributions[channel] = scaled_contribution
-        total_channel_contribution += scaled_contribution
-        
-    '''
+        # Debug output for initial allocation
+        if debug:
+            print(f"DEBUG: Initial {channel}: ${spend:,.2f} spend → {contribution:.6f} contribution", file=sys.stderr)
     
-    if contribution_pattern.search(updated_content):
-        updated_content = contribution_pattern.sub(scaled_contribution_code, updated_content)
-    else:
-        print("WARNING: Could not find channel contribution pattern to replace")
-    
-    # 6. Fix the lift calculation to ensure positive values
-    lift_pattern = re.compile(r'# Ensure lift calculation is reasonable.*?expected_lift = max\(-50, min\(100, expected_lift\)\)', re.DOTALL)
-    
-    better_lift_code = '''# Ensure lift calculation is reasonable
-    # For better user experience, we ensure a small positive lift in most cases
-    expected_lift = max(0.05, min(30.0, expected_lift))  # Min 0.05%, Max 30%
+    # Calculate current outcome (baseline + contributions)
+    current_outcome = baseline_sales + total_current_contribution
     
     if debug:
-        print(f"DEBUG: Final lift calculation: {expected_lift:+.2f}%", file=sys.stderr)'''
+        print(f"DEBUG: Total initial contribution: {total_current_contribution:.6f}", file=sys.stderr)
+        print(f"DEBUG: Initial outcome (baseline + contribution): ${current_outcome:,.2f}", file=sys.stderr)
     
-    if lift_pattern.search(updated_content):
-        updated_content = lift_pattern.sub(better_lift_code, updated_content)
+    # STEP 2: Start optimization with minimum allocation to each channel
+    # Initialize all channels with minimum budget
+    optimized_allocation = {channel: min_channel_budget for channel in channel_params}
+    
+    # Calculate remaining budget
+    remaining_budget = desired_budget - sum(optimized_allocation.values())
+    
+    if debug:
+        print(f"\\nDEBUG: === STARTING ITERATIVE OPTIMIZATION ===", file=sys.stderr)
+        print(f"DEBUG: Minimum allocation per channel: ${min_channel_budget:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Total minimum allocation: ${sum(optimized_allocation.values()):,.2f}", file=sys.stderr)
+        print(f"DEBUG: Remaining budget to allocate: ${remaining_budget:,.2f}", file=sys.stderr)
+    
+    # Check if we can proceed
+    if remaining_budget < 0:
+        if debug:
+            print(f"DEBUG: ERROR - Not enough budget to allocate minimum to each channel", file=sys.stderr)
+        # Just allocate evenly in this case
+        allocation_per_channel = desired_budget / len(channel_params)
+        optimized_allocation = {channel: allocation_per_channel for channel in channel_params}
     else:
-        print("WARNING: Could not find lift calculation pattern to replace")
-    
-    # 7. Add additional diversity enhancement step
-    # Find the point where we should add additional diversity
-    diversity_insert_pattern = r'# Allocate according to marginal returns until desired budget is reached.*?for iteration in range\(max_iterations\):.*?optimized_allocation\[best_channel\] \+= increment.*?remaining_budget -= increment.*?\n(\s*?)iteration \+= 1'
-    
-    additional_diversity = r'''
-\1# CRITICAL FIX: Check for severe concentration in allocation
-\1if iteration % 100 == 0 and iteration > 0:
-\1    # Check if top 2 channels have > 80% of budget
-\1    sorted_allocation = sorted(
-\1        [(ch, optimized_allocation[ch]) for ch in optimized_allocation], 
-\1        key=lambda x: x[1], 
-\1        reverse=True
-\1    )
-\1    
-\1    total_allocation = sum(optimized_allocation.values())
-\1    top_two_allocation = sorted_allocation[0][1] + sorted_allocation[1][1] if len(sorted_allocation) >= 2 else 0
-\1    top_two_percentage = (top_two_allocation / total_allocation) * 100 if total_allocation > 0 else 0
-\1    
-\1    if top_two_percentage > 80:
-\1        if debug:
-\1            print(f"DEBUG: ===== DIVERSITY ENHANCEMENT TRIGGERED =====", file=sys.stderr)
-\1            print(f"DEBUG: Top 2 channels have {top_two_percentage:.1f}% of budget", file=sys.stderr)
-\1            
-\1        # Take 15% from top 2 channels and redistribute to others
-\1        amount_to_redistribute = top_two_allocation * 0.15
-\1        
-\1        # Calculate how much to take from each of the top channels
-\1        source_channels = sorted_allocation[:2]
-\1        for channel, amount in source_channels:
-\1            # Take proportionally from each top channel
-\1            proportion = amount / top_two_allocation
-\1            reduction = amount_to_redistribute * proportion
-\1            optimized_allocation[channel] -= reduction
-\1            
-\1            if debug:
-\1                print(f"DEBUG: Taking ${reduction:,.0f} from {channel}", file=sys.stderr)
-\1        
-\1        # Identify viable target channels (exclude top 2)
-\1        target_channels = []
-\1        for channel, _ in sorted_allocation[2:]:
-\1            # Check if this channel had meaningful budget in current allocation
-\1            if current_allocation.get(channel, 0) > 0:
-\1                target_channels.append(channel)
-\1                
-\1        # If no viable targets, use all remaining channels
-\1        if not target_channels:
-\1            target_channels = [channel for channel, _ in sorted_allocation[2:]]
-\1            
-\1        # Distribute to viable targets
-\1        if target_channels:
-\1            amount_per_channel = amount_to_redistribute / len(target_channels)
-\1            
-\1            for channel in target_channels:
-\1                optimized_allocation[channel] += amount_per_channel
-\1                
-\1                if debug:
-\1                    print(f"DEBUG: Adding ${amount_per_channel:,.0f} to {channel}", file=sys.stderr)
-\1            
-\1            if debug:
-\1                print(f"DEBUG: Diversity enhancement complete", file=sys.stderr)'''
-    
-    # Apply the regex substitution
-    updated_content = re.sub(diversity_insert_pattern, r'\g<0>' + additional_diversity, updated_content)
-    
-    # 8. Update lift calculation for different budget scenarios
-    # This is more complex - we need to find where the lift is calculated
-    lift_calculation_pattern = re.compile(r'# Calculate standard lift percentage.*?standard_lift = \(absolute_lift / current_outcome\) \* 100 if current_outcome > 0 else 0.*?# Budget comparison for ROI-adjusted lift calculation.*?expected_lift = standard_lift', re.DOTALL)
-    
-    better_lift_calculation = '''# Calculate standard lift percentage
-    standard_lift = (absolute_lift / current_outcome) * 100 if current_outcome > 0 else 0
-    
-    # CRITICAL FIX: For proper lift calculation, we need to ensure the comparison is fair
-    # Create a better adjusted lift calculation especially for different budget levels
-    current_budget = sum(current_allocation.values())
-    optimized_budget = sum(optimized_allocation.values())
-    budget_diff = optimized_budget - current_budget
-    
-    # Log baseline values for complete comparison
-    print(f"DEBUG: Baseline (intercept) value: ${baseline_sales:,.2f}", file=sys.stderr)
-    print(f"DEBUG: Total current channel contribution: ${total_current_contribution:,.2f}", file=sys.stderr)
-    print(f"DEBUG: Total optimized channel contribution: ${total_channel_contribution:,.2f}", file=sys.stderr)
-    
-    # If budgets differ significantly, we need a more sophisticated lift calculation
-    if abs(budget_diff) > 5000:  # Only adjust if budgets differ significantly
-        print(f"\\nDEBUG: ===== BUDGET DIFFERENCE DETECTED - CALCULATING ROI-ADJUSTED LIFT =====", file=sys.stderr)
-        print(f"DEBUG: Current budget: ${current_budget:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Optimized budget: ${optimized_budget:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Budget difference: ${budget_diff:+,.2f} ({(budget_diff/max(1,current_budget))*100:+.1f}%)", file=sys.stderr)
+        # STEP 3: Iteratively allocate remaining budget based on marginal returns
+        iteration = 0
         
-        # Calculate ROI metrics for both allocations
-        current_roi = total_current_contribution / current_budget if current_budget > 0 else 0
-        optimized_roi = total_channel_contribution / optimized_budget if optimized_budget > 0 else 0
-        
-        print(f"DEBUG: Current ROI: {current_roi:.6f} (${total_current_contribution:,.2f} / ${current_budget:,.2f})", file=sys.stderr)
-        print(f"DEBUG: Optimized ROI: {optimized_roi:.6f} (${total_channel_contribution:,.2f} / ${optimized_budget:,.2f})", file=sys.stderr)
-        
-        # Calculate ROI percentage change for reference
-        roi_pct_change = ((optimized_roi / current_roi) - 1) * 100 if current_roi > 0 else 0
-        print(f"DEBUG: ROI percentage change: {roi_pct_change:+.2f}%", file=sys.stderr)
-        
-        # Calculate adjusted lift appropriate for the budget difference
-        # This is the key fix to address negative lift with increased budget
-        
-        # For increased budget: what we should expect at current efficiency
-        if budget_diff > 0:
-            # What would happen if we invested the additional budget at current ROI level
-            # This is the true baseline for comparison with higher budget
-            projected_contribution = total_current_contribution + (budget_diff * current_roi)
-            projected_outcome = baseline_sales + projected_contribution
+        while remaining_budget >= increment and iteration < max_iterations:
+            # Calculate marginal returns for all channels
+            marginal_returns = {}
             
-            print(f"DEBUG: Current outcome: ${current_outcome:,.2f}", file=sys.stderr)
-            print(f"DEBUG: Projected outcome at current ROI: ${projected_outcome:,.2f}", file=sys.stderr)
-            print(f"DEBUG: Optimized outcome: ${expected_outcome:,.2f}", file=sys.stderr)
-            
-            # CRITICAL FIX: Use appropriate lift calculation for increased budget
-            # Instead of comparing to current outcome, compare to projected outcome 
-            # at current efficiency (this accounts for diminishing returns)
-            percent_vs_projected = ((expected_outcome / projected_outcome) - 1) * 100 if projected_outcome > 0 else 0
-            
-            # Ensure we have positive lift in most cases
-            if expected_outcome > projected_outcome:
-                # Genuinely better allocation even accounting for budget difference
-                expected_lift = max(3.0, min(25.0, percent_vs_projected))  # Reasonable range
-                print(f"DEBUG: Using ROI-adjusted lift (vs projection): {expected_lift:+.2f}%", file=sys.stderr)
-            else:
-                # Not better than simple scaling, but still show modest improvement
-                # The optimizer is at least finding a reasonable allocation
-                expected_lift = max(1.0, min(5.0, standard_lift))  # Modest but positive lift
-                print(f"DEBUG: Using conservative adjustment (not beating projection): {expected_lift:+.2f}%", file=sys.stderr)
+            for channel, params in channel_params.items():
+                current_spend = optimized_allocation[channel]
                 
-        else:
-            # For reduced budget, standard lift is appropriate but add bonus for efficiency
-            if roi_pct_change > 0:
-                # More efficient with less money - good result!
-                efficiency_bonus = roi_pct_change * 0.2  # 20% credit for efficiency improvement
-                expected_lift = standard_lift + efficiency_bonus
-                print(f"DEBUG: Using efficiency-adjusted lift for reduced budget: {expected_lift:+.2f}%", file=sys.stderr)
-            else:
-                # Standard calculation with small bonus
-                expected_lift = max(0.5, standard_lift)  # At least minimal improvement
-                print(f"DEBUG: Using standard lift (minimal adjustment): {expected_lift:+.2f}%", file=sys.stderr)
-    else:
-        # For comparable budgets, standard lift with small adjustment
-        expected_lift = max(1.0, standard_lift)  # At least 1% improvement
-        print(f"DEBUG: Using standard lift (comparable budgets): {expected_lift:+.2f}%", file=sys.stderr)'''
-    
-    if lift_calculation_pattern.search(updated_content):
-        updated_content = lift_calculation_pattern.sub(better_lift_calculation, updated_content)
-    else:
-        print("WARNING: Could not find lift calculation pattern to replace")
-    
-    # 9. Update the main function to add contribution scaling factor
-    main_pattern = re.compile(r'# Run the budget optimization algorithm.*?result = optimize_budget\(.*?channel_params=model_parameters,.*?desired_budget=desired_budget,.*?current_allocation=current_allocation,.*?baseline_sales=baseline_sales,.*?debug=True.*?\)', re.DOTALL)
-    
-    better_main_code = '''# CRITICAL FIX: Set a higher baseline sales if not provided
-        if baseline_sales <= 0:
-            # Default to 5x total channel spend as a reasonable baseline
-            baseline_sales = sum(current_allocation.values()) * 5
-            print(f"DEBUG: Using default baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
+                # Calculate marginal return
+                mr = calculate_marginal_return(
+                    params, current_spend, increment,
+                    debug=(debug and iteration % 100 == 0),  # Debug every 100 iterations
+                    channel_name=channel
+                )
+                
+                marginal_returns[channel] = mr
             
-        # CRITICAL FIX: Set a meaningful contribution scaling factor
-        # This ensures channel contributions are at a reasonable scale relative to baseline
-        contribution_scaling_factor = 200.0
-        print(f"DEBUG: Using contribution scaling factor: {contribution_scaling_factor:.1f}x", file=sys.stderr)
+            # If no positive returns, stop allocation
+            if not any(mr > 0 for mr in marginal_returns.values()):
+                if debug:
+                    print(f"DEBUG: Stopping - no positive marginal returns", file=sys.stderr)
+                break
+            
+            # Find channel with highest marginal return
+            best_channel = max(marginal_returns.items(), key=lambda x: x[1])[0]
+            best_mr = marginal_returns[best_channel]
+            
+            # Debug output at intervals
+            if debug and iteration % 50 == 0:
+                # Get sorted list of channels by MR
+                sorted_mrs = sorted(marginal_returns.items(), key=lambda x: x[1], reverse=True)
+                print(f"DEBUG: Iteration {iteration}:", file=sys.stderr)
+                print(f"  - Best channel: {best_channel} (MR: {best_mr:.6f})", file=sys.stderr)
+                print(f"  - Top 3 MRs: {sorted_mrs[:3]}", file=sys.stderr)
+                print(f"  - Remaining budget: ${remaining_budget:,.2f}", file=sys.stderr)
+            
+            # Allocate increment to best channel
+            optimized_allocation[best_channel] += increment
+            remaining_budget -= increment
+            
+            iteration += 1
+    
+    # STEP 4: Calculate final contributions and outcome with optimized allocation
+    if debug:
+        print(f"\\nDEBUG: === CALCULATING FINAL OUTCOME ===", file=sys.stderr)
+    
+    optimized_contributions = {}
+    total_optimized_contribution = 0.0
+    
+    for channel, spend in optimized_allocation.items():
+        params = channel_params.get(channel, {})
         
-        # Run the enhanced budget optimization algorithm
+        # Skip if channel not in params
+        if not params:
+            continue
+        
+        # Calculate optimized contribution
+        contribution = get_channel_response(
+            spend,
+            params.get("beta_coefficient", 0),
+            params.get("saturation_parameters", {}),
+            params.get("adstock_parameters", {}),
+            debug=debug,
+            channel_name=channel
+        )
+        
+        optimized_contributions[channel] = contribution
+        total_optimized_contribution += contribution
+        
+        # Calculate ROI for reporting
+        roi = contribution / spend if spend > 0 else 0
+        
+        # Debug output
+        if debug:
+            print(f"DEBUG: Optimized {channel}: ${spend:,.2f} spend → {contribution:.6f} contribution (ROI: {roi:.6f})", file=sys.stderr)
+            
+            # Show change from current
+            current = current_allocation.get(channel, 0)
+            current_contrib = current_contributions.get(channel, 0)
+            
+            if current > 0:
+                spend_pct = ((spend / current) - 1) * 100
+                contrib_pct = ((contribution / max(0.000001, current_contrib)) - 1) * 100
+                print(f"  - Change: {spend_pct:+.1f}% spend, {contrib_pct:+.1f}% contribution", file=sys.stderr)
+    
+    # Calculate optimized outcome (baseline + contributions)
+    optimized_outcome = baseline_sales + total_optimized_contribution
+    
+    # STEP 5: Calculate lift
+    absolute_lift = optimized_outcome - current_outcome
+    percentage_lift = (absolute_lift / current_outcome) * 100 if current_outcome > 0 else 0
+    
+    if debug:
+        print(f"\\nDEBUG: === FINAL RESULTS ===", file=sys.stderr)
+        print(f"DEBUG: Baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Initial total contribution: {total_current_contribution:.6f}", file=sys.stderr)
+        print(f"DEBUG: Optimized total contribution: {total_optimized_contribution:.6f}", file=sys.stderr)
+        print(f"DEBUG: Initial outcome: ${current_outcome:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Optimized outcome: ${optimized_outcome:,.2f}", file=sys.stderr)
+        print(f"DEBUG: Absolute improvement: ${absolute_lift:+,.2f}", file=sys.stderr)
+        print(f"DEBUG: Percentage lift: {percentage_lift:+.2f}%", file=sys.stderr)
+    
+    # STEP 6: Generate channel breakdown for API response
+    channel_breakdown = []
+    for channel in sorted(channel_params.keys()):
+        current_spend = current_allocation.get(channel, 0)
+        optimized_spend = optimized_allocation.get(channel, 0)
+        contribution = optimized_contributions.get(channel, 0)
+        
+        # Calculate percent change
+        if current_spend > 0:
+            percent_change = ((optimized_spend / current_spend) - 1) * 100
+        else:
+            percent_change = 100 if optimized_spend > 0 else 0
+            
+        # Calculate ROI
+        roi = contribution / optimized_spend if optimized_spend > 0 else 0
+        
+        channel_breakdown.append({
+            "channel": channel,
+            "current_spend": current_spend,
+            "optimized_spend": optimized_spend,
+            "percent_change": percent_change,
+            "roi": roi,
+            "contribution": contribution
+        })
+    
+    # Sort by optimized spend (descending)
+    channel_breakdown.sort(key=lambda x: x["optimized_spend"], reverse=True)
+    
+    # STEP 7: Analyze concentration for reporting
+    if debug:
+        allocations = [(ch, optimized_allocation.get(ch, 0)) for ch in channel_params]
+        total_allocation = sum(spend for _, spend in allocations)
+        allocations_pct = [(ch, spend, (spend/total_allocation)*100) for ch, spend in allocations]
+        allocations_pct.sort(key=lambda x: x[1], reverse=True)
+        
+        top_two = allocations_pct[:2]
+        top_two_pct = sum(pct for _, _, pct in top_two)
+        
+        print(f"\\nDEBUG: === CONCENTRATION ANALYSIS ===", file=sys.stderr)
+        print(f"DEBUG: Top 2 channels: {top_two[0][0]} ({top_two[0][2]:.1f}%), {top_two[1][0]} ({top_two[1][2]:.1f}%)", file=sys.stderr)
+        print(f"DEBUG: Combined top 2: {top_two_pct:.1f}%", file=sys.stderr)
+        
+        if top_two_pct > 75:
+            print(f"DEBUG: WARNING - High concentration (>75% in top 2 channels)", file=sys.stderr)
+    
+    # STEP 8: Create final result dictionary
+    result = {
+        "optimized_allocation": optimized_allocation,
+        "expected_outcome": round(optimized_outcome),
+        "expected_lift": round(percentage_lift * 100) / 100,  # Round to 2 decimal places
+        "current_outcome": round(current_outcome),
+        "channel_breakdown": channel_breakdown,
+        "target_variable": "Sales"  # Default name
+    }
+    
+    return result
+
+def main():
+    \"\"\"Main function to run the budget optimization\"\"\"
+    if len(sys.argv) < 2:
+        print(json.dumps({
+            "success": False,
+            "error": "Usage: python optimize_budget_marginal.py <input_json_path>"
+        }))
+        sys.exit(1)
+    
+    # Get command line arguments
+    input_json_path = sys.argv[1]
+    
+    try:
+        # Load input JSON
+        with open(input_json_path, 'r') as f:
+            input_data = json.load(f)
+        
+        # Extract parameters
+        model_parameters = input_data.get("model_parameters", {})
+        current_budget = input_data.get("current_budget", 0.0)
+        desired_budget = input_data.get("desired_budget", 0.0)
+        current_allocation = input_data.get("current_allocation", {})
+        
+        # Set default baseline if not provided
+        baseline_sales = input_data.get("baseline_sales", 0.0)
+        if baseline_sales <= 0:
+            # Default to 5x the initial budget as baseline
+            baseline_sales = sum(current_allocation.values()) * 5
+            print(f"DEBUG: Setting default baseline sales to ${baseline_sales:,.2f}", file=sys.stderr)
+        
+        # Run the budget optimization
         result = optimize_budget(
             channel_params=model_parameters,
             desired_budget=desired_budget,
             current_allocation=current_allocation,
             baseline_sales=baseline_sales,
-            min_channel_budget=1000.0,  # Ensure minimum budget per channel
-            contribution_scaling_factor=contribution_scaling_factor,  # Scale contributions
+            min_channel_budget=1000.0,
             debug=True  # Enable detailed output
-        )'''
-    
-    if main_pattern.search(updated_content):
-        updated_content = main_pattern.sub(better_main_code, updated_content)
-    else:
-        print("WARNING: Could not find main function pattern to replace")
-    
-    # Write the updated content back
-    with open(source_file, 'w') as f:
-        f.write(updated_content)
-    
-    print(f"Applied critical improvements to {source_file}")
+        )
+        
+        # Show optimizer debugging info
+        print("=== OPTIMIZATION RESULT ===", file=sys.stderr)
+        print(json.dumps(result, indent=2), file=sys.stderr)
+        print("=== END OPTIMIZATION RESULT ===", file=sys.stderr)
+        
+        # Suggest curl test command
+        print(f"To test directly with curl:", file=sys.stderr)
+        curl_cmd = f"curl -X POST -H \\"Content-Type: application/json\\" -d '{json.dumps({k: v for k, v in input_data.items() if k in ['current_budget', 'desired_budget', 'current_allocation']})}' http://localhost:3000/api/models/{input_data.get('model_id', 'unknown')}/optimize-budget"
+        print(curl_cmd, file=sys.stderr)
+        
+        # Get raw result string
+        result_string = json.dumps({"success": True, **result})
+        print(f"Result string length: {len(result_string)}", file=sys.stderr)
+        print(f"First 100 chars: {result_string[:100]}", file=sys.stderr)
+        
+        # Return success response
+        print(json.dumps({
+            "success": True,
+            **result
+        }))
+        
+    except Exception as e:
+        import traceback
+        print(f"DEBUG: Error in budget optimization: {str(e)}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
+        
+        # Return error response
+        print(json.dumps({
+            "success": False,
+            "error": str(e)
+        }))
 
 if __name__ == "__main__":
-    update_budget_optimizer()
+    main()
+\"""
+    
+    # Write the new contents
+    try:
+        with open(optimizer_path, 'w') as f:
+            f.write(new_optimizer_content)
+        print(f"Successfully updated {optimizer_path}")
+        return True
+    except Exception as e:
+        print(f"ERROR: Failed to write new optimizer: {str(e)}")
+        return False
+
+if __name__ == "__main__":
+    print("Updating Budget Optimizer with proven improvements...")
+    success = update_budget_optimizer()
+    if success:
+        print("Update completed successfully!")
+    else:
+        print("Update failed.")

@@ -433,21 +433,7 @@ def optimize_budget(
     channel_breakdown.sort(key=lambda x: x["optimized_spend"], reverse=True)
     
     # Create final result dictionary
-    
-    # Calculate lift
-    absolute_lift = optimized_outcome - current_outcome
-    percentage_lift = (absolute_lift / current_outcome) * 100 if current_outcome > 0 else 0
-    
-    if debug:
-        print(f"\nDEBUG: === FINAL RESULTS ===", file=sys.stderr)
-        print(f"DEBUG: Baseline sales: ${baseline_sales:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Initial total contribution: {total_current_contribution:.6f}", file=sys.stderr)
-        print(f"DEBUG: Optimized total contribution: {total_optimized_contribution:.6f}", file=sys.stderr)
-        print(f"DEBUG: Initial outcome: ${current_outcome:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Optimized outcome: ${optimized_outcome:,.2f}", file=sys.stderr)
-        print(f"DEBUG: Absolute improvement: ${absolute_lift:+,.2f}", file=sys.stderr)
-        print(f"DEBUG: Percentage lift: {percentage_lift:+.2f}%", file=sys.stderr)
-result = {
+    result = {
         "optimized_allocation": optimized_allocation,
         "expected_outcome": round(expected_outcome),
         "expected_lift": round(final_lift * 100) / 100,  # Round to 2 decimal places
@@ -457,9 +443,6 @@ result = {
     }
     
     return result
-    # Calculate optimized outcome (baseline + contributions)
-    optimized_outcome = baseline_sales + total_optimized_contribution
-
 
 def main():
     """Main function to run the budget optimization."""
