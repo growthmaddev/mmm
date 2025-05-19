@@ -886,8 +886,8 @@ def optimize_budget(
         dec_channels_text = ", ".join([f"{ch['channel']} ({ch['percent_change']:.0f}%)" for ch in decreased_channels[:3]])
         summary_points.append(f"Biggest decreases: {dec_channels_text}")
     
-    # Create enhanced result dictionary with metrics and insights
-    # Add more comprehensive metrics for better transparency
+    # Create enhanced result dictionary with comprehensive metrics
+    # Include all key performance metrics to provide full transparency
     budget_diff = sum(optimized_allocation.values()) - sum(current_allocation.values())
     
     # Calculate improvement per incremental dollar (ROAS of additional spend)
@@ -895,18 +895,58 @@ def optimize_budget(
     if budget_diff > 0:
         incremental_roas = (expected_outcome - current_outcome) / budget_diff
     
+    # Calculate ROI metrics for both allocations
+    current_roi = 0.0
+    if sum(current_allocation.values()) > 0:
+        current_roi = total_current_contribution / sum(current_allocation.values())
+        
+    optimized_roi = 0.0
+    if sum(optimized_allocation.values()) > 0:
+        optimized_roi = total_channel_contribution / sum(optimized_allocation.values())
+    
     # Bundle all key performance metrics in one place
     performance_metrics = {
         "total_current_budget": sum(current_allocation.values()),
         "total_optimized_budget": sum(optimized_allocation.values()),
         "budget_change_pct": (budget_diff / max(1, sum(current_allocation.values()))) * 100,
         "absolute_improvement": expected_outcome - current_outcome,
+        "current_marketing_roi": current_roi,  
+        "optimized_marketing_roi": optimized_roi,
         "improvement_per_incremental_dollar": incremental_roas,
         "baseline_sales": baseline_sales,
-        "scaling_factor_used": scaling_factor
+        "total_channel_contribution": total_channel_contribution,
+        "total_current_contribution": total_current_contribution
     }
     
-    # Create a comprehensive result with all relevant information
+    # Generate summary points for explainability
+    summary_points = []
+    
+    # Point 1: Overall outcome change
+    if expected_lift >= 0:
+        summary_points.append(f"Expected outcome: ${expected_outcome:,.0f} ({expected_lift:+.1f}% improvement)")
+    else:
+        summary_points.append(f"Expected outcome: ${expected_outcome:,.0f} ({expected_lift:.1f}% change)")
+    
+    # Point 2-3: Top increased/decreased channels
+    if channel_breakdown:
+        # Top 3 increased channels by percent
+        increased_channels = [ch for ch in channel_breakdown if ch["percent_change"] > 0]
+        increased_channels.sort(key=lambda x: x["percent_change"], reverse=True)
+        if increased_channels:
+            inc_channels_text = ", ".join([f"{ch['channel']} ({ch['percent_change']:.0f}%)" for ch in increased_channels[:3]])
+            summary_points.append(f"Biggest increases: {inc_channels_text}")
+        
+        # Top 3 decreased channels by percent
+        decreased_channels = [ch for ch in channel_breakdown if ch["percent_change"] < 0]
+        decreased_channels.sort(key=lambda x: x["percent_change"])
+        if decreased_channels:
+            dec_channels_text = ", ".join([f"{ch['channel']} ({ch['percent_change']:.0f}%)" for ch in decreased_channels[:3]])
+            summary_points.append(f"Biggest decreases: {dec_channels_text}")
+    
+    # Point 4: Budget change
+    summary_points.append(f"Budget change: ${budget_diff:+,.0f} ({(budget_diff/max(1, sum(current_allocation.values())))*100:+.1f}%)")
+    
+    # Create comprehensive result with all relevant information
     result = {
         "optimized_allocation": optimized_allocation,
         "expected_outcome": round(expected_outcome),
