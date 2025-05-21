@@ -17,6 +17,7 @@ export interface IStorage {
   getProjectsByOrganization(organizationId: number): Promise<schema.Project[]>;
   createProject(project: schema.InsertProject): Promise<schema.Project>;
   updateProject(id: number, project: Partial<schema.InsertProject>): Promise<schema.Project | undefined>;
+  deleteProject(id: number): Promise<boolean>;
   
   // Data Source operations
   getDataSource(id: number): Promise<schema.DataSource | undefined>;
@@ -116,6 +117,36 @@ export class DatabaseStorage implements IStorage {
       .where(eq(schema.projects.id, id))
       .returning();
     return updatedProject;
+  }
+  
+  async deleteProject(id: number): Promise<boolean> {
+    try {
+      // First, delete related records (to maintain referential integrity)
+      // Delete models associated with the project
+      await db
+        .delete(schema.models)
+        .where(eq(schema.models.projectId, id));
+      
+      // Delete data sources
+      await db
+        .delete(schema.dataSources)
+        .where(eq(schema.dataSources.projectId, id));
+        
+      // Delete channels
+      await db
+        .delete(schema.channels)
+        .where(eq(schema.channels.projectId, id));
+      
+      // Finally, delete the project itself
+      await db
+        .delete(schema.projects)
+        .where(eq(schema.projects.id, id));
+      
+      return true;
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      return false;
+    }
   }
   
   // Data Source operations
