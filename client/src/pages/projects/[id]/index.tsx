@@ -174,6 +174,9 @@ const statusConfig = {
 export default function ProjectDetails() {
   const { id } = useParams();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
   // Fetch project details
   const { 
@@ -191,6 +194,34 @@ export default function ProjectDetails() {
   } = useQuery({
     queryKey: [`/api/projects/${id}/models`],
     enabled: !!project,
+  });
+  
+  // Delete project mutation
+  const deleteProjectMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/projects/${id}`, {
+        method: 'DELETE'
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Project deleted",
+        description: "Project has been successfully deleted",
+        variant: "default",
+      });
+      // Redirect to projects list
+      navigate('/projects');
+      // Invalidate the projects list query to refresh it
+      queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to delete project. Please try again.",
+        variant: "destructive",
+      });
+      console.error("Failed to delete project:", error);
+    }
   });
 
   // Get latest model if available
@@ -249,9 +280,15 @@ export default function ProjectDetails() {
                     {statusConfig[project.status].label}
                   </Badge>
                 </div>
-                <Button onClick={handleContinue}>
-                  {project.status === "completed" ? "View Results" : "Continue"}
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Project
+                  </Button>
+                  <Button onClick={handleContinue}>
+                    {project.status === "completed" ? "View Results" : "Continue"}
+                  </Button>
+                </div>
               </div>
               <CardDescription>
                 Current status and project information
@@ -541,6 +578,28 @@ export default function ProjectDetails() {
               </Card>
             </TabsContent>
           </Tabs>
+          {/* Delete confirmation dialog */}
+          <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure you want to delete this project?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the project 
+                  and all associated data, including models, data sources, and results.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={() => deleteProjectMutation.mutate()}
+                  disabled={deleteProjectMutation.isPending}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {deleteProjectMutation.isPending ? 'Deleting...' : 'Delete Project'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
     </DashboardLayout>
