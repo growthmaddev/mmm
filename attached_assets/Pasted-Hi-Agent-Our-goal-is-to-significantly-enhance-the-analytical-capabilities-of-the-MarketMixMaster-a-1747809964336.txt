@@ -1,0 +1,29 @@
+Hi Agent,
+
+Our goal is to significantly enhance the analytical capabilities of the MarketMixMaster application. To do this, we need to ensure our core Python model training script, `train_mmm.py`, can output all necessary data and parameters. This data will eventually support a comprehensive suite of user-facing analyses, including:
+
+1.  **Sales Decomposition:** (Base sales vs. incremental sales from marketing, contribution per channel)
+2.  **Channel Effectiveness & ROI:** (Individual channel ROI, efficiency metrics)
+3.  **Response Curves & Saturation:** (Parameters defining response curve shapes per channel, saturation points)
+4.  **Budget Optimization & Scenario Planning:** (While separate optimizer scripts handle optimization, `train_mmm.py` must provide their foundational model parameters: betas, saturation details, etc.)
+5.  **Impact of External Factors:** (Impact coefficients/contributions for variables like seasonality, promotions, if modeled)
+6.  **Adstock / Carryover Effects:** (Parameters for adstock decay rates and transformations per channel, as indicated in optimizer scripts)
+
+**For this specific task, we want you to focus *only on analysis and planning*. Do NOT implement any code changes at this stage.**
+
+Your objectives are to:
+
+A.  **Analyze `train_mmm.py` and Report Current Outputs:**
+    * Thoroughly review the existing `train_mmm.py` script.
+    * Document all data points, model parameters, and statistical outputs it *currently* generates and makes available (e.g., through its JSON output which is used by `modelTraining.ts`).
+
+B.  **Identify and Report Gaps:**
+    * Compare the current outputs (from A) against the data requirements for the six analyses listed above.
+    * Clearly list all specific data points or parameters needed for these analyses that `train_mmm.py` does *not* currently output.
+
+C.  **Propose and Report Necessary Modifications (Plan Only):**
+    * For each missing data point identified in B, describe the conceptual changes or additions that would be needed within `train_mmm.py` to extract, calculate, and then output this information. This is a *plan*, not an implementation.
+    * Briefly describe how these new outputs could be structured within the script's JSON results to ensure they are easily consumable by the backend (`modelTraining.ts`) for storage and later use.
+
+**Deliverable for this task:**
+Please provide a clear, written report detailing your findings for A, B, and C. This report will be reviewed before any coding work is authorized.
