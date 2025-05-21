@@ -231,16 +231,18 @@ def train_model(df, config):
             
         # Sample with extremely reduced parameters for fast prototype
         try:
-            # Use better MCMC parameters while still keeping runtime reasonable
+            # Use minimal MCMC parameters for fast testing
+            # These are deliberately reduced for testing purposes
+            # In production they should be higher for better accuracy
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=1000,     # Increased for more stable estimates
-                tune=500,       # Increased for better adaptation
-                chains=4,       # Using 4 chains as recommended for robust convergence diagnostics
+                draws=200,      # Reduced for faster testing
+                tune=100,       # Reduced for faster testing
+                chains=2,       # Reduced for faster testing
                 cores=1,        # Single core for compatibility
                 progressbar=False,  # No progress bar in API mode
-                target_accept=0.95  # Further increased to reduce divergences
+                target_accept=0.95  # Keep high to reduce divergences
             )
         except Exception as e:
             print(f"Fit method error: {str(e)}", file=sys.stderr)
