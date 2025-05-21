@@ -221,17 +221,32 @@ export const optimizeBudget = async (req: Request, res: Response) => {
       let baseline_sales = 0.0;
       
       // Extract the exact model intercept from model results
-      // This is the actual intercept value extracted by train_mmm.py
+      // This is the total baseline sales across all periods, extracted and scaled by train_mmm.py
       console.log('Looking for actual model intercept in model results...');
       
+      // Calculate total budget to determine a reasonable minimum threshold
+      const totalBudget = Object.values(current_allocation).reduce((sum, value) => sum + value, 0);
+      const MIN_BASELINE_THRESHOLD = Math.max(1.0, totalBudget * 0.01); // 1% of total budget or at least 1.0
+      
       // Look for the explicit model intercept using the single, unambiguous key
-      if (modelResults.summary && modelResults.summary.actual_model_intercept !== undefined) {
+      if (modelResults.summary && 
+          modelResults.summary.actual_model_intercept !== undefined && 
+          modelResults.summary.actual_model_intercept > MIN_BASELINE_THRESHOLD) {
+        // Value exists and is reasonably sized
         baseline_sales = modelResults.summary.actual_model_intercept;
-        console.log(`Found actual model intercept: ${baseline_sales}`);
+        console.log(`Found valid model intercept (total baseline sales): ${baseline_sales}`);
       } else {
-        // If we can't find the proper intercept, this is a critical issue
-        console.error('CRITICAL ERROR: Could not find actual_model_intercept in model results');
-        console.error('This indicates a problem with model extraction in train_mmm.py');
+        // Handle missing or critically low intercept value
+        if (modelResults.summary && modelResults.summary.actual_model_intercept !== undefined) {
+          // Value exists but is critically low
+          const foundValue = modelResults.summary.actual_model_intercept;
+          console.error(`CRITICAL WARNING: Found actual_model_intercept (${foundValue}) is unrealistically low`);
+          console.error(`The value should be at least ${MIN_BASELINE_THRESHOLD} given the budget size`);
+        } else {
+          // Value is completely missing
+          console.error('CRITICAL ERROR: Could not find actual_model_intercept in model results');
+          console.error('This indicates a problem with model extraction in train_mmm.py');
+        }
         
         // Proceed with baseline_sales = 0.0 to make the issue transparent
         baseline_sales = 0.0;
@@ -240,7 +255,7 @@ export const optimizeBudget = async (req: Request, res: Response) => {
         console.warn('1. Only show contributions from marketing channels');
         console.warn('2. Have unrealistically low outcome values');
         console.warn('3. Show inflated lift percentages');
-        console.warn('RECOMMEND: Re-train this model to properly extract the intercept');
+        console.warn('RECOMMEND: Re-train this model to properly extract and scale the intercept');
       }
       
       // Add detailed logging to troubleshoot model results structure

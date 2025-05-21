@@ -476,8 +476,19 @@ def train_model(df, config):
             # Keep model_parameters empty but don't fail
             pass
             
-        # Extract intercept value (baseline sales)
+        # Extract intercept value (baseline sales per period)
         intercept_value = extract_model_intercept(idata, summary, mmm)
+        
+        # Calculate the total baseline sales across all periods
+        total_baseline_sales = float(intercept_value * len(df)) if intercept_value is not None else 0.0
+        
+        # Validate the scaled baseline sales to ensure it's reasonable
+        if intercept_value is not None and sum(y) > 0:
+            baseline_percent = (total_baseline_sales / sum(y)) * 100
+            if baseline_percent < 1.0 and total_baseline_sales > 0:
+                print(f"WARNING: The calculated baseline sales ({total_baseline_sales:.2f}) is unusually low, only {baseline_percent:.4f}% of total sales ({sum(y):.2f})", file=sys.stderr)
+                print(f"This may indicate a model fit issue or unusual data characteristics. Budget optimization may be affected.", file=sys.stderr)
+                print(f"Consider re-training the model or reviewing your data to ensure the baseline (intercept) is realistic.", file=sys.stderr)
         
         # Calculate temporal contributions for each channel (for time series decomposition)
         temporal_contributions = calculate_channel_contributions_over_time(df, channel_columns, model_parameters, intercept_value)
@@ -621,7 +632,7 @@ def train_model(df, config):
                     "r_squared": float(r_squared),
                     "rmse": float(rmse)
                 },
-                "actual_model_intercept": intercept_value
+                "actual_model_intercept": total_baseline_sales  # Store scaled total baseline sales for budget optimizer
             },
             "raw_data": {
                 "predictions": predictions.tolist(),
