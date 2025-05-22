@@ -82,36 +82,176 @@ def transform_target(y, method='log'):
     
     Args:
         y: Target variable values
-        method: Transformation method ('log', 'sqrt', or 'none')
+        method: Transformation method ('log', 'sqrt', 'boxcox', 'yeo-johnson', or 'none')
         
     Returns:
-        Transformed target values
+        Transformed target values and transform parameters for inverse transformation
     """
+    import numpy as np
+    from scipy import stats
+    
+    # Create transform params dictionary to store information needed for inverse transform
+    transform_params = {
+        'method': method,
+        'lambda': None,
+        'shift': 0.0
+    }
+    
     if method == 'log':
-        # Add small constant to handle zeros
-        return np.log1p(y)  # log(1+y) to handle zeros
+        # Use log1p which handles zeros naturally: log(1+y)
+        transform_params['method'] = 'log'
+        return np.log1p(y), transform_params
+        
     elif method == 'sqrt':
         # Square root is less aggressive than log but still helps with right skew
-        return np.sqrt(y)
-    return y  # 'none' or any other value returns original
+        transform_params['method'] = 'sqrt'
+        return np.sqrt(y), transform_params
+        
+    elif method == 'boxcox':
+        # Box-Cox requires strictly positive data
+        y_array = np.array(y)
+        min_val = np.min(y_array)
+        
+        if min_val <= 0:
+            shift = abs(min_val) + 1.0
+            y_positive = y_array + shift
+            transform_params['shift'] = float(shift)
+        else:
+            y_positive = y_array
+            
+        try:
+            y_transformed, lambda_param = stats.boxcox(y_positive)
+            transform_params['lambda'] = float(lambda_param)
+            print(f"BoxCox transform with lambda={lambda_param:.4f}", file=sys.stderr)
+            return y_transformed, transform_params
+        except Exception as e:
+            print(f"BoxCox transformation failed: {str(e)}. Falling back to log transform", file=sys.stderr)
+            transform_params['method'] = 'log'
+            return np.log1p(y), transform_params
+            
+    elif method == 'yeo-johnson':
+        try:
+            from sklearn.preprocessing import PowerTransformer
+            pt = PowerTransformer(method='yeo-johnson', standardize=False)
+            y_array = np.array(y).reshape(-1, 1)
+            y_transformed = pt.fit_transform(y_array).flatten()
+            
+            # Store lambda for inverse transform
+            if hasattr(pt, 'lambdas_'):
+                transform_params['lambda'] = float(pt.lambdas_[0])
+                print(f"Yeo-Johnson transform with lambda={pt.lambdas_[0]:.4f}", file=sys.stderr)
+            
+            return y_transformed, transform_params
+        except Exception as e:
+            print(f"Yeo-Johnson transformation failed: {str(e)}. Falling back to log transform", file=sys.stderr)
+            transform_params['method'] = 'log'
+            return np.log1p(y), transform_params
+    
+    # 'none' or any other value returns original
+    transform_params['method'] = 'none'
+    return y, transform_params
 
 
-def inverse_transform_target(y_transformed, method='log'):
+def inverse_transform_target(y_transformed, transform_params=None):
     """
     Inverse transform to convert predictions back to original scale.
     
     Args:
         y_transformed: Transformed target values
-        method: Transformation method used ('log', 'sqrt', or 'none')
+        transform_params: Dictionary containing transformation parameters
+                         (method, lambda, shift)
         
     Returns:
         Values in original scale
     """
+    import numpy as np
+    from scipy import special
+    
+    # For backward compatibility
+    if transform_params is None or not isinstance(transform_params, dict):
+        method = 'log' if transform_params is None else transform_params
+        transform_params = {'method': method, 'lambda': None, 'shift': 0.0}
+    
+    method = transform_params.get('method', 'log')
+    lambda_param = transform_params.get('lambda', None)
+    shift = transform_params.get('shift', 0.0)
+    
     if method == 'log':
         return np.expm1(y_transformed)  # exp(y) - 1
+    
     elif method == 'sqrt':
         return y_transformed ** 2
-    return y_transformed  # 'none' or any other value returns original
+    
+    elif method == 'boxcox' and lambda_param is not None:
+        # Inverse Box-Cox transformation
+        try:
+            if abs(lambda_param) < 1e-10:
+                y_original = np.exp(y_transformed)
+            else:
+                y_original = np.power(lambda_param * y_transformed + 1, 1/lambda_param)
+            
+            # Remove shift if it was applied
+            if shift > 0:
+                y_original = y_original - shift
+                
+            return y_original
+        except Exception as e:
+            print(f"Inverse BoxCox failed: {str(e)}. Using identity transform.", file=sys.stderr)
+            return y_transformed
+    
+    elif method == 'yeo-johnson' and lambda_param is not None:
+        # Inverse Yeo-Johnson transformation
+        try:
+            y_array = np.array(y_transformed)
+            
+            if lambda_param < 0:  # Handle negative values case
+                mask = y_array < 0
+                y_original = np.zeros_like(y_array)
+                
+                # For y < 0 and lambda < 0
+                if np.any(mask):
+                    y_neg = y_array[mask]
+                    if abs(lambda_param + 2) > 1e-10:
+                        y_original[mask] = -np.power(-(lambda_param + 2) * y_neg + 1, 1/(lambda_param + 2))
+                    else:
+                        y_original[mask] = -np.exp(-y_neg)
+                
+                # For y >= 0 and lambda < 0
+                if np.any(~mask):
+                    y_pos = y_array[~mask]
+                    if abs(lambda_param) > 1e-10:
+                        y_original[~mask] = np.power(lambda_param * y_pos + 1, 1/lambda_param)
+                    else:
+                        y_original[~mask] = np.exp(y_pos)
+                        
+                return y_original
+            else:  # lambda >= 0
+                mask = y_array < 0
+                y_original = np.zeros_like(y_array)
+                
+                # For y < 0 and lambda >= 0
+                if np.any(mask):
+                    y_neg = y_array[mask]
+                    if abs(lambda_param + 2) > 1e-10:
+                        y_original[mask] = -np.power(-(lambda_param + 2) * y_neg + 1, 1/(lambda_param + 2))
+                    else:
+                        y_original[mask] = -np.exp(-y_neg)
+                
+                # For y >= 0 and lambda >= 0
+                if np.any(~mask):
+                    y_pos = y_array[~mask]
+                    if abs(lambda_param) > 1e-10:
+                        y_original[~mask] = np.power(lambda_param * y_pos + 1, 1/lambda_param)
+                    else:
+                        y_original[~mask] = np.exp(y_pos)
+                
+                return y_original
+        except Exception as e:
+            print(f"Inverse Yeo-Johnson failed: {str(e)}. Using identity transform.", file=sys.stderr)
+            return y_transformed
+    
+    # 'none' or any other value returns original
+    return y_transformed
 
 
 def scale_predictors(X, method='standardize'):
