@@ -1052,6 +1052,11 @@ def train_model(df, config):
             "decrease_channel": worst_channel.replace("_Spend", ""),
             "decrease_roi": f"${worst_channel_roi:.2f}",
             "optimize_channel": top_channel.replace("_Spend", ""),
+            "data_diagnostics_report": data_diagnostics,  # Add data diagnostics
+            "data_transforms": {
+                "target_transform": transform_target_method,
+                "predictors_transform": scale_predictors_method
+            },
             "summary": {
                 "channels": {
                     channel.replace("_Spend", ""): { 
@@ -1063,7 +1068,10 @@ def train_model(df, config):
                 },
                 "fit_metrics": {
                     "r_squared": float(r_squared),
-                    "rmse": float(rmse)
+                    "rmse": float(rmse),
+                    "mape": float(mape) if 'mape' in locals() else None,
+                    "transform_method": transform_target_method,
+                    "scaling_method": scale_predictors_method
                 },
                 "actual_model_intercept": total_baseline_sales,  # TRUE model-learned intercept scaled to total period
                 "raw_per_period_intercept": float(intercept_value) if intercept_value is not None else 0.0,  # Raw model intercept per period
