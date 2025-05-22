@@ -146,6 +146,115 @@ def scale_predictors(X, method='standardize'):
     return X, None  # 'none' or any other value returns original
 
 
+def get_adaptive_parameters(df, channel_columns, config=None):
+    """
+    Calculate data-driven adaptive parameters for adstock and saturation transformations.
+    
+    Args:
+        df: DataFrame containing the data
+        channel_columns: List of channel variable column names
+        config: Optional configuration dictionary with parameter overrides
+        
+    Returns:
+        Dictionary of channel-specific parameters for adstock and saturation
+    """
+    config = config or {}
+    adaptive_params = {}
+    
+    # Check if the user has provided a global configuration for these parameters
+    default_alpha = config.get('adstock_alpha', 0.5)
+    default_l_max = config.get('adstock_l_max', 8)
+    default_L = config.get('saturation_L', 1.0)
+    
+    # Get any channel-specific configuration settings
+    channel_config = config.get('channel_specific_params', {})
+    
+    for channel in channel_columns:
+        # Start with empty parameter dictionaries
+        adstock_params = {}
+        saturation_params = {}
+        
+        # Get channel-specific spend data
+        spend_data = df[channel].dropna()
+        if len(spend_data) == 0:
+            # If no data, use defaults
+            print(f"WARNING: No data for channel {channel}, using default parameters", file=sys.stderr)
+            adstock_params['alpha'] = default_alpha
+            adstock_params['l_max'] = default_l_max
+            saturation_params['L'] = default_L
+            saturation_params['k'] = 0.0005
+            saturation_params['x0'] = 50000
+        else:
+            # 1. Adstock parameters - adapt based on channel characteristics
+            # For alpha (decay rate), could use autocorrelation or seasonality if available
+            # For now, use channel-specific config if available, otherwise use default
+            if channel in channel_config and 'adstock_alpha' in channel_config[channel]:
+                adstock_params['alpha'] = float(channel_config[channel]['adstock_alpha'])
+            else:
+                # For future: could adapt alpha based on observed lag effects in data
+                # Currently using default with slight randomization for variations
+                import random
+                adstock_params['alpha'] = default_alpha + random.uniform(-0.1, 0.1) * default_alpha
+                adstock_params['alpha'] = max(0.1, min(0.9, adstock_params['alpha']))  # Keep between 0.1-0.9
+            
+            # For l_max (maximum lag), look at data frequency and scale
+            if channel in channel_config and 'adstock_l_max' in channel_config[channel]:
+                adstock_params['l_max'] = int(channel_config[channel]['adstock_l_max'])
+            else:
+                # Future enhancement: adapt l_max based on data frequency
+                # For now, use default plus small variation
+                adstock_params['l_max'] = default_l_max
+            
+            # 2. Saturation parameters - more directly data-driven
+            # For L (ceiling), usually this stays at 1.0 for interpretability
+            if channel in channel_config and 'saturation_L' in channel_config[channel]:
+                saturation_params['L'] = float(channel_config[channel]['saturation_L'])
+            else:
+                saturation_params['L'] = default_L
+            
+            # For x0 (midpoint), use a characteristic of the spend distribution
+            if channel in channel_config and 'saturation_x0' in channel_config[channel]:
+                saturation_params['x0'] = float(channel_config[channel]['saturation_x0'])
+            else:
+                # Use median spend for this channel as the inflection point
+                # This is a key data-driven element - adapt to the actual spend scale
+                nonzero_spend = spend_data[spend_data > 0]
+                if len(nonzero_spend) > 0:
+                    median_spend = float(nonzero_spend.median())
+                    # If median spend is zero or very small, use mean or a minimum value
+                    if median_spend <= 0 or np.isnan(median_spend):
+                        median_spend = float(nonzero_spend.mean()) if nonzero_spend.mean() > 0 else 1000
+                    # Ensure x0 is positive and reasonable
+                    saturation_params['x0'] = max(100, median_spend)
+                else:
+                    # No non-zero spend, use default
+                    saturation_params['x0'] = 50000
+            
+            # For k (steepness), adapt inversely to the spend scale
+            if channel in channel_config and 'saturation_k' in channel_config[channel]:
+                saturation_params['k'] = float(channel_config[channel]['saturation_k'])
+            else:
+                # Adaptive k based on x0 - key for making saturation meaningful
+                # k is inversely proportional to typical spend
+                x0 = saturation_params['x0']
+                saturation_params['k'] = 0.0005 / (x0 / 50000) if x0 > 0 else 0.0005
+                # Ensure k is within reasonable bounds - too high or low can break the function
+                saturation_params['k'] = max(0.00001, min(0.01, saturation_params['k']))
+        
+        # Store the parameters for this channel
+        adaptive_params[channel] = {
+            'adstock': adstock_params,
+            'saturation': saturation_params
+        }
+        
+        # Print the parameters for debugging
+        print(f"Channel {channel} adaptive parameters:", file=sys.stderr)
+        print(f"  Adstock: alpha={adstock_params['alpha']:.4f}, l_max={adstock_params['l_max']}", file=sys.stderr)
+        print(f"  Saturation: L={saturation_params['L']:.1f}, k={saturation_params['k']:.6f}, x0={saturation_params['x0']:.1f}", file=sys.stderr)
+    
+    return adaptive_params
+
+
 def run_diagnostics(df, target_column, channel_columns, date_column=None):
     """
     Run comprehensive data diagnostics to identify modeling issues.
@@ -545,6 +654,10 @@ def train_model(df, config):
         if transform_target_method != 'none':
             print(f"Applying {transform_target_method} transformation to target variable", file=sys.stderr)
             y = transform_target(df[target_column], method=transform_target_method)
+            print(f"Target range before transformation: [{y_original.min():.2f}, {y_original.max():.2f}]", file=sys.stderr)
+            print(f"Target range after transformation: [{y.min():.2f}, {y.max():.2f}]", file=sys.stderr)
+            # Update the target in the dataframe
+            df[target_column] = y
         else:
             y = df[target_column].copy()
         
@@ -554,10 +667,17 @@ def train_model(df, config):
             print(f"Scaling predictor variables using {scale_predictors_method}", file=sys.stderr)
             X_scaled, scaler = scale_predictors(X_predictors, method=scale_predictors_method)
             # Update X with scaled values
-            for channel in channel_columns:
-                X[channel] = X_scaled[channel]
+            for col in channel_columns:
+                df[col] = X_scaled[col]
+                print(f"Channel {col} - Original range: [{X_predictors[col].min():.2f}, {X_predictors[col].max():.2f}], " +
+                      f"Scaled range: [{df[col].min():.2f}, {df[col].max():.2f}]", file=sys.stderr)
         
-        # Create data-driven media transforms with adaptive parameters
+        # Calculate adaptive parameters for adstock and saturation based on actual data
+        print("Generating data-driven adaptive parameters for media transformations...", file=sys.stderr)
+        adaptive_params = get_adaptive_parameters(df, channel_columns, config)
+        
+        # Create media transforms dictionary with adaptive parameters for each channel
+        media_transforms = {}
         print("Creating data-driven media transforms...", file=sys.stderr)
         media_transforms = {}
         
