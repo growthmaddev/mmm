@@ -35,7 +35,50 @@ def main():
     
     # Load config
     with open(config_path, 'r') as f:
-        config = json.load(f)
+        raw_config = json.load(f)
+    
+    # Convert from test_config_quick.json format to the expected format
+    config = {
+        "targetColumn": raw_config.get("data", {}).get("response_column", "Sales"),
+        "dateColumn": raw_config.get("data", {}).get("date_column", "Date"),
+        "channelColumns": raw_config.get("channels", {}),
+        "controlColumns": raw_config.get("data", {}).get("control_columns", []),
+        "adstockSettings": {
+            "channel_specific_params": {}
+        },
+        "saturationSettings": {
+            "channel_specific_params": {}
+        },
+        "mcmcParams": {
+            "draws": 100,
+            "tune": 50,
+            "chains": 1,
+            "targetAccept": 0.8
+        }
+    }
+    
+    # Map channel parameters to the expected format
+    for channel, params in raw_config.get("channels", {}).items():
+        config["adstockSettings"]["channel_specific_params"][channel] = {
+            "adstock_alpha": params.get("alpha", 0.5),
+            "adstock_l_max": params.get("l_max", 8)
+        }
+        config["saturationSettings"]["channel_specific_params"][channel] = {
+            "saturation_L": params.get("L", 1.0),
+            "saturation_k": params.get("k", 0.0001),
+            "saturation_x0": params.get("x0", 50000.0)
+        }
+    
+    # Add default values
+    config["adstockSettings"]["default"] = {
+        "adstock_alpha": 0.5,
+        "adstock_l_max": 8
+    }
+    config["saturationSettings"]["default"] = {
+        "saturation_L": 1.0,
+        "saturation_k": 0.0001,
+        "saturation_x0": 50000.0
+    }
     
     # Print key configuration parameters
     print(f"Testing with configuration:")
