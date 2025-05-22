@@ -14,8 +14,10 @@ import pymc as pm
 import arviz as az
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_percentage_error
 from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
+from scipy import stats
+import warnings
 
 def load_data(file_path):
     """Load and preprocess data for MMM"""
@@ -157,38 +159,145 @@ def run_diagnostics(df, target_column, channel_columns, date_column=None):
     Returns:
         Dictionary of diagnostic results
     """
-    diagnostics = {}
+    diagnostics = {
+        "data_points": len(df),
+        "missing_values": {},
+        "correlation_with_target": {},
+        "variance": {},
+        "skewness": {},
+        "channel_collinearity": {},
+        "issues": [],
+        "warnings": [],
+        "recommendations": []
+    }
     
     # 1. Check for data volume
-    diagnostics["data_points"] = len(df)
     if len(df) < 52:
         print("WARNING: Limited data points (<52) may lead to poor model fit", file=sys.stderr)
+        diagnostics["issues"].append("Limited data points (<52) may lead to poor model fit")
+        diagnostics["recommendations"].append("Collect more data for better model fit (aim for 52+ observations)")
+    elif len(df) < 104:
+        print("NOTE: Having more data points (104+) would improve model stability", file=sys.stderr)
+        diagnostics["warnings"].append("Limited data points (52-104) may affect model stability")
+        diagnostics["recommendations"].append("If possible, collect more data for better model stability")
     
-    # 2. Check for spend-sales correlation
+    # 2. Check for missing values
+    for col in [target_column] + channel_columns:
+        missing = df[col].isna().sum()
+        if missing > 0:
+            diagnostics["missing_values"][col] = int(missing)
+            diagnostics["issues"].append(f"Column {col} has {missing} missing values")
+            diagnostics["recommendations"].append(f"Consider imputing missing values in {col}")
+    
+    # 3. Check for zero variance or constant columns
+    for col in channel_columns:
+        variance = df[col].var()
+        diagnostics["variance"][col] = float(variance)
+        if variance == 0:
+            diagnostics["issues"].append(f"Column {col} has zero variance (constant values)")
+            diagnostics["recommendations"].append(f"Remove column {col} as it contains only constant values")
+        elif variance < 0.01 * df[col].mean() and df[col].mean() > 0:
+            diagnostics["warnings"].append(f"Column {col} has very low variance relative to its mean")
+    
+    # 4. Calculate correlation with target
     correlations = {}
     for channel in channel_columns:
         corr = df[channel].corr(df[target_column])
         correlations[channel] = float(corr)
-        if abs(corr) < 0.1:
+        diagnostics["correlation_with_target"][channel] = float(corr)
+        if abs(corr) < 0.05:  # Very weak correlation
             print(f"WARNING: Very low correlation between {channel} and {target_column}: {corr:.4f}", file=sys.stderr)
+            diagnostics["issues"].append(f"Channel {channel} has very weak correlation ({corr:.4f}) with target")
+            diagnostics["recommendations"].append(f"Check data quality for {channel} or consider removing it")
+        elif abs(corr) < 0.1:  # Weak correlation
+            print(f"WARNING: Weak correlation between {channel} and {target_column}: {corr:.4f}", file=sys.stderr)
+            diagnostics["warnings"].append(f"Channel {channel} has weak correlation ({corr:.4f}) with target")
+    
     diagnostics["channel_correlations"] = correlations
     
-    # 3. Check for collinearity between channels
-    X = df[channel_columns]
-    X_scaled = StandardScaler().fit_transform(X)
-    pca = PCA().fit(X_scaled)
+    # 5. Check for skewness in target and channel variables
+    for col in [target_column] + channel_columns:
+        series = df[col].dropna()
+        if len(series) > 0:
+            skewness = float(stats.skew(series))
+            diagnostics["skewness"][col] = skewness
+            if abs(skewness) > 1.5:
+                if col == target_column:
+                    print(f"WARNING: Target variable is highly skewed (skewness={skewness:.2f})", file=sys.stderr)
+                    diagnostics["warnings"].append(f"Target variable is highly skewed (skewness={skewness:.2f})")
+                    if skewness > 0:
+                        diagnostics["recommendations"].append("Consider log transformation for right-skewed target")
+                    else:
+                        diagnostics["recommendations"].append("Consider square transformation for left-skewed target")
+                else:
+                    diagnostics["warnings"].append(f"Column {col} is highly skewed (skewness={skewness:.2f})")
     
-    # High explained variance in first component suggests collinearity
-    if pca.explained_variance_ratio_[0] > 0.7:
-        print(f"WARNING: High collinearity detected between channel variables (PCA first component explains {pca.explained_variance_ratio_[0]:.2%})", file=sys.stderr)
+    # 6. Check for collinearity between channels
+    if len(channel_columns) > 1:
+        # Use PCA to detect collinearity
+        X = df[channel_columns]
+        X_scaled = StandardScaler().fit_transform(X)
+        pca = PCA().fit(X_scaled)
+        
+        # High explained variance in first component suggests collinearity
+        if pca.explained_variance_ratio_[0] > 0.7:
+            print(f"WARNING: High collinearity detected between channel variables (PCA first component explains {pca.explained_variance_ratio_[0]:.2%})", file=sys.stderr)
+            diagnostics["issues"].append(f"High collinearity detected between channels")
+            diagnostics["recommendations"].append("Consider removing or combining highly correlated channels")
+        
+        diagnostics["collinearity"] = {
+            "pca_components": len(pca.explained_variance_ratio_),
+            "explained_variance": [float(x) for x in pca.explained_variance_ratio_],
+            "cumulative_variance": [float(sum(pca.explained_variance_ratio_[:i+1])) for i in range(len(pca.explained_variance_ratio_))]
+        }
+        
+        # Correlation matrix for channels
+        channel_corr = df[channel_columns].corr()
+        diagnostics["channel_correlation_matrix"] = channel_corr.to_dict()
+        
+        # Flag high correlations between channels
+        for i, col1 in enumerate(channel_columns):
+            for j, col2 in enumerate(channel_columns):
+                if i < j:  # Only check unique pairs
+                    corr_value = channel_corr.loc[col1, col2]
+                    if abs(corr_value) > 0.7:
+                        print(f"WARNING: High correlation ({corr_value:.2f}) between {col1} and {col2}", file=sys.stderr)
+                        diagnostics["warnings"].append(f"High correlation ({corr_value:.2f}) between {col1} and {col2}")
+        
+        # Advanced collinearity check using VIF if statsmodels is available
+        try:
+            from statsmodels.stats.outliers_influence import variance_inflation_factor
+            
+            # Calculate VIF for each channel
+            X = df[channel_columns]
+            # Replace any remaining NaN with 0 for VIF calculation
+            X = X.fillna(0)
+            
+            # Check for perfect collinearity first
+            if np.linalg.matrix_rank(X) < len(X.columns):
+                print("WARNING: Perfect collinearity detected among channels", file=sys.stderr)
+                diagnostics["issues"].append("Perfect collinearity detected among channels")
+                diagnostics["recommendations"].append("Remove one or more highly correlated channels")
+            else:
+                vif_data = pd.DataFrame()
+                vif_data["Variable"] = X.columns
+                vif_data["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+                
+                # Store VIF values
+                diagnostics["vif"] = vif_data.set_index("Variable")["VIF"].to_dict()
+                
+                # Flag high VIF values
+                for var, vif in diagnostics["vif"].items():
+                    if vif > 10:
+                        print(f"WARNING: Very high multicollinearity for {var} (VIF={vif:.2f})", file=sys.stderr)
+                        diagnostics["issues"].append(f"Very high multicollinearity for {var} (VIF={vif:.2f})")
+                        diagnostics["recommendations"].append(f"Consider removing {var} or combining with correlated channels")
+                    elif vif > 5:
+                        diagnostics["warnings"].append(f"High multicollinearity for {var} (VIF={vif:.2f})")
+        except Exception as e:
+            print(f"Note: Advanced collinearity checks skipped: {str(e)}", file=sys.stderr)
     
-    diagnostics["collinearity"] = {
-        "pca_components": len(pca.explained_variance_ratio_),
-        "explained_variance": [float(x) for x in pca.explained_variance_ratio_],
-        "cumulative_variance": [float(sum(pca.explained_variance_ratio_[:i+1])) for i in range(len(pca.explained_variance_ratio_))]
-    }
-    
-    # 4. Check for zero spend ratios
+    # 7. Check for zero spend ratios
     zero_spend = {}
     for channel in channel_columns:
         zero_count = (df[channel] == 0).sum()
@@ -198,10 +307,15 @@ def run_diagnostics(df, target_column, channel_columns, date_column=None):
             "zero_percent": float(zero_percent)
         }
         if zero_percent > 50:
-            print(f"WARNING: High percentage of zero values ({zero_percent:.1f}%) in {channel}", file=sys.stderr)
+            print(f"WARNING: Channel {channel} has {zero_percent:.1f}% zero values", file=sys.stderr)
+            diagnostics["warnings"].append(f"Channel {channel} has {zero_percent:.1f}% zero values")
+            if zero_percent > 80:
+                diagnostics["issues"].append(f"Channel {channel} is mostly zeros ({zero_percent:.1f}%)")
+                diagnostics["recommendations"].append(f"Consider removing {channel} due to sparse data")
+    
     diagnostics["zero_spend_analysis"] = zero_spend
     
-    # 5. Target variable statistics
+    # 8. Target variable statistics
     target_stats = {
         'mean': float(df[target_column].mean()),
         'median': float(df[target_column].median()),
@@ -215,29 +329,128 @@ def run_diagnostics(df, target_column, channel_columns, date_column=None):
     }
     diagnostics["target_stats"] = target_stats
     
-    # Right-skewed data might need transformation
-    if target_stats["skewness"] > 1.0:
-        print(f"WARNING: Target variable is right-skewed (skewness={target_stats['skewness']:.2f}). Consider log transformation.", file=sys.stderr)
+    # 9. Check for potential data quality issues in target
+    if df[target_column].min() == df[target_column].max():
+        print("WARNING: Target variable has constant values (no variance)", file=sys.stderr)
+        diagnostics["issues"].append("Target variable has constant values (no variance)")
+        diagnostics["recommendations"].append("Check target variable data quality - contains only constant values")
     
-    # 6. Check for time series characteristics if date column provided
-    if date_column and date_column in df.columns:
+    if df[target_column].min() < 0:
+        print("WARNING: Target variable contains negative values", file=sys.stderr)
+        diagnostics["issues"].append("Target variable contains negative values")
+        diagnostics["recommendations"].append("Consider data cleaning for negative target values or use a different transformation")
+    
+    # 10. Check if target is very small compared to predictors
+    target_mean = df[target_column].mean()
+    predictors_mean = np.mean([df[col].mean() for col in channel_columns])
+    channels_mean = {channel: float(df[channel].mean()) for channel in channel_columns}
+    diagnostics["channels_mean"] = channels_mean
+    
+    if target_mean > 0 and predictors_mean > 0:
+        scale_ratio = predictors_mean / target_mean
+        diagnostics["predictor_target_scale_ratio"] = float(scale_ratio)
+        
+        if scale_ratio > 1000:
+            print(f"WARNING: Predictors are on average {scale_ratio:.0f}x larger than target", file=sys.stderr)
+            diagnostics["issues"].append(f"Predictors are on average {scale_ratio:.0f}x larger than target")
+            diagnostics["recommendations"].append("Scale predictors down or transform target to address scale differences")
+        elif scale_ratio < 0.001:
+            print(f"WARNING: Target is on average {1/scale_ratio:.0f}x larger than predictors", file=sys.stderr)
+            diagnostics["issues"].append(f"Target is on average {1/scale_ratio:.0f}x larger than predictors")
+            diagnostics["recommendations"].append("Scale predictors up or transform target to address scale differences")
+    
+    # 11. Check for outliers
+    for col in [target_column] + channel_columns:
+        series = df[col].dropna()
+        if len(series) > 0:
+            q1 = series.quantile(0.25)
+            q3 = series.quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
+            outliers = ((series < lower_bound) | (series > upper_bound)).sum()
+            
+            outlier_pct = outliers / len(series) * 100
+            diagnostics[f"{col}_outliers_pct"] = float(outlier_pct)
+            
+            if outlier_pct > 10:
+                print(f"WARNING: Column {col} has many outliers ({outlier_pct:.1f}%)", file=sys.stderr)
+                diagnostics["issues"].append(f"Column {col} has many outliers ({outlier_pct:.1f}%)")
+                diagnostics["recommendations"].append(f"Consider cleaning outliers in {col} or using robust methods")
+            elif outlier_pct > 5:
+                diagnostics["warnings"].append(f"Column {col} has some outliers ({outlier_pct:.1f}%)")
+    
+    # 12. Time series specific checks
+    if date_column is not None and date_column in df.columns:
+        # Check for regularity and frequency
         try:
-            from statsmodels.tsa.stattools import adfuller
-            
-            # Check for stationarity
-            adf_result = adfuller(df[target_column])
-            is_stationary = adf_result[1] < 0.05
-            
-            if not is_stationary:
-                print(f"WARNING: Target variable appears to be non-stationary (p={adf_result[1]:.4f}). Consider differencing.", file=sys.stderr)
+            # Ensure date column is datetime
+            if not pd.api.types.is_datetime64_any_dtype(df[date_column]):
+                df_temp = df.copy()
+                df_temp[date_column] = pd.to_datetime(df_temp[date_column])
+            else:
+                df_temp = df
                 
-            diagnostics["time_series"] = {
-                "is_stationary": bool(is_stationary),
-                "adf_pvalue": float(adf_result[1])
+            # Check for regularity
+            date_diffs = df_temp[date_column].diff().dropna()
+            if hasattr(date_diffs, 'dt'):
+                date_diffs = date_diffs.dt.days
+                
+            unique_diffs = date_diffs.unique()
+            if len(unique_diffs) > 1:
+                print(f"WARNING: Irregular time intervals detected: {unique_diffs}", file=sys.stderr)
+                diagnostics["issues"].append("Time series has irregular intervals")
+                diagnostics["recommendations"].append("Consider resampling data to regular intervals")
+            
+            diagnostics["temporal"] = {
+                "regular_intervals": len(unique_diffs) <= 1,
+                "interval_values": [int(x) for x in unique_diffs],
+                "start_date": df_temp[date_column].min().strftime('%Y-%m-%d'),
+                "end_date": df_temp[date_column].max().strftime('%Y-%m-%d')
             }
+            
+            # Check for stationarity if statsmodels TSA is available
+            try:
+                from statsmodels.tsa.stattools import adfuller
+                
+                # Run Augmented Dickey-Fuller test on target
+                adf_result = adfuller(df[target_column].values)
+                diagnostics["stationarity"] = {
+                    "adf_statistic": float(adf_result[0]),
+                    "p_value": float(adf_result[1]),
+                    "is_stationary": bool(adf_result[1] < 0.05)
+                }
+                
+                if adf_result[1] >= 0.05:
+                    print(f"WARNING: Target variable appears non-stationary (p={adf_result[1]:.4f})", file=sys.stderr)
+                    diagnostics["warnings"].append("Target variable appears non-stationary")
+                    diagnostics["recommendations"].append("Consider differencing or detrending target variable")
+            except Exception as e:
+                print(f"Note: Stationarity test skipped: {str(e)}", file=sys.stderr)
         except Exception as e:
-            print(f"Error in time series diagnostics: {str(e)}", file=sys.stderr)
-            diagnostics["time_series"] = {"error": str(e)}
+            print(f"Error in temporal diagnostics: {str(e)}", file=sys.stderr)
+            diagnostics["temporal"] = {"error": str(e)}
+    
+    # 13. Overall data quality assessment
+    issue_count = len(diagnostics["issues"])
+    warning_count = len(diagnostics["warnings"])
+    
+    if issue_count == 0 and warning_count == 0:
+        diagnostics["overall_quality"] = "excellent"
+    elif issue_count == 0 and warning_count <= 3:
+        diagnostics["overall_quality"] = "good"
+    elif issue_count <= 2 and warning_count <= 5:
+        diagnostics["overall_quality"] = "fair"
+    else:
+        diagnostics["overall_quality"] = "poor"
+        
+    # Calculate a data quality score (0-100)
+    base_score = 100
+    issue_penalty = 15  # Points deducted per issue
+    warning_penalty = 5  # Points deducted per warning
+    
+    quality_score = max(0, base_score - (issue_count * issue_penalty) - (warning_count * warning_penalty))
+    diagnostics["quality_score"] = quality_score
     
     return diagnostics
 
