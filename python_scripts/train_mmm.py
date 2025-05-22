@@ -1031,10 +1031,10 @@ def train_model(df, config):
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=200,      # Reduced for faster testing
-                tune=100,       # Reduced for faster testing
-                chains=2,       # Reduced for faster testing
-                cores=2,        # Reduced for compatibility
+                draws=2000,      # Reduced for faster testing
+                tune=1000,       # Reduced for faster testing
+                chains=4,       # Reduced for faster testing
+                cores=4,        # Reduced for compatibility
                 progressbar=False,  # No progress bar in API mode
                 target_accept=0.9  # Keep high to reduce divergences
             )
