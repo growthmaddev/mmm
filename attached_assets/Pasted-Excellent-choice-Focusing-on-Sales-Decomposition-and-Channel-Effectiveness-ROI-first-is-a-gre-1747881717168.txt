@@ -1,0 +1,47 @@
+Excellent choice! Focusing on "Sales Decomposition" and "Channel Effectiveness & ROI" first is a great strategy. These areas provide foundational insights that are highly valuable to marketers and align well with the newly available backend data.
+
+Based on the Agent's previous high-level proposals:
+
+Sales Decomposition ideas were centered on the "Overview Tab" and included a sales decomposition pie chart, a time-series chart of stacked contributions, and key metric cards.
+Channel Effectiveness & ROI ideas were primarily for the "Channel Impact Tab" and included an ROI comparison bar chart (with confidence intervals) and a channel contribution visual.
+Now, let's get the Replit AI Agent to flesh these out with detailed designs.
+
+Here's the prompt for the Replit AI Agent:
+
+Prompt for the Replit AI Agent: Detailed Frontend Design for Sales Decomposition & Channel ROI
+
+Hi Agent,
+
+We've decided to prioritize the frontend implementation for two key analytical areas first:
+1.  **Sales Decomposition**
+2.  **Channel Effectiveness & ROI**
+
+Your previous high-level UI/UX proposals for these were:
+* **Sales Decomposition (likely on "Overview Tab" of `results.tsx`/results.tsx]):** Sales Decomposition Chart (e.g., pie for `analytics.sales_decomposition.percent_decomposition`), Time Series Chart (stacked contributions from `analytics.sales_decomposition.time_series`), Key Metrics Cards (total, base, incremental sales from `analytics.sales_decomposition`).
+* **Channel Effectiveness & ROI (likely on "Channel Impact Tab" of `results.tsx`/results.tsx]):** Channel ROI Comparison (e.g., bar chart using `analytics.channel_effectiveness_detail.roi` with `roi_ci_low`, `roi_ci_high`), and a Channel Contribution visual (potentially using `analytics.sales_decomposition.incremental_sales` or `percent_decomposition.channels`).
+
+**Your task is to create detailed mockups or component specifications for how these two analytical areas will be presented within `MarketMixMaster/client/src/pages/projects/[id]/results.tsx`.**
+
+For *each* of these two areas ("Sales Decomposition" and "Channel Effectiveness & ROI"), please provide:
+
+1.  **Detailed Visual Design/Mockups:**
+    * Describe or sketch the proposed charts, tables, cards, or any other UI elements.
+    * Specify layout within the existing tabs (e.g., "Overview" or "Channel Impact") or suggest minor adjustments if needed.
+    * Clearly indicate which specific data points from the `analytics` section of the `train_mmm.py` output will be used to populate these UI elements. (e.g., for Sales Decomposition: `analytics.sales_decomposition.base_sales`, `analytics.sales_decomposition.incremental_sales.YOUR_CHANNEL`, `analytics.sales_decomposition.time_series.dates`, `analytics.sales_decomposition.time_series.channels.YOUR_CHANNEL`, etc. For Channel ROI: `analytics.channel_effectiveness_detail.CHANNEL.roi`, `.roi_ci_low`, `.roi_ci_high`, `.statistical_significance`, `.cost_per_outcome`, etc.)
+
+2.  **Accessibility and User Experience (UX) Considerations:**
+    * Explain how your design incorporates the "Keys for Accessibility" we've discussed:
+        * **Clear Language:** What kind of labels, titles, and explanatory text will be used to avoid jargon?
+        * **Focus on "So What?":** How will the UI help users understand the implications of the data (e.g., by highlighting key insights or changes)?
+        * **Visual First:** How will charts be designed for immediate comprehension?
+        * **Actionable Recommendations:** Will there be any direct calls to action or suggested next steps based on these specific insights?
+        * **Contextual Help/Tooltips:** Propose where tooltips or "learn more" icons could be used to explain metrics like ROI confidence intervals, statistical significance, or the components of sales decomposition.
+
+3.  **Component Reusability/Needs:**
+    * Identify if existing chart components (e.g., `ContributionChart.tsx`, `ResponseCurveChart.tsx`) can be reused or adapted.
+    * If new, specialized components are needed, provide a brief specification for them.
+
+**Deliverable for this task:**
+A detailed design document or presentation covering the points above for both "Sales Decomposition" and "Channel Effectiveness & ROI". This should give us a clear blueprint before any frontend coding begins.
+
+This focused approach will allow us to develop these high-impact features effectively.

@@ -7,7 +7,12 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, Info, Sparkles } from "lucide-react";
+import { 
+  Loader2, ArrowLeft, BarChart3, LineChart, ChevronRight, 
+  Info, Sparkles, DollarSign, PieChart, TrendingUp 
+} from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
+import SalesCompositionChart from "@/components/charts/SalesCompositionChart";
 
 export default function ModelResults() {
   const { id } = useParams();
@@ -372,6 +377,159 @@ export default function ModelResults() {
                             Download Full Report
                             <ChevronRight className="ml-2 h-4 w-4" />
                           </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Sales Decomposition Section */}
+                  <div className="mt-8">
+                    <h3 className="text-lg font-medium mb-4">Sales Decomposition</h3>
+                    
+                    <div className="grid grid-cols-5 gap-4">
+                      {/* Pie Chart Section - 3 columns */}
+                      <div className="col-span-5 md:col-span-3 bg-white p-4 rounded-lg border">
+                        <h4 className="text-base font-medium mb-3 flex items-center">
+                          <PieChart className="h-4 w-4 mr-2 text-primary" />
+                          Sales Composition
+                          <button 
+                            className="ml-1.5 text-muted-foreground hover:text-primary" 
+                            title="Sales composition shows how your total sales are attributed to marketing channels and baseline sales"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </h4>
+                        <div className="flex flex-col md:flex-row items-center">
+                          <div className="w-full md:w-64 h-64">
+                            <SalesCompositionChart 
+                              basePercent={model.results?.analytics?.sales_decomposition?.percent_decomposition?.base || 0}
+                              channelContributions={model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {}}
+                              totalSales={model.results?.analytics?.sales_decomposition?.total_sales || 0}
+                            />
+                          </div>
+                          <div className="ml-0 md:ml-4 mt-4 md:mt-0">
+                            <p className="text-sm text-muted-foreground">
+                              This chart shows how your sales are attributed across marketing channels and baseline sales.
+                            </p>
+                            <p className="mt-2 font-medium">
+                              Total Sales: {formatCurrency(model.results?.analytics?.sales_decomposition?.total_sales || 0)}
+                            </p>
+                            
+                            <div className="mt-3 pt-3 border-t">
+                              <p className="text-sm font-medium">What This Means:</p>
+                              <ul className="mt-1 text-sm text-muted-foreground">
+                                <li className="flex items-start mt-1">
+                                  <div className="min-w-3 mr-1 text-primary">•</div>
+                                  <div>Channels with higher contribution percentages generally deserve more budget allocation</div>
+                                </li>
+                                <li className="flex items-start mt-1">
+                                  <div className="min-w-3 mr-1 text-primary">•</div>
+                                  <div>
+                                    {(() => {
+                                      // Find top channel
+                                      const channels = model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {};
+                                      const topChannel = Object.entries(channels).sort((a, b) => b[1] - a[1])[0];
+                                      if (topChannel) {
+                                        const [name, value] = topChannel;
+                                        return `${name} drives ${(value * 100).toFixed(1)}% of your sales, making it your top contributor`;
+                                      }
+                                      return "Your top-performing channel drives a significant portion of your sales";
+                                    })()}
+                                  </div>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Key Metrics Cards - 2 columns */}
+                      <div className="col-span-5 md:col-span-2 grid grid-cols-1 gap-4">
+                        {/* Total Sales Card */}
+                        <div className="bg-white p-4 rounded-lg border">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-sm text-muted-foreground flex items-center">
+                                Total Sales
+                                <button 
+                                  className="ml-1 text-muted-foreground hover:text-primary" 
+                                  title="The total value of sales over the analyzed time period"
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </h4>
+                              <p className="text-2xl font-bold mt-1">
+                                {formatCurrency(model.results?.analytics?.sales_decomposition?.total_sales || 0)}
+                              </p>
+                            </div>
+                            <div className="p-2 bg-primary/10 rounded-md">
+                              <DollarSign className="h-5 w-5 text-primary" />
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Base Sales Card */}
+                        <div className="bg-white p-4 rounded-lg border">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-sm text-muted-foreground flex items-center">
+                                Base Sales
+                                <button 
+                                  className="ml-1 text-muted-foreground hover:text-primary" 
+                                  title="Sales that would occur without marketing activities (organic sales)"
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </h4>
+                              <p className="text-2xl font-bold mt-1">
+                                {formatCurrency(model.results?.analytics?.sales_decomposition?.base_sales || 0)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {((model.results?.analytics?.sales_decomposition?.base_sales || 0) / 
+                                  (model.results?.analytics?.sales_decomposition?.total_sales || 1) * 100).toFixed(1)}% of total
+                              </p>
+                            </div>
+                            <div className="p-2 bg-slate-100 rounded-md">
+                              <BarChart3 className="h-5 w-5 text-slate-600" />
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Incremental Sales Card */}
+                        <div className="bg-white p-4 rounded-lg border">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-sm text-muted-foreground flex items-center">
+                                Incremental Sales
+                                <button 
+                                  className="ml-1 text-muted-foreground hover:text-primary" 
+                                  title="Additional sales generated by your marketing activities"
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </h4>
+                              {(() => {
+                                const totalSales = model.results?.analytics?.sales_decomposition?.total_sales || 0;
+                                const baseSales = model.results?.analytics?.sales_decomposition?.base_sales || 0;
+                                const incrementalSales = totalSales - baseSales;
+                                const incrementalPercent = totalSales > 0 ? (incrementalSales / totalSales * 100) : 0;
+                                
+                                return (
+                                  <>
+                                    <p className="text-2xl font-bold mt-1">
+                                      {formatCurrency(incrementalSales)}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {incrementalPercent.toFixed(1)}% of total
+                                    </p>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                            <div className="p-2 bg-primary/10 rounded-md">
+                              <TrendingUp className="h-5 w-5 text-primary" />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
