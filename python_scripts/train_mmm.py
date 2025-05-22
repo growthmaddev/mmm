@@ -1066,19 +1066,40 @@ def train_model(df, config):
         
         # Create MMM with the first channel's transform to initialize
         # (We'll set channel-specific transforms after initialization)
-        first_channel = list(channel_columns.keys())[0]
-        print(f"Initializing MMM with transforms from {first_channel}", file=sys.stderr)
+        print(f"DEBUG: channel_columns type: {type(channel_columns)}", file=sys.stderr)
+        print(f"DEBUG: channel_columns content: {channel_columns}", file=sys.stderr)
+        
+        # Check if channel_columns is a dict or list
+        if isinstance(channel_columns, dict):
+            first_channel_key = list(channel_columns.keys())[0]
+            print(f"DEBUG: channel_columns is a dict, first key: {first_channel_key}", file=sys.stderr)
+        elif isinstance(channel_columns, list):
+            first_channel_key = channel_columns[0]
+            print(f"DEBUG: channel_columns is a list, first item: {first_channel_key}", file=sys.stderr)
+            print(f"DEBUG: Converting channel_columns to proper format...", file=sys.stderr)
+            # Convert list to dict if needed
+            if isinstance(first_channel_key, str):
+                channel_columns = {col: col for col in channel_columns}
+                first_channel_key = list(channel_columns.keys())[0]
+                print(f"DEBUG: Converted channel_columns to dict: {channel_columns}", file=sys.stderr)
+        else:
+            print(f"DEBUG: WARNING: channel_columns is neither dict nor list: {type(channel_columns)}", file=sys.stderr)
+            
+        print(f"DEBUG: Attempting to print before MMM initialization. First channel for init: {first_channel_key}", file=sys.stderr)
+        
         try:
+            print(f"DEBUG: Initializing MMM object now...", file=sys.stderr)
             mmm = MMM(
                 date_column=date_column,
                 channel_columns=channel_columns,
-                adstock=channel_specific_transforms[first_channel]['adstock'],
-                saturation=channel_specific_transforms[first_channel]['saturation']
+                control_columns=config.get('controlColumns', []),
+                adstock=channel_specific_transforms[first_channel_key]['adstock'],
+                saturation=channel_specific_transforms[first_channel_key]['saturation']
             )
-            print("Successfully created MMM with exact adstock/saturation parameters", file=sys.stderr)
+            print(f"DEBUG: MMM object initialized. Type: {type(mmm)}", file=sys.stderr)
             
             # Now set channel-specific transforms
-            print("Setting channel-specific transforms in MMM model...", file=sys.stderr)
+            print(f"DEBUG: Attempting to assign mmm.media_transforms...", file=sys.stderr)
             
             # Try different approaches to set media transforms based on PyMC-Marketing version
             try:
@@ -1090,8 +1111,21 @@ def train_model(df, config):
                         'saturation': transforms['saturation']
                     }
                     print(f"Set transforms for {channel} using media_transforms", file=sys.stderr)
-            except (AttributeError, Exception) as e:
-                print(f"Direct media_transforms setting failed: {str(e)}", file=sys.stderr)
+                
+                # Verification logging for media_transforms
+                if hasattr(mmm, 'media_transforms') and mmm.media_transforms is not None:
+                    for ch, tr_dict in mmm.media_transforms.items():
+                        adstock_eff = tr_dict.get('adstock')
+                        saturation_eff = tr_dict.get('saturation')
+                        print(f"  VERIFY {ch} adstock alpha: {adstock_eff.alpha if adstock_eff and hasattr(adstock_eff, 'alpha') else 'N/A'}", file=sys.stderr)
+                        print(f"  VERIFY {ch} saturation L: {saturation_eff.L if saturation_eff and hasattr(saturation_eff, 'L') else 'N/A'}", file=sys.stderr)
+                
+                print(f"DEBUG: Successfully assigned to mmm.media_transforms.", file=sys.stderr)
+                
+            except AttributeError as e_attrib:
+                import traceback
+                print(f"CRITICAL: AttributeError during media_transforms setting: {str(e_attrib)}", file=sys.stderr)
+                print(f"CRITICAL: Traceback for AttributeError:\n{traceback.format_exc()}", file=sys.stderr)
                 
                 # Alternative approach - try using set_transforms method if available
                 try:
@@ -1106,13 +1140,25 @@ def train_model(df, config):
                         else:
                             print(f"WARNING: Could not set channel-specific transforms for {channel}", file=sys.stderr)
                 except Exception as e2:
+                    import traceback
                     print(f"Alternative transform setting failed: {str(e2)}", file=sys.stderr)
+                    print(f"CRITICAL: Traceback for alternative approach:\n{traceback.format_exc()}", file=sys.stderr)
                     print("WARNING: Using default transforms, not channel-specific ones", file=sys.stderr)
-                
+            
             print("Successfully applied all channel-specific transforms", file=sys.stderr)
             
-        except Exception as e:
-            print(f"Error creating MMM with exact parameters: {str(e)}", file=sys.stderr)
+        except AttributeError as e_attrib:
+            import traceback
+            print(f"CRITICAL: AttributeError during MMM setup: {str(e_attrib)}", file=sys.stderr)
+            print(f"CRITICAL: Traceback for AttributeError:\n{traceback.format_exc()}", file=sys.stderr)
+            raise  # Re-raise to be caught by outer exception handler
+            
+        except Exception as e_other:
+            import traceback
+            print(f"CRITICAL: Other Exception during MMM setup: {str(e_other)}", file=sys.stderr)
+            print(f"CRITICAL: Traceback for other Exception:\n{traceback.format_exc()}", file=sys.stderr)
+            
+            # Fallback to standard MMM initialization
             print("Falling back to standard MMM initialization", file=sys.stderr)
             
             # Basic fallback if the channel-specific approach fails

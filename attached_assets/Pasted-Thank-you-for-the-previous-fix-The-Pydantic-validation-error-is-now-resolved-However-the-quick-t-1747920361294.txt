@@ -1,0 +1,54 @@
+Thank you for the previous fix. The Pydantic validation error is now resolved!
+
+However, the quick test run with `test_config_quick.json` failed with a new error:
+`"Model training error: 'list' object has no attribute 'keys'"`
+
+The console log shows that all print statements for creating adstock and saturation objects for both channels were successful. However, the next expected print statement, "Initializing MMM with base transforms from channel: ...", did NOT appear. This indicates the error likely occurs during or immediately before the `MMM(...)` constructor is called.
+
+To help diagnose this, please modify the `train_model` function in `python_scripts/train_mmm.py` as follows:
+
+1.  Ensure the `print(f"Initializing MMM with base transforms from channel: {first_channel_key}", file=sys.stderr)` statement is definitely ATTEMPTED *before* the `MMM(...)` call.
+2.  Wrap the `MMM(...)` instantiation and the subsequent `mmm.media_transforms` assignment in a more specific `try...except AttributeError as e_attrib:` block. Inside this `except` block, please print the full traceback to understand exactly where the `'list' object has no attribute 'keys'` error is originating from.
+
+Here's an idea of the structure:
+
+```python
+# Inside train_model function, after the channel_specific_transforms loop:
+
+first_channel_key = channel_columns[0]
+print(f"DEBUG: Attempting to print before MMM initialization. First channel for init: {first_channel_key}", file=sys.stderr) # Ensure this prints
+
+try:
+    print(f"DEBUG: Initializing MMM object now...", file=sys.stderr)
+    mmm = MMM(
+        date_column=date_column,
+        channel_columns=channel_columns,
+        control_columns=config.get('control_columns', []),
+        adstock=channel_specific_transforms[first_channel_key]['adstock'],
+        saturation=channel_specific_transforms[first_channel_key]['saturation']
+    )
+    print(f"DEBUG: MMM object initialized. Type: {type(mmm)}", file=sys.stderr)
+
+    print(f"DEBUG: Attempting to assign mmm.media_transforms...", file=sys.stderr)
+    mmm.media_transforms = channel_specific_transforms
+    # Verification logging for media_transforms can remain here
+    if hasattr(mmm, 'media_transforms') and mmm.media_transforms is not None:
+        for ch, tr_dict in mmm.media_transforms.items():
+            adstock_eff = tr_dict.get('adstock')
+            saturation_eff = tr_dict.get('saturation')
+            print(f"  VERIFY {ch} adstock alpha: {adstock_eff.alpha if adstock_eff and hasattr(adstock_eff, 'alpha') else 'N/A'}", file=sys.stderr) # Added hasattr check
+            print(f"  VERIFY {ch} saturation L: {saturation_eff.L if saturation_eff and hasattr(saturation_eff, 'L') else 'N/A'}", file=sys.stderr) # Added hasattr check
+    print(f"DEBUG: Successfully assigned to mmm.media_transforms.", file=sys.stderr)
+
+except AttributeError as e_attrib:
+    import traceback
+    print(f"CRITICAL: AttributeError during MMM setup: {str(e_attrib)}", file=sys.stderr)
+    print(f"CRITICAL: Traceback for AttributeError:\n{traceback.format_exc()}", file=sys.stderr)
+    # Re-raise or handle as per existing script logic, but ensure traceback is printed
+    raise # Or sys.exit(1) after printing JSON error to stdout
+
+except Exception as e_other:
+    import traceback
+    print(f"CRITICAL: Other Exception during MMM setup: {str(e_other)}", file=sys.stderr)
+    print(f"CRITICAL: Traceback for other Exception:\n{traceback.format_exc()}", file=sys.stderr)
+    raise # Or sys.exit(1)
