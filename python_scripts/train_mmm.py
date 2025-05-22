@@ -1113,6 +1113,10 @@ def train_model(df, config):
                         param_name = key.split('.')[-1]  # Extract parameter name (alpha, etc.)
                         model_parameters[channel_clean]["adstock_parameters"][param_name] = float(summary.loc[key]["mean"])
                     print(f"Found adstock parameters for {channel}: {model_parameters[channel_clean]['adstock_parameters']}", file=sys.stderr)
+                # If no adstock parameters found in the model, use our data-driven adaptive parameters
+                elif channel in adaptive_params:
+                    model_parameters[channel_clean]["adstock_parameters"] = adaptive_params[channel]["adstock"]
+                    print(f"Using data-driven adaptive adstock parameters for {channel}: {model_parameters[channel_clean]['adstock_parameters']}", file=sys.stderr)
                 
                 # Look for saturation parameters
                 saturation_keys = [k for k in summary.index if f"saturation_{channel}" in k or f"saturation[{channel}]" in k or f"saturation.{channel}" in k]
@@ -1122,6 +1126,10 @@ def train_model(df, config):
                         param_name = key.split('.')[-1]  # Extract parameter name (L, k, x0, etc.)
                         model_parameters[channel_clean]["saturation_parameters"][param_name] = float(summary.loc[key]["mean"])
                     print(f"Found saturation parameters for {channel}: {model_parameters[channel_clean]['saturation_parameters']}", file=sys.stderr)
+                # If no saturation parameters found in the model, use our data-driven adaptive parameters
+                elif channel in adaptive_params:
+                    model_parameters[channel_clean]["saturation_parameters"] = adaptive_params[channel]["saturation"]
+                    print(f"Using data-driven adaptive saturation parameters for {channel}: {model_parameters[channel_clean]['saturation_parameters']}", file=sys.stderr)
                 
                 # Try to find parameters from the direct model extraction if available
                 if model_direct_params:
