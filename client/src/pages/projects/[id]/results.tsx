@@ -627,7 +627,10 @@ export default function ModelResults() {
                               roi: data.roi || 0,
                               roiLow: data.roi_ci_low || 0,
                               roiHigh: data.roi_ci_high || 0,
-                              significance: data.statistical_significance || 'medium'
+                              // Handle missing or undefined significance with a default
+                              significance: typeof data.statistical_significance === 'string' 
+                                ? data.statistical_significance 
+                                : 'medium'
                             }));
                             
                           return channelData.length > 0 ? (

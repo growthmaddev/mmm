@@ -72,7 +72,12 @@ const ChannelROIChart: React.FC<ChannelROIChartProps> = ({
       .map(item => {
         // Assign color based on significance
         let color;
-        switch (item.significance.toLowerCase()) {
+        // Handle case where significance might be null, undefined, or not a string
+        const significanceValue = typeof item.significance === 'string' 
+          ? item.significance.toLowerCase() 
+          : String(item.significance || 'medium').toLowerCase();
+          
+        switch (significanceValue) {
           case 'high':
             color = '#10b981'; // emerald-500
             break;
