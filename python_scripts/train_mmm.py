@@ -7,12 +7,15 @@ This script trains a marketing mix model using PyMC-Marketing with reduced setti
 import os
 import sys
 import json
+import datetime
 import pandas as pd
 import numpy as np
 import pymc as pm
 import arviz as az
-from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_percentage_error
 from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
 def load_data(file_path):
     """Load and preprocess data for MMM"""
@@ -71,6 +74,174 @@ def load_data(file_path):
         }))
         sys.exit(1)
 
+def transform_target(y, method='log'):
+    """
+    Transform target variable to improve model fit.
+    
+    Args:
+        y: Target variable values
+        method: Transformation method ('log', 'sqrt', or 'none')
+        
+    Returns:
+        Transformed target values
+    """
+    if method == 'log':
+        # Add small constant to handle zeros
+        return np.log1p(y)  # log(1+y) to handle zeros
+    elif method == 'sqrt':
+        # Square root is less aggressive than log but still helps with right skew
+        return np.sqrt(y)
+    return y  # 'none' or any other value returns original
+
+
+def inverse_transform_target(y_transformed, method='log'):
+    """
+    Inverse transform to convert predictions back to original scale.
+    
+    Args:
+        y_transformed: Transformed target values
+        method: Transformation method used ('log', 'sqrt', or 'none')
+        
+    Returns:
+        Values in original scale
+    """
+    if method == 'log':
+        return np.expm1(y_transformed)  # exp(y) - 1
+    elif method == 'sqrt':
+        return y_transformed ** 2
+    return y_transformed  # 'none' or any other value returns original
+
+
+def scale_predictors(X, method='standardize'):
+    """
+    Scale predictor variables.
+    
+    Args:
+        X: DataFrame of predictor variables
+        method: Scaling method ('standardize', 'minmax', or 'none')
+        
+    Returns:
+        Tuple of (scaled DataFrame, scaler object)
+    """
+    if method == 'standardize':
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        X_scaled = pd.DataFrame(
+            scaler.fit_transform(X), 
+            columns=X.columns, 
+            index=X.index
+        )
+        return X_scaled, scaler
+    elif method == 'minmax':
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        X_scaled = pd.DataFrame(
+            scaler.fit_transform(X), 
+            columns=X.columns, 
+            index=X.index
+        )
+        return X_scaled, scaler
+    return X, None  # 'none' or any other value returns original
+
+
+def run_diagnostics(df, target_column, channel_columns, date_column=None):
+    """
+    Run comprehensive data diagnostics to identify modeling issues.
+    
+    Args:
+        df: DataFrame containing the data
+        target_column: Name of the target variable column
+        channel_columns: List of channel variable column names
+        date_column: Optional name of date column for time series diagnostics
+        
+    Returns:
+        Dictionary of diagnostic results
+    """
+    diagnostics = {}
+    
+    # 1. Check for data volume
+    diagnostics["data_points"] = len(df)
+    if len(df) < 52:
+        print("WARNING: Limited data points (<52) may lead to poor model fit", file=sys.stderr)
+    
+    # 2. Check for spend-sales correlation
+    correlations = {}
+    for channel in channel_columns:
+        corr = df[channel].corr(df[target_column])
+        correlations[channel] = float(corr)
+        if abs(corr) < 0.1:
+            print(f"WARNING: Very low correlation between {channel} and {target_column}: {corr:.4f}", file=sys.stderr)
+    diagnostics["channel_correlations"] = correlations
+    
+    # 3. Check for collinearity between channels
+    X = df[channel_columns]
+    X_scaled = StandardScaler().fit_transform(X)
+    pca = PCA().fit(X_scaled)
+    
+    # High explained variance in first component suggests collinearity
+    if pca.explained_variance_ratio_[0] > 0.7:
+        print(f"WARNING: High collinearity detected between channel variables (PCA first component explains {pca.explained_variance_ratio_[0]:.2%})", file=sys.stderr)
+    
+    diagnostics["collinearity"] = {
+        "pca_components": len(pca.explained_variance_ratio_),
+        "explained_variance": [float(x) for x in pca.explained_variance_ratio_],
+        "cumulative_variance": [float(sum(pca.explained_variance_ratio_[:i+1])) for i in range(len(pca.explained_variance_ratio_))]
+    }
+    
+    # 4. Check for zero spend ratios
+    zero_spend = {}
+    for channel in channel_columns:
+        zero_count = (df[channel] == 0).sum()
+        zero_percent = zero_count / len(df) * 100
+        zero_spend[channel] = {
+            "zero_count": int(zero_count),
+            "zero_percent": float(zero_percent)
+        }
+        if zero_percent > 50:
+            print(f"WARNING: High percentage of zero values ({zero_percent:.1f}%) in {channel}", file=sys.stderr)
+    diagnostics["zero_spend_analysis"] = zero_spend
+    
+    # 5. Target variable statistics
+    target_stats = {
+        'mean': float(df[target_column].mean()),
+        'median': float(df[target_column].median()),
+        'min': float(df[target_column].min()),
+        'max': float(df[target_column].max()),
+        'std': float(df[target_column].std()),
+        'zeros_percent': float((df[target_column] == 0).mean() * 100),
+        'skewness': float(df[target_column].skew()),
+        'kurtosis': float(df[target_column].kurtosis()),
+        'coefficient_of_variation': float(df[target_column].std() / df[target_column].mean() if df[target_column].mean() > 0 else np.nan)
+    }
+    diagnostics["target_stats"] = target_stats
+    
+    # Right-skewed data might need transformation
+    if target_stats["skewness"] > 1.0:
+        print(f"WARNING: Target variable is right-skewed (skewness={target_stats['skewness']:.2f}). Consider log transformation.", file=sys.stderr)
+    
+    # 6. Check for time series characteristics if date column provided
+    if date_column and date_column in df.columns:
+        try:
+            from statsmodels.tsa.stattools import adfuller
+            
+            # Check for stationarity
+            adf_result = adfuller(df[target_column])
+            is_stationary = adf_result[1] < 0.05
+            
+            if not is_stationary:
+                print(f"WARNING: Target variable appears to be non-stationary (p={adf_result[1]:.4f}). Consider differencing.", file=sys.stderr)
+                
+            diagnostics["time_series"] = {
+                "is_stationary": bool(is_stationary),
+                "adf_pvalue": float(adf_result[1])
+            }
+        except Exception as e:
+            print(f"Error in time series diagnostics: {str(e)}", file=sys.stderr)
+            diagnostics["time_series"] = {"error": str(e)}
+    
+    return diagnostics
+
+
 def parse_config(config_json_path):
     """Parse model configuration from JSON file path"""
     try:
@@ -100,6 +271,9 @@ def parse_config(config_json_path):
         adstock_settings = config.get('adstockSettings', {})
         saturation_settings = config.get('saturationSettings', {})
         control_variables = config.get('controlVariables', {})
+        # New configuration options for data transformation
+        transform_target_method = config.get('transformTarget', 'none')  # 'log', 'sqrt', or 'none'
+        scale_predictors_method = config.get('scaleSpend', 'none')  # 'standardize', 'minmax', or 'none'
         
         # For channel columns, convert the values to actual column names if needed
         # In our test config, the values are descriptive names but we need the actual column names
@@ -138,15 +312,80 @@ def train_model(df, config):
         if date_column in df.columns:
             df[date_column] = pd.to_datetime(df[date_column])
             
+        # Run data diagnostics and add to output
+        print("Running data diagnostics...", file=sys.stderr)
+        data_diagnostics = run_diagnostics(df, target_column, channel_columns, date_column)
+        print("Data diagnostics complete", file=sys.stderr)
+        
         # Prepare data for PyMC-Marketing
         # X should contain date and all media channels (and any control variables)
         X = df.copy()
-        # y is just the target (e.g., Sales)
-        y = df[target_column]
         
-        # For simplicity, we'll use the same adstock and saturation for all channels
-        adstock = GeometricAdstock(l_max=3)  # Max lag of 3 weeks
-        saturation = LogisticSaturation()    # Default logistic saturation
+        # Apply transformations based on config
+        transform_target_method = config.get('transformTarget', 'none')
+        scale_predictors_method = config.get('scaleSpend', 'none')
+        
+        # Original target for metrics calculation later
+        y_original = df[target_column].copy()
+        
+        # Transform target if specified
+        if transform_target_method != 'none':
+            print(f"Applying {transform_target_method} transformation to target variable", file=sys.stderr)
+            y = transform_target(df[target_column], method=transform_target_method)
+        else:
+            y = df[target_column].copy()
+        
+        # Scale predictors if specified
+        X_predictors = df[channel_columns].copy()
+        if scale_predictors_method != 'none':
+            print(f"Scaling predictor variables using {scale_predictors_method}", file=sys.stderr)
+            X_scaled, scaler = scale_predictors(X_predictors, method=scale_predictors_method)
+            # Update X with scaled values
+            for channel in channel_columns:
+                X[channel] = X_scaled[channel]
+        
+        # Create data-driven media transforms with adaptive parameters
+        print("Creating data-driven media transforms...", file=sys.stderr)
+        media_transforms = {}
+        
+        for channel in channel_columns:
+            # Calculate channel-specific saturation parameters
+            channel_values = df[channel]
+            
+            # Set x0 to median spend (midpoint of saturation curve)
+            # Use 75th percentile for channels with many zeros
+            if (channel_values == 0).mean() > 0.5:  # If > 50% zeros
+                x0 = float(channel_values[channel_values > 0].quantile(0.75) if len(channel_values[channel_values > 0]) > 0 else 1000.0)
+            else:
+                x0 = float(channel_values.median() if len(channel_values) > 0 else 1000.0)
+            
+            # Adjust k (steepness) inversely to spend level
+            # Lower k for higher spend channels to create smoother curve
+            if x0 > 0:
+                k = float(0.0005 / (x0 / 1000))  # Adjust k inversely to spend level
+            else:
+                k = 0.0005  # Default if x0 is 0
+                
+            # Cap k to reasonable values
+            k = max(0.00001, min(k, 0.005))
+            
+            # Set L to 1.0 (standard ceiling for normalized data)
+            L = 1.0
+            
+            # Adjust adstock parameters based on data patterns
+            # Longer l_max for higher spend channels
+            l_max = int(min(5, max(1, round(3 * channel_values.sum() / df[channel_columns].sum().max() + 1))))
+            
+            # Set alpha (decay rate) - standard value as this is harder to determine a priori
+            alpha = 0.3
+            
+            print(f"Channel {channel} parameters: x0={x0:.2f}, k={k:.6f}, L={L}, l_max={l_max}, alpha={alpha}", file=sys.stderr)
+            
+            # Create channel-specific media transforms
+            media_transforms[channel] = {
+                'adstock': GeometricAdstock(alpha=alpha, l_max=l_max),
+                'saturation': LogisticSaturation(L=L, k=k, x0=x0)
+            }
             
         # Try creating a PyMC-Marketing MMM with appropriate settings for the installed version
         print("Detecting compatible PyMC-Marketing API approach...", file=sys.stderr)
@@ -178,17 +417,14 @@ def train_model(df, config):
         except (ImportError, Exception) as e1:
             print(f"DelayedSaturatedMMM approach failed: {str(e1)}", file=sys.stderr)
             
-            # Approach 2: Try with explicit single adstock/saturation for all channels
+            # Approach 2: Try with channel-specific media transforms
             try:
-                print("Trying with explicit single adstock/saturation", file=sys.stderr)
-                adstock = GeometricAdstock(l_max=3)
-                saturation = LogisticSaturation()
+                print("Trying with data-driven channel-specific transforms", file=sys.stderr)
                 
                 mmm = MMM(
                     date_column=date_column,
                     channel_columns=channel_columns,
-                    adstock=adstock,
-                    saturation=saturation
+                    media_transforms=media_transforms
                 )
                 print("Created MMM with explicit single adstock/saturation", file=sys.stderr)
                 

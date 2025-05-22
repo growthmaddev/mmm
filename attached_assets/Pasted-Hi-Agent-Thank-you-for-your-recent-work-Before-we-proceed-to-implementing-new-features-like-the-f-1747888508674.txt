@@ -1,0 +1,18 @@
+Hi Agent,
+
+Thank you for your recent work. Before we proceed to implementing new features like the full data diagnostics, we need to finalize and verify the critical fixes to `train_mmm.py` and gather some pending information from the model 26 run (which used increased MCMC settings).
+
+Your immediate ordered tasks are:
+
+1.  **Task 1: Provide Final Code for Intercept Logic:**
+    * You've stated that the intercept logic in `train_mmm.py` has been revised to ensure "The original model-learned intercept is now preserved without arbitrary adjustments" and that it "Only uses fallback heuristic as a last resort when no intercept is found".
+    * Please provide the **final Python code snippet(s)** from `train_mmm.py` that demonstrate:
+        * How the raw `intercept_value` is obtained from the model (via the `extract_model_intercept` function).
+        * How `total_baseline_sales` is calculated purely from this `raw_intercept_value` and the number of data periods (`len(df)`).
+        * The logic for any warnings if this `total_baseline_sales` is very low (e.g., <1% of `sum(y)`), confirming the value itself is not altered to meet a heuristic target like "20% of total sales".
+        * How the final value for `results["summary"]["actual_model_intercept"]` is set using this `total_baseline_sales`.
+
+2.  **Task 2: Report on Adstock/Saturation Parameter Extraction (for Model 26):**
+    * Referring to the run of model 26 (which used increased MCMC settings: `draws=2000, tune=1000, chains=4`), please report your findings on whether sensible, distinct parameters for **adstock** (e.g., `alpha`) and **saturation** (e.g., `L`, `k`, `x0`) were actually extracted for different channels from the model's output (`az.summary(idata)` or `model_direct_params` in `train_mmm.py`), or if the script still appeared to rely heavily on default values for these parameters.
+
+Once these two tasks are completed and the information is provided, we can be fully confident in the current state of `train_mmm.py`'s core outputs.
