@@ -711,12 +711,29 @@ export default function ModelResults() {
                                 );
                               }
                               
+                              // DEBUG: Log the channels data structure to verify spend data
+                              console.log('Channel effectiveness data:', channels);
+                              
                               // Process and sort channel data
                               const tableData = Object.entries(channels).map(([channel, data]) => {
+                                // Check data type to ensure it's an object
+                                if (typeof data !== 'object' || data === null) {
+                                  console.error(`Invalid data type for channel ${channel}:`, data);
+                                  return {
+                                    channel,
+                                    spend: 0,
+                                    contribution: salesDecomp.incremental_sales?.[channel] || 0,
+                                    contributionPercent: salesDecomp.percent_decomposition?.channels?.[channel] || 0,
+                                    roi: 0,
+                                    costPerOutcome: 0,
+                                    rank: 999,
+                                  };
+                                }
+                                
                                 return {
                                   channel,
-                                  // Use actual spend data from model results
-                                  spend: data.spend || 0, // Using actual spend data added to the model output
+                                  // Use actual spend data from model results with proper type checking
+                                  spend: typeof data.spend === 'number' ? data.spend : 0,
                                   contribution: salesDecomp.incremental_sales?.[channel] || 0,
                                   contributionPercent: salesDecomp.percent_decomposition?.channels?.[channel] || 0,
                                   roi: data.roi || 0,
