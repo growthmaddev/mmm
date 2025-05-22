@@ -1048,14 +1048,19 @@ def train_model(df, config):
             # Create the adstock object with exact parameters in priors dictionary
             alpha = adstock_params.get('adstock_alpha', 0.5)
             l_max = adstock_params.get('adstock_l_max', 8)
-            adstock_obj = GeometricAdstock(l_max=l_max, priors={"alpha": alpha})
+            alpha_const = pm.Constant.dist(alpha)  # Wrap alpha in pm.Constant.dist()
+            adstock_obj = GeometricAdstock(l_max=l_max, priors={"alpha": alpha_const})
             print(f"Created adstock for {channel} with alpha={alpha}, l_max={l_max}", file=sys.stderr)
             
             # Create the saturation object with exact parameters in priors dictionary
             L = saturation_params.get('saturation_L', 1.0)
             k = saturation_params.get('saturation_k', 0.0001)
             x0 = saturation_params.get('saturation_x0', 50000.0)
-            saturation_obj = LogisticSaturation(priors={"L": L, "k": k, "x0": x0})
+            # Wrap L, k, and x0 in pm.Constant.dist()
+            L_const = pm.Constant.dist(L)
+            k_const = pm.Constant.dist(k)
+            x0_const = pm.Constant.dist(x0)
+            saturation_obj = LogisticSaturation(priors={"L": L_const, "k": k_const, "x0": x0_const})
             print(f"Created saturation for {channel} with L={L}, k={k}, x0={x0}", file=sys.stderr)
             
             # Store these objects for this channel

@@ -1,0 +1,40 @@
+Thank you for running the test and providing the full log and traceback! This is exactly what we needed.
+The new error is: `AttributeError: 'float' object has no attribute 'dims'`, occurring in `pymc_marketing/mmm/mmm.py` at line 658.
+
+This happens because the `MMM` class, when building its default model configuration, inspects the priors from the adstock/saturation objects. When it encounters our fixed float values (e.g., `alpha=0.5`), it tries to access a `.dims` attribute which floats don't have.
+
+To fix this, we need to wrap our fixed float parameters with `pm.Constant.dist()` when creating the `GeometricAdstock` and `LogisticSaturation` objects.
+
+Please modify the `train_model` function in `python_scripts/train_mmm.py` as follows:
+
+Inside the loop `for channel_name_key in channel_columns:`, where `adstock_obj` and `saturation_obj` are created:
+
+1.  **For `GeometricAdstock`:**
+    * Change:
+        ```python
+        adstock_obj = GeometricAdstock(l_max=l_max, priors={"alpha": alpha})
+        ```
+    * To (import `pymc as pm` if not already at the top of the script):
+        ```python
+        alpha_const = pm.Constant.dist(alpha) # alpha is the float value
+        adstock_obj = GeometricAdstock(l_max=l_max, priors={"alpha": alpha_const})
+        ```
+
+2.  **For `LogisticSaturation`:**
+    * Change:
+        ```python
+        saturation_obj = LogisticSaturation(priors={"L": L, "k": k, "x0": x0})
+        ```
+    * To:
+        ```python
+        L_const = pm.Constant.dist(L)
+        k_const = pm.Constant.dist(k)
+        x0_const = pm.Constant.dist(x0)
+        saturation_obj = LogisticSaturation(priors={"L": L_const, "k": k_const, "x0": x0_const})
+        ```
+
+Ensure `import pymc as pm` is present at the top of `train_mmm.py`.
+
+These changes should make our fixed parameters compatible with the internal workings of the `MMM` class in `pymc-marketing==0.13.1`.
+
+After you've made these exact modifications, please confirm, and I will run the quick verification test again with `test_config_quick.json`.
