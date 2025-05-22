@@ -386,19 +386,67 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None, results_
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python fit_mmm_with_monkey_patch.py config_file.json data_file.csv", file=sys.stderr)
-        sys.exit(1)
-        
-    config_file = sys.argv[1]
-    data_file = sys.argv[2]
+    import argparse
     
-    results = create_and_fit_mmm_model(config_file, data_file)
+    # Create an argument parser
+    parser = argparse.ArgumentParser(description='PyMC-Marketing MMM with monkey-patched dims attribute')
+    parser.add_argument('config_file', help='Path to the model configuration JSON file')
+    parser.add_argument('data_file', help='Path to the data CSV file')
+    parser.add_argument('--results-file', '-o', help='Path to save results JSON (optional)')
+    parser.add_argument('--quick', '-q', action='store_true', help='Use reduced MCMC settings for faster run')
+    
+    # Parse the arguments
+    args = parser.parse_args()
+    
+    # Get file paths
+    config_file = args.config_file
+    data_file = args.data_file
+    results_file = args.results_file
+    
+    # If quick mode, update the config to use minimal MCMC settings
+    if args.quick:
+        print("Running in quick mode with minimal MCMC settings", file=sys.stderr)
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        
+        if 'model' not in config:
+            config['model'] = {}
+        
+        # Override with minimal settings
+        config['model'].update({
+            'iterations': 100,
+            'tuning': 100,
+            'chains': 1
+        })
+        
+        # Save to a temporary config file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+            json.dump(config, tmp, indent=2)
+            temp_config_file = tmp.name
+        
+        config_file = temp_config_file
+        print(f"Created temporary config file with quick settings: {config_file}", file=sys.stderr)
+    
+    # Run the model
+    results = create_and_fit_mmm_model(config_file, data_file, results_file=results_file)
     
     if results["success"]:
         # Print the final results as JSON
         print(json.dumps(results["results"], indent=2))
         print("Model fitting complete and successful!", file=sys.stderr)
+        
+        if results_file:
+            print(f"Detailed results saved to: {results_file}", file=sys.stderr)
+        
+        sys.exit(0)
     else:
         print(f"Model fitting failed: {results['error']}", file=sys.stderr)
         sys.exit(1)
+        
+    # Clean up temporary file if created
+    if args.quick and 'temp_config_file' in locals():
+        try:
+            os.remove(temp_config_file)
+        except:
+            pass
