@@ -263,20 +263,138 @@ def train_model(df, config):
             predictions = lr_model.predict(X_features)
             print(json.dumps({"status": "warning", "message": "Using fallback prediction model due to PyMC error"}))
         
-        # Manually calculate channel contributions using simplified approach
+        # Calculate channel contributions using model parameters
+        print("Calculating model-derived channel contributions...", file=sys.stderr)
         contributions = {}
-        for channel in channel_columns:
-            # Estimate contribution based on spend proportion and importance
-            channel_spend = df[channel].sum()
-            total_spend = sum(df[col].sum() for col in channel_columns)
+        temporal_contributions = {}  # For time-series breakdown
+        
+        try:
+            # Attempt to get channel contributions directly from the model
+            if hasattr(mmm, 'get_channel_contributions'):
+                print("Using mmm.get_channel_contributions() method", file=sys.stderr)
+                model_contributions = mmm.get_channel_contributions()
+                
+                # Process model contributions into our format
+                for channel in channel_columns:
+                    channel_clean = channel.replace("_Spend", "")
+                    if channel_clean in model_contributions:
+                        contributions[channel] = float(model_contributions[channel_clean].sum())
+                        temporal_contributions[channel] = model_contributions[channel_clean].values
+                
+            # If direct method isn't available, calculate using model parameters and transformations
+            elif model_parameters:
+                print("Calculating contributions using model parameters", file=sys.stderr)
+                
+                for channel in channel_columns:
+                    channel_clean = channel.replace("_Spend", "")
+                    
+                    # Skip if no parameters available for this channel
+                    if channel_clean not in model_parameters:
+                        print(f"No parameters for {channel_clean}, using fallback", file=sys.stderr)
+                        contributions[channel] = 0.0
+                        temporal_contributions[channel] = np.zeros(len(df))
+                        continue
+                    
+                    # Get parameters for this channel
+                    beta = model_parameters[channel_clean].get("beta_coefficient", 0.0)
+                    adstock_params = model_parameters[channel_clean].get("adstock_parameters", {"alpha": 0.3, "l_max": 3})
+                    saturation_params = model_parameters[channel_clean].get("saturation_parameters", 
+                                                                          {"L": 1.0, "k": 0.0005, "x0": np.median(df[channel])})
+                    adstock_type = model_parameters[channel_clean].get("adstock_type", "GeometricAdstock")
+                    saturation_type = model_parameters[channel_clean].get("saturation_type", "LogisticSaturation")
+                    
+                    # Calculate the transformed values for each time period
+                    channel_contribution_over_time = np.zeros(len(df))
+                    if channel in df.columns:
+                        for i in range(len(df)):
+                            # Get spend value
+                            spend_value = df[channel].iloc[i]
+                            
+                            # Apply adstock transformation
+                            if adstock_type == "GeometricAdstock":
+                                alpha = adstock_params.get("alpha", 0.3)
+                                l_max = int(adstock_params.get("l_max", 3))
+                                
+                                # Apply geometric decay to past values
+                                adstocked_value = spend_value
+                                for lag in range(1, min(i+1, l_max+1)):
+                                    past_spend = df[channel].iloc[i-lag] if i-lag >= 0 else 0
+                                    adstocked_value += past_spend * (alpha ** lag)
+                            else:
+                                adstocked_value = spend_value  # No adstock applied
+                            
+                            # Apply saturation transformation
+                            if saturation_type == "LogisticSaturation":
+                                L = saturation_params.get("L", 1.0)
+                                k = saturation_params.get("k", 0.0005) 
+                                x0 = saturation_params.get("x0", 50000.0)
+                                
+                                # Apply logistic saturation function
+                                try:
+                                    saturated_value = L / (1 + np.exp(-k * (adstocked_value - x0)))
+                                except OverflowError:
+                                    if adstocked_value - x0 > 0:
+                                        saturated_value = L  # Approached upper asymptote
+                                    else:
+                                        saturated_value = 0  # Approached lower asymptote
+                            else:
+                                saturated_value = adstocked_value  # No saturation applied
+                            
+                            # Apply beta coefficient
+                            channel_contribution = beta * saturated_value
+                            channel_contribution_over_time[i] = channel_contribution
+                    
+                    # Store the total and temporal contributions
+                    contributions[channel] = float(channel_contribution_over_time.sum())
+                    temporal_contributions[channel] = channel_contribution_over_time
             
-            # Avoid division by zero
-            contribution_ratio = channel_spend / total_spend if total_spend > 0 else 0
-            
-            # Calculate a weighted contribution that factors in size and effectiveness
-            # Higher spending channels generally have more impact but with diminishing returns
-            log_factor = np.log1p(channel_spend) / np.log1p(total_spend) if total_spend > 0 else 0
-            contributions[channel] = contribution_ratio * y.sum() * 0.8 * (0.5 + 0.5 * log_factor)
+            # Fallback if both methods fail
+            if not contributions or all(val == 0 for val in contributions.values()):
+                print("WARNING: Model-derived contributions failed, using fallback method", file=sys.stderr)
+                
+                # Fallback: estimate contributions based on spend proportion and model coefficients
+                for channel in channel_columns:
+                    channel_clean = channel.replace("_Spend", "")
+                    channel_spend = df[channel].sum() if channel in df.columns else 0
+                    total_spend = sum(df[col].sum() for col in channel_columns)
+                    
+                    # Try to get beta coefficient from model parameters
+                    beta = 0.1  # Default beta
+                    if channel_clean in model_parameters:
+                        beta = model_parameters[channel_clean].get("beta_coefficient", 0.1)
+                    
+                    # Calculate contribution with spend ratio weighted by beta
+                    spend_ratio = channel_spend / total_spend if total_spend > 0 else 0
+                    relative_beta = beta / sum(model_parameters.get(ch.replace("_Spend", ""), {}).get("beta_coefficient", 0.1) 
+                                             for ch in channel_columns) if model_parameters else 1
+                    
+                    # Calculate contribution as proportion of total sales minus baseline
+                    non_baseline_sales = y.sum() - (intercept_value * len(df) if intercept_value is not None else 0)
+                    contributions[channel] = spend_ratio * relative_beta * non_baseline_sales
+                    
+                    # Simple fallback for temporal contributions
+                    channel_ratio = df[channel] / df[channel].sum() if channel in df.columns and df[channel].sum() > 0 else np.ones(len(df)) / len(df)
+                    temporal_contributions[channel] = channel_ratio * contributions[channel]
+        
+        except Exception as e:
+            print(f"Error calculating model-derived contributions: {str(e)}", file=sys.stderr)
+            # Use original simplified approach as final fallback
+            for channel in channel_columns:
+                # Estimate contribution based on spend proportion and importance
+                channel_spend = df[channel].sum() if channel in df.columns else 0
+                total_spend = sum(df[col].sum() for col in channel_columns)
+                
+                # Avoid division by zero
+                contribution_ratio = channel_spend / total_spend if total_spend > 0 else 0
+                
+                # Calculate a weighted contribution that factors in size and effectiveness
+                # Higher spending channels generally have more impact but with diminishing returns
+                log_factor = np.log1p(channel_spend) / np.log1p(total_spend) if total_spend > 0 else 0
+                contributions[channel] = contribution_ratio * y.sum() * 0.8 * (0.5 + 0.5 * log_factor)
+                
+                # Simple temporal distribution for fallback
+                channel_ratio = df[channel] / df[channel].sum() if channel in df.columns and df[channel].sum() > 0 else np.ones(len(df)) / len(df)
+                temporal_contributions[channel] = channel_ratio * contributions[channel]
         
         # Use scikit-learn for metrics calculation
         r_squared = r2_score(y, predictions)

@@ -113,15 +113,6 @@ export default function ModelResults() {
         setPollingInterval(5000); // Less frequent during processing
       } else {
         setPollingInterval(0); // Stop polling when complete or error
-        
-        // Log the requested metrics for model 25 (or any completed model)
-        if (model.status === 'completed') {
-          console.log('MODEL METRICS (ID: ' + model.id + '):');
-          console.log('model_accuracy:', model.results?.model_accuracy);
-          console.log('R-squared (model_accuracy/100):', (model.results?.model_accuracy || 0) / 100);
-          console.log('RMSE:', model.results?.summary?.fit_metrics?.rmse);
-          console.log('actual_model_intercept:', model.results?.summary?.actual_model_intercept);
-        }
       }
     }
   }, [model]);
