@@ -988,22 +988,25 @@ def train_model(df, config):
         
         # Try to create the MMM with different approaches known to work with various versions
         
-        # Approach 1: Try with the DelayedSaturatedMMM class (newer versions)
+        # Approach 1: Try with advanced adstock and saturation setup
         try:
-            from pymc_marketing.mmm import DelayedSaturatedMMM
-            print("Found DelayedSaturatedMMM class, trying modern approach", file=sys.stderr)
+            print("Creating MMM with DelayedAdstock for better carryover modeling", file=sys.stderr)
             
-            # For the newer versions that support DelayedSaturatedMMM
-            mmm = DelayedSaturatedMMM(
-                data=X,
-                target=target_column,
-                media=channel_columns,
-                date_column=date_column
+            # Create advanced adstock and saturation objects
+            advanced_adstock = DelayedAdstock(l_max=12)  # Delayed adstock with 12-period memory
+            advanced_saturation = LogisticSaturation()   # Standard logistic saturation
+            
+            # Create MMM with advanced configuration
+            mmm = MMM(
+                date_column=date_column,
+                channel_columns=channel_columns,
+                adstock=advanced_adstock,
+                saturation=advanced_saturation
             )
-            print("Successfully created MMM with DelayedSaturatedMMM", file=sys.stderr)
+            print("Successfully created MMM with DelayedAdstock setup", file=sys.stderr)
             
         except (ImportError, Exception) as e1:
-            print(f"DelayedSaturatedMMM approach failed: {str(e1)}", file=sys.stderr)
+            print(f"Advanced adstock approach failed: {str(e1)}", file=sys.stderr)
             
             # Approach 2: Try with our data-driven adaptive parameters
             try:
