@@ -1,27 +1,27 @@
 {
   "channels": {
-    "search": {
+    "PPCBrand_Spend": {
       "alpha": 0.65,
       "L": 1.0,
       "k": 0.00005,
       "x0": 50000,
       "l_max": 7
     },
-    "social": {
+    "PPCNonBrand_Spend": {
       "alpha": 0.55,
       "L": 1.0,
       "k": 0.00008,
       "x0": 30000,
       "l_max": 10
     },
-    "display": {
+    "PPCShopping_Spend": {
       "alpha": 0.75,
       "L": 1.0,
       "k": 0.00003,
       "x0": 70000,
       "l_max": 5
     },
-    "tv": {
+    "FBReach_Spend": {
       "alpha": 0.85,
       "L": 1.0,
       "k": 0.00002,
@@ -30,9 +30,9 @@
     }
   },
   "data": {
-    "date_column": "date",
-    "response_column": "y",
-    "control_columns": []
+    "date_column": "Date",
+    "response_column": "Sales",
+    "control_columns": ["interestrate_control"]
   },
   "model": {
     "intercept": 100000,
