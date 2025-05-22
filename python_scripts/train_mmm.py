@@ -704,6 +704,78 @@ def run_diagnostics(df, target_column, channel_columns, date_column=None):
     return diagnostics
 
 
+def recommend_transform_method(y):
+    """
+    Analyze target variable characteristics and recommend the best transformation method.
+    
+    Args:
+        y: Target variable values (pandas Series or numpy array)
+        
+    Returns:
+        String with recommended transformation method ('log', 'sqrt', 'boxcox', 'yeo-johnson', or 'none')
+    """
+    import numpy as np
+    from scipy import stats
+    import pandas as pd
+    
+    # Ensure we have numpy array for analysis
+    if isinstance(y, pd.Series):
+        y_array = y.values
+    else:
+        y_array = np.asarray(y)
+    
+    # Calculate statistics
+    skewness = stats.skew(y_array)
+    kurtosis = stats.kurtosis(y_array)
+    min_val = np.min(y_array)
+    mean_val = np.mean(y_array)
+    median_val = np.median(y_array)
+    
+    # Check if data has zero or negative values
+    has_zeros = np.any(y_array == 0)
+    has_negatives = np.any(y_array < 0)
+    
+    # Normality test (Shapiro-Wilk, only works for n<5000)
+    if len(y_array) < 5000:
+        try:
+            _, normality_p = stats.shapiro(y_array)
+            is_normal = normality_p > 0.05  # If p > 0.05, data is considered normal
+        except:
+            is_normal = False
+    else:
+        # For larger datasets, approximate normality check using skewness and kurtosis
+        is_normal = abs(skewness) < 0.5 and abs(kurtosis) < 1.0
+    
+    # Decision logic for best transformation
+    if is_normal:
+        # Already normally distributed, no need to transform
+        return 'none'
+    
+    # If data has negative values, only Yeo-Johnson can handle them directly
+    if has_negatives:
+        return 'yeo-johnson'
+    
+    # For positive data with zeros, log1p (our log transform) is good
+    if has_zeros and skewness > 0.5:
+        return 'log'
+    
+    # For moderate right-skewed positive data
+    if not has_zeros and skewness > 0.5 and skewness < 1.5:
+        return 'sqrt'
+    
+    # For strongly right-skewed positive data
+    if not has_zeros and skewness >= 1.5:
+        # Box-Cox is typically best for strongly skewed positive data
+        return 'boxcox'
+    
+    # For mildly skewed data without zeros or negatives
+    if not has_zeros and not has_negatives and abs(skewness) < 0.5:
+        return 'none'
+    
+    # Default to a versatile transformation for other cases
+    return 'yeo-johnson'
+
+
 def parse_config(config_json_path):
     """Parse model configuration from JSON file path"""
     try:
@@ -734,8 +806,9 @@ def parse_config(config_json_path):
         saturation_settings = config.get('saturationSettings', {})
         control_variables = config.get('controlVariables', {})
         # New configuration options for data transformation
-        transform_target_method = config.get('transformTarget', 'none')  # 'log', 'sqrt', or 'none'
+        transform_target_method = config.get('transformTarget', 'none')  # 'log', 'sqrt', 'boxcox', 'yeo-johnson', or 'none'
         scale_predictors_method = config.get('scaleSpend', 'none')  # 'standardize', 'minmax', or 'none'
+        auto_transform = config.get('autoTransform', True)  # Whether to automatically select transformation method based on data
         
         # For channel columns, convert the values to actual column names if needed
         # In our test config, the values are descriptive names but we need the actual column names
@@ -752,7 +825,10 @@ def parse_config(config_json_path):
             'channel_columns': channel_column_names,
             'adstock_settings': adstock_settings,
             'saturation_settings': saturation_settings,
-            'control_variables': control_variables
+            'control_variables': control_variables,
+            'transform_target_method': transform_target_method,
+            'scale_predictors_method': scale_predictors_method,
+            'auto_transform': auto_transform
         }
     except Exception as e:
         print(f"Config parsing error detail: {str(e)}", file=sys.stderr)
@@ -784,11 +860,21 @@ def train_model(df, config):
         X = df.copy()
         
         # Apply transformations based on config
-        transform_target_method = config.get('transformTarget', 'none')
-        scale_predictors_method = config.get('scaleSpend', 'none')
+        transform_target_method = config.get('transform_target_method', 'none')
+        scale_predictors_method = config.get('scale_predictors_method', 'none')
+        auto_transform = config.get('auto_transform', True)
         
         # Original target for metrics calculation later
         y_original = df[target_column].copy()
+        
+        # If auto-transform is enabled and no specific transformation is specified,
+        # automatically determine the best transformation method
+        if auto_transform and transform_target_method == 'none':
+            # Analyze target data characteristics and recommend transformation
+            recommended_transform = recommend_transform_method(y_original)
+            if recommended_transform != 'none':
+                print(f"Auto-recommending {recommended_transform} transformation based on data characteristics", file=sys.stderr)
+                transform_target_method = recommended_transform
         
         # Transform target if specified
         transform_params = None
