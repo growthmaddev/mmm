@@ -144,27 +144,23 @@ const ChannelROIChart: React.FC<ChannelROIChartProps> = ({
           />
         )}
         
-        <Bar 
-          dataKey="roi" 
-          radius={[0, 4, 4, 0]}
-          barSize={25}
-          name="Return on Investment"
-        >
-          {processedData.map((entry, index) => (
-            <rect 
-              key={`rect-${index}`}
-              x={0}
-              y={0}
-              width="100%" 
-              height="100%"
-              fill={entry.color}
-              fillOpacity={0.9}
-              stroke="#fff"
-              strokeWidth={1}
-            />
-          ))}
-          <LabelList dataKey="roi" content={renderCustomizedLabel} />
-        </Bar>
+        {/* Create individual bars for each data point to properly color by significance */}
+        {processedData.map((entry, index) => (
+          <Bar 
+            key={`bar-${index}`}
+            dataKey="roi" 
+            data={[entry]}
+            name={entry.channel}
+            radius={[0, 4, 4, 0]}
+            barSize={25}
+            fill={entry.color}
+            fillOpacity={0.9}
+            stroke="#fff"
+            strokeWidth={1}
+          >
+            <LabelList dataKey="roi" content={renderCustomizedLabel} />
+          </Bar>
+        ))}
       </BarChart>
     </ResponsiveContainer>
   );
