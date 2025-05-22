@@ -1,0 +1,19 @@
+Successfully cleaned and converted column Sales to numeric
+Successfully cleaned and converted column PPCBrand_Spend to numeric
+Successfully cleaned and converted column PPCNonBrand_Spend to numeric
+Successfully cleaned and converted column PPCShopping_Spend to numeric
+Successfully cleaned and converted column PPCLocal_Spend to numeric
+Successfully cleaned and converted column PPCPMax_Spend to numeric
+Successfully cleaned and converted column FBReach_Spend to numeric
+Successfully cleaned and converted column FBDPA_Spend to numeric
+Successfully cleaned and converted column OfflineMedia_Spend to numeric
+Successfully parsed dates with dayfirst=True format
+Using full dataset with 90 rows for more accurate model training
+Running data diagnostics...
+Traceback (most recent call last):
+  File "/home/runner/workspace/test_quick_enhanced_mmm.py", line 67, in <module>
+    main()
+  File "/home/runner/workspace/test_quick_enhanced_mmm.py", line 57, in main
+    diagnostics_report = run_diagnostics(df, test_config)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: run_diagnostics() missing 1 required positional argument: 'channel_columns'

@@ -1,0 +1,44 @@
+{
+  "dateColumn": "Date",
+  "targetColumn": "Sales",
+  "channelColumns": {
+    "PPCBrand_Spend": "PPC Brand",
+    "PPCNonBrand_Spend": "PPC Non-Brand",
+    "PPCShopping_Spend": "PPC Shopping",
+    "PPCLocal_Spend": "PPC Local",
+    "PPCPMax_Spend": "PPC PMax",
+    "FBReach_Spend": "Facebook Reach",
+    "FBDPA_Spend": "Facebook DPA",
+    "OfflineMedia_Spend": "Offline Media"
+  },
+  "adstockSettings": {
+    "PPCBrand_Spend": 0.3,
+    "PPCNonBrand_Spend": 0.5,
+    "PPCShopping_Spend": 0.4,
+    "PPCLocal_Spend": 0.3,
+    "PPCPMax_Spend": 0.4,
+    "FBReach_Spend": 0.7,
+    "FBDPA_Spend": 0.6,
+    "OfflineMedia_Spend": 0.8
+  },
+  "saturationSettings": {
+    "PPCBrand_Spend": 0.8,
+    "PPCNonBrand_Spend": 0.7,
+    "PPCShopping_Spend": 0.7,
+    "PPCLocal_Spend": 0.6,
+    "PPCPMax_Spend": 0.7,
+    "FBReach_Spend": 0.6,
+    "FBDPA_Spend": 0.6,
+    "OfflineMedia_Spend": 0.5
+  },
+  "controlVariables": {},
+  "transformTarget": "auto",
+  "scaleSpend": "standardize",
+  "autoTransform": true,
+  "mcmcSettings": {
+    "draws": 200,
+    "tune": 100,
+    "chains": 2,
+    "target_accept": 0.9
+  }
+}
