@@ -1,0 +1,34 @@
+Hi Agent,
+
+Your recent enhancements to `train_mmm.py` (adaptive parameters, advanced transformations, diagnostics) are extensive. Before we fully evaluate their impact on model performance, we need to ensure the `config_json` is correctly structured to utilize these new features and understand any immediate implications for the existing frontend model setup workflow.
+
+**Your tasks are:**
+
+**Task 1: Review Configuration Compatibility**
+    a.  Examine the updated `train_mmm.py`, particularly its `parse_config` function and how it now handles parameters related to:
+        i.  Target variable transformations (e.g., specific methods like BoxCox, Yeo-Johnson, log, sqrt, and any auto-transform flags like `auto_transform_target`).
+        ii. Predictor variable scaling (e.g., methods like `standardize`, `minmax`, `robust`, `log`).
+    b.  List all **new or changed configuration parameters** that `train_mmm.py` now expects or can utilize.
+    c.  For each new parameter, confirm if `train_mmm.py` has a **default behavior** if the parameter is not provided in the `config_json`.
+    d.  Briefly assess if the current frontend (`MarketMixMaster/client/src/pages/projects/[id]/model-setup.tsx`/model-setup.tsx] and `ModelSetupForm.tsx`) would be able to initiate a training run with the updated `train_mmm.py` without errors (even if it can't yet control the new features).
+
+**Task 2: Conduct a Test Model Run with Enhanced `train_mmm.py`**
+    a.  **Data:** Use the "real client data" we've been working with (e.g., `dankztestdata.csv` or the dataset associated with model 26).
+    b.  **Prepare `config_json` for Test:** Manually construct a `config_json` object that explicitly enables and tests some of the new features. For example:
+        * Set a specific target transformation method (e.g., `target_transform_method: 'log'` or `'boxcox'`) or enable auto-transformation (`auto_transform_target: true`).
+        * Set a specific predictor scaling method (e.g., `scale_predictors_method: 'standardize'`).
+        * (Ensure other necessary existing config parameters like `dateColumn`, `targetColumn`, `channelColumns` are correctly included).
+    c.  **MCMC Settings:** Use faster MCMC settings for this test run (e.g., `draws=200, tune=100, chains=2`).
+    d.  **Execute Model Training:** Run `train_mmm.py` with this prepared `config_json`.
+
+**Task 3: Report Results and Findings**
+    a.  Provide the list of new/changed configuration parameters and their default behaviors (from Task 1).
+    b.  Report on whether the existing frontend is likely to break `train_mmm.py` or if the script would run with defaults (from Task 1d).
+    c.  Provide the **full JSON output** from the test model run (Task 2). We are particularly interested in:
+        i.  The entire `"data_diagnostics_report"` section.
+        ii. Details of any transformations applied (target and predictors), and if auto-recommended, the reasoning if provided by the script.
+        iii.The key model fit metrics: **R-squared** (`model_accuracy / 100`) and **RMSE**.
+        iv. The **`raw_per_period_intercept`**, **`total_baseline_sales`** (`summary.actual_model_intercept`), and **`baseline_percent_of_total`**.
+        v.  Observations on the reported **adstock and saturation parameters** for key channels (do they appear more varied/data-driven?).
+
+This approach allows us to test the new backend capabilities using a compatible configuration, understand what needs to be updated in the frontend later, and assess the impact of the changes on model performance and diagnostics.
