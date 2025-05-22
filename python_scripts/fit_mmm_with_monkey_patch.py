@@ -14,6 +14,7 @@ import numpy as np
 import pymc as pm
 import arviz as az
 from pathlib import Path
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple, Union
 from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
 
@@ -75,7 +76,7 @@ def load_data(data_file, date_column="date"):
     return df
 
 
-def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
+def create_and_fit_mmm_model(config_file, data_file=None, data_df=None, results_file=None):
     """
     Create an MMM model with fixed priors, fit it to data, and return results
     
@@ -83,6 +84,7 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
         config_file: Path to model configuration file
         data_file: Path to CSV data file (optional if data_df is provided)
         data_df: DataFrame with data (optional if data_file is provided)
+        results_file: Optional path to save results JSON
     
     Returns:
         Dict containing model results
@@ -298,13 +300,18 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
                 else:
                     channel_roi[channel] = 0.0
             
-            # Create final results dictionary
+            # Create comprehensive results dictionary
             results = {
                 "model_info": {
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "config_file": config_file,
+                    "data_file": data_file if data_file else "data_df_provided",
                     "channels": channels,
                     "data_points": len(X),
                     "target_column": target_column,
-                    "date_column": date_column
+                    "date_column": date_column,
+                    "control_columns": existing_controls,
+                    "mcmc_settings": mcmc_settings
                 },
                 "parameters": {
                     "alpha": {ch: float(alpha_values[i]) for i, ch in enumerate(channels)},
@@ -312,15 +319,52 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
                     "k": {ch: float(k_values[i]) for i, ch in enumerate(channels)},
                     "x0": {ch: float(x0_values[i]) for i, ch in enumerate(channels)}
                 },
-                "contributions": channel_contrib,
-                "spend": channel_spend,
-                "roi": channel_roi,
-                "fit_summary": {
+                "channel_analysis": {
+                    "contributions": channel_contrib,
+                    "spend": channel_spend,
+                    "roi": channel_roi,
+                    "contribution_percentage": {
+                        ch: (channel_contrib[ch] / sum(channel_contrib.values()) * 100) 
+                        if sum(channel_contrib.values()) > 0 else 0.0
+                        for ch in channels
+                    }
+                },
+                "model_quality": {
                     "prediction_mean": float(post_pred.mean()),
                     "target_mean": float(y.mean()),
                     "mape": float(np.mean(np.abs((y - post_pred) / y)) * 100)
                 }
             }
+            
+            # Try to add sales decomposition if the method exists
+            try:
+                if hasattr(mmm, "decompose_sales"):
+                    decomposition = mmm.decompose_sales(X, y)
+                    results["sales_decomposition"] = decomposition
+            except Exception as e:
+                print(f"Warning: Could not generate sales decomposition: {str(e)}", file=sys.stderr)
+            
+            # Try to add posterior parameter distribution summary if arviz is available
+            try:
+                if hasattr(az, "summary"):
+                    results["posterior_summary"] = {}
+                    for param in ["alpha", "L", "k", "x0"]:
+                        try:
+                            param_summary = az.summary(trace, var_names=[param])
+                            results["posterior_summary"][param] = param_summary.to_dict()
+                        except Exception as param_err:
+                            print(f"Warning: Could not extract posterior summary for {param}: {str(param_err)}", file=sys.stderr)
+            except Exception as e:
+                print(f"Warning: Could not generate posterior summary: {str(e)}", file=sys.stderr)
+            
+            # Save results to JSON file if specified
+            if results_file:
+                try:
+                    with open(results_file, 'w') as f:
+                        json.dump(results, f, indent=2, default=str)
+                    print(f"Results saved to {results_file}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Warning: Could not save results to file: {str(e)}", file=sys.stderr)
             
             print(f"Results generation complete!", file=sys.stderr)
             
