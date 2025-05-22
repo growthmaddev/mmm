@@ -1,0 +1,52 @@
+Thank you for your efforts. We've received further insights on the `AttributeError: 'TensorVariable' object has no attribute 'dims'` issue. The consensus is that we need to use **explicitly named PyMC Random Variables defined within a dedicated PyMC Model context**, and then pass that context to the `MMM` constructor.
+
+Please modify `python_scripts/train_mmm.py` (or update/correct `python_scripts/mmm_with_named_rvs.py` if you prefer, and then we'll ensure `run_robust_test.py` calls the correct script) to implement the following pattern precisely within the `train_model` function:
+
+1.  **Establish an Explicit `pm.Model()` Context with Channel Coordinates:**
+    * Before defining any transform parameters, get the `channel_name_list`.
+    * Create the model context: `with pm.Model(coords={"channel": channel_name_list}) as mmm_model_context:`
+    * All subsequent definitions of fixed parameters (as RVs) and the `MMM` initialization must happen *inside this `with` block*.
+
+2.  **Define Fixed Parameters as NAMED Random Variables (not using `.dist()`):**
+    * Inside the loop for each channel (`for channel_data_key in channel_name_list:`):
+        * Retrieve the float values for `alpha`, `L`, `k`, `x0` and the integer `l_max` from the main `config` object (from `config['adstockSettings']` and `config['saturationSettings']`).
+        * Create a safe name for each RV, e.g., `safe_channel_name_for_rv = channel_data_key.replace('-', '_').replace('.', '_')`.
+        * Define the RVs:
+            ```python
+            alpha_rv = pm.Normal(f"fixed_alpha_{safe_channel_name_for_rv}", mu=alpha_float, sigma=1e-6)
+            L_rv = pm.Normal(f"fixed_L_{safe_channel_name_for_rv}", mu=L_float, sigma=1e-6)
+            k_rv = pm.Normal(f"fixed_k_{safe_channel_name_for_rv}", mu=k_float, sigma=max(abs(k_float * 0.001), 1e-7)) # Ensure sigma > 0
+            x0_rv = pm.Normal(f"fixed_x0_{safe_channel_name_for_rv}", mu=x0_float, sigma=max(abs(x0_float * 0.001), 1e-2)) # Ensure sigma > 0
+            ```
+
+3.  **Create Transform Objects:**
+    * Use these named RVs in the `priors` dictionary:
+        ```python
+        adstock_obj = GeometricAdstock(l_max=l_max_int, priors={"alpha": alpha_rv})
+        saturation_obj = LogisticSaturation(priors={"L": L_rv, "k": k_rv, "x0": x0_rv})
+        ```
+    * Store these in `channel_specific_transforms[channel_data_key]`.
+
+4.  **Initialize `MMM` and Pass the Model Context:**
+    * Still inside the `with mmm_model_context:` block:
+        ```python
+        first_channel_key = channel_name_list[0]
+        mmm = MMM(
+            date_column=date_column,
+            channel_columns=channel_name_list,
+            control_columns=control_list, # your populated list of control column names
+            adstock=channel_specific_transforms[first_channel_key]['adstock'],
+            saturation=channel_specific_transforms[first_channel_key]['saturation'],
+            model=mmm_model_context  # CRITICAL: Pass the model context
+        )
+        ```
+
+5.  **Set `mmm.media_transforms`:**
+    * Still inside the `with mmm_model_context:` block, after MMM initialization:
+        `mmm.media_transforms = channel_specific_transforms`
+
+6.  **Ensure Imports:** Make sure `import pymc as pm` is at the top of the script.
+
+This detailed structure should ensure that all "fixed" prior parameters are proper named RVs within the correct model context, which `MMM` will then use.
+
+Please implement this, and then I will run the quick verification test with `test_config_quick.json`. If you've modified a different script like `mmm_with_named_rvs.py`, let me know, and also how `run_robust_test.py` should call it.

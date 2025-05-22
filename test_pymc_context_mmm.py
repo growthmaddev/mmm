@@ -146,7 +146,7 @@ def main():
     """Main function"""
     # Use test_config_quick.json for quick testing
     config_path = "test_config_quick.json"
-    data_path = "test_data.csv"
+    data_path = "attached_assets/dankztestdata_v2.csv"
     
     # Check if files exist
     if not os.path.exists(config_path):
