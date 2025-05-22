@@ -1,0 +1,23 @@
+i Agent,
+
+Following your recent fixes to the "Channel Impact" tab, the "Channel Performance Details" table in `MarketMixMaster/client/src/pages/projects/[id]/results.tsx`/results.tsx] is now incorrectly displaying $0 spend for all channels. This is a critical data display bug that needs to be resolved immediately.
+
+You previously noted that spend data was included in `train_mmm.py` (around line 542), but that was per-period spend within a specific function. We need the **total actual spend for each channel** over the entire dataset period.
+
+**Your immediate task is to:**
+
+1.  **Ensure Correct Spend Data Output in `train_mmm.py`:**
+    * Verify that `train_mmm.py` calculates the **total actual spend for each channel** from the input DataFrame (e.g., using `df[channel_column].sum()`).
+    * Ensure this total spend value for each channel is explicitly included in the JSON output. A good place might be within the `analytics.channel_effectiveness_detail[channelName]` object as a field like `actual_spend`, or in a new dedicated structure like `analytics.channel_spends = {channel1: total_spend1, ...}`.
+    * Clearly document the exact field name and path in the JSON output where this total spend per channel can now be found.
+
+2.  **Fix Frontend Display in `MarketMixMaster/client/src/pages/projects/[id]/results.tsx`:**
+    * Modify the "Channel Performance Details" table to correctly access and display this `actual_spend` value for each channel from the model results.
+    * Remove any debugging code (like `console.log`s for the entire model data structure) that was added in the previous attempt if it's no longer needed for this specific fix.
+
+**Deliverables:**
+1.  The updated `train_mmm.py` script, if changes were made to how total channel spends are calculated and outputted.
+2.  The updated `MarketMixMaster/client/src/pages/projects/[id]/results.tsx` script with the corrected spend display logic.
+3.  Confirmation, ideally with a new screenshot, that the "Channel Performance Details" table now accurately displays the distinct, correct total spend for each channel.
+
+Please focus solely on fixing this spend display issue accurately.

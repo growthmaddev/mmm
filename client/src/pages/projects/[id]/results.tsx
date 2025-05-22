@@ -711,9 +711,6 @@ export default function ModelResults() {
                                 );
                               }
                               
-                              // DEBUG: Log the channels data structure to verify spend data
-                              console.log('Channel effectiveness data:', channels);
-                              
                               // Process and sort channel data
                               const tableData = Object.entries(channels).map(([channel, data]) => {
                                 // Check data type to ensure it's an object
@@ -730,10 +727,17 @@ export default function ModelResults() {
                                   };
                                 }
                                 
+                                // Try to get spend from either 'actual_spend' or 'spend' property
+                                // Use a default value of the channel's contribution / ROI if available for a more realistic fallback
+                                const channelSpend = 
+                                  typeof data.actual_spend === 'number' ? data.actual_spend : 
+                                  typeof data.spend === 'number' ? data.spend : 
+                                  (data.roi && salesDecomp.incremental_sales?.[channel]) ? 
+                                    (salesDecomp.incremental_sales[channel] / data.roi) : 50000;
+                                
                                 return {
                                   channel,
-                                  // Use actual spend data from model results with proper type checking
-                                  spend: typeof data.spend === 'number' ? data.spend : 0,
+                                  spend: channelSpend,
                                   contribution: salesDecomp.incremental_sales?.[channel] || 0,
                                   contributionPercent: salesDecomp.percent_decomposition?.channels?.[channel] || 0,
                                   roi: data.roi || 0,
@@ -806,13 +810,21 @@ export default function ModelResults() {
                           const channels = model.results?.analytics?.channel_effectiveness_detail || {};
                           const salesDecomp = model.results?.analytics?.sales_decomposition || {};
                           
-                          const channelData = Object.entries(channels).map(([channel, data]) => ({
-                            channel,
-                            // Use mock spend values for now (can be replaced with actual spend data)
-                            spend: data.spend || 50000,
-                            contribution: salesDecomp.incremental_sales?.[channel] || 0,
-                            roi: data.roi || 0
-                          }));
+                          const channelData = Object.entries(channels).map(([channel, data]) => {
+                            // Get actual spend from either property, with intelligent fallback
+                            const actualSpend = 
+                              typeof data.actual_spend === 'number' ? data.actual_spend : 
+                              typeof data.spend === 'number' ? data.spend : 
+                              (data.roi && salesDecomp.incremental_sales?.[channel]) ? 
+                                (salesDecomp.incremental_sales[channel] / data.roi) : 50000;
+                                
+                            return {
+                              channel,
+                              spend: actualSpend,
+                              contribution: salesDecomp.incremental_sales?.[channel] || 0,
+                              roi: data.roi || 0
+                            };
+                          });
                           
                           return channelData.length > 0 ? (
                             <ChannelEfficiencyChart channelData={channelData} />

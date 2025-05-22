@@ -539,7 +539,8 @@ def train_model(df, config):
                     "statistical_significance": 0.95,  # Default placeholder
                     "cost_per_outcome": float(df[channel].sum() / contributions[channel]) if contributions[channel] > 0 else 0.0,
                     "effectiveness_rank": rank,
-                    "spend": float(df[channel].sum())  # Add actual channel spend from input data
+                    "spend": float(df[channel].sum()),  # Add actual channel spend from input data
+                    "actual_spend": float(df[channel].sum())  # Duplicate name for clarity/compatibility
                 } for rank, (channel, _) in enumerate(sorted([(ch, roi_data.get(ch, 0)) for ch in channel_columns], 
                                                          key=lambda x: x[1], reverse=True), 1)
             },
