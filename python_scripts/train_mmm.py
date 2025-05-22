@@ -677,48 +677,37 @@ def train_model(df, config):
         adaptive_params = get_adaptive_parameters(df, channel_columns, config)
         
         # Create media transforms dictionary with adaptive parameters for each channel
-        media_transforms = {}
         print("Creating data-driven media transforms...", file=sys.stderr)
         media_transforms = {}
         
         for channel in channel_columns:
-            # Calculate channel-specific saturation parameters
-            channel_values = df[channel]
+            # Use the adaptive parameters we calculated earlier
+            adstock_params = adaptive_params[channel]['adstock']
+            saturation_params = adaptive_params[channel]['saturation']
             
-            # Set x0 to median spend (midpoint of saturation curve)
-            # Use 75th percentile for channels with many zeros
-            if (channel_values == 0).mean() > 0.5:  # If > 50% zeros
-                x0 = float(channel_values[channel_values > 0].quantile(0.75) if len(channel_values[channel_values > 0]) > 0 else 1000.0)
-            else:
-                x0 = float(channel_values.median() if len(channel_values) > 0 else 1000.0)
+            # Create adstock and saturation objects for this channel
+            adstock_obj = GeometricAdstock(
+                alpha=adstock_params['alpha'],
+                l_max=adstock_params['l_max']
+            )
             
-            # Adjust k (steepness) inversely to spend level
-            # Lower k for higher spend channels to create smoother curve
-            if x0 > 0:
-                k = float(0.0005 / (x0 / 1000))  # Adjust k inversely to spend level
-            else:
-                k = 0.0005  # Default if x0 is 0
-                
-            # Cap k to reasonable values
-            k = max(0.00001, min(k, 0.005))
+            saturation_obj = LogisticSaturation(
+                L=saturation_params['L'],
+                k=saturation_params['k'],
+                x0=saturation_params['x0']
+            )
             
-            # Set L to 1.0 (standard ceiling for normalized data)
-            L = 1.0
-            
-            # Adjust adstock parameters based on data patterns
-            # Longer l_max for higher spend channels
-            l_max = int(min(5, max(1, round(3 * channel_values.sum() / df[channel_columns].sum().max() + 1))))
-            
-            # Set alpha (decay rate) - standard value as this is harder to determine a priori
-            alpha = 0.3
-            
-            print(f"Channel {channel} parameters: x0={x0:.2f}, k={k:.6f}, L={L}, l_max={l_max}, alpha={alpha}", file=sys.stderr)
-            
-            # Create channel-specific media transforms
+            # Add the transforms to the media_transforms dictionary
             media_transforms[channel] = {
-                'adstock': GeometricAdstock(alpha=alpha, l_max=l_max),
-                'saturation': LogisticSaturation(L=L, k=k, x0=x0)
+                'adstock': adstock_obj,
+                'saturation': saturation_obj
             }
+            
+            # Log the parameters used
+            print(f"Channel {channel} using:", file=sys.stderr)
+            print(f"  Adstock: alpha={adstock_params['alpha']:.4f}, l_max={adstock_params['l_max']}", file=sys.stderr)
+            print(f"  Saturation: L={saturation_params['L']:.1f}, k={saturation_params['k']:.6f}, x0={saturation_params['x0']:.1f}", file=sys.stderr)
+
             
         # Try creating a PyMC-Marketing MMM with appropriate settings for the installed version
         print("Detecting compatible PyMC-Marketing API approach...", file=sys.stderr)
@@ -750,46 +739,41 @@ def train_model(df, config):
         except (ImportError, Exception) as e1:
             print(f"DelayedSaturatedMMM approach failed: {str(e1)}", file=sys.stderr)
             
-            # Approach 2: Try with channel-specific media transforms
+            # Approach 2: Try with our data-driven adaptive parameters
             try:
-                print("Trying with data-driven channel-specific transforms", file=sys.stderr)
+                print("Trying with data-driven adaptive media transforms", file=sys.stderr)
                 
+                # Create model with our advanced media_transforms dictionary
                 mmm = MMM(
-                    date_column=date_column,
-                    channel_columns=channel_columns,
-                    media_transforms=media_transforms
+                    media_transforms=media_transforms,
+                    dtype=np.float64  # Use 64-bit precision for better numerical stability
                 )
                 print("Created MMM with explicit single adstock/saturation", file=sys.stderr)
                 
             except Exception as e2:
                 print(f"Single adstock/saturation approach failed: {str(e2)}", file=sys.stderr)
                 
-                # Approach 3: Try using the most minimal approach possible
+                # Approach 3: Try using the most minimal approach possible but still use our adaptive parameters
                 try:
-                    print("Trying minimal approach with only required parameters", file=sys.stderr)
-                    mmm = MMM(channel_columns=channel_columns)
-                    print("Created MMM with minimal parameters", file=sys.stderr)
+                    print("Trying minimal approach with adaptive parameters", file=sys.stderr)
+                    
+                    # Create MMM with channel columns and our data-driven media transforms
+                    mmm = MMM(
+                        channel_columns=channel_columns,
+                        media_transforms=media_transforms
+                    )
+                    print("Created MMM with minimal parameters and adaptive transforms", file=sys.stderr)
                     
                 except Exception as e3:
-                    # Final fallback - try one more time with an alternative constructor
+                    # Final fallback - if all other approaches fail, try with minimal parameters
+                    # This is not ideal but better than failing completely
                     try:
-                        print("Trying direct PyMC-Marketing pipeline example approach", file=sys.stderr)
-                        # This follows exactly the example from PyMC-Marketing docs
-                        from pymc_marketing.mmm.preprocessing import preprocess_data
+                        print("Using fallback with minimal parameters (no adaptive transforms)", file=sys.stderr)
+                        print("WARNING: This means adaptive parameters won't be used!", file=sys.stderr)
                         
-                        # Preprocess data if needed
-                        data_processed = preprocess_data(
-                            X, 
-                            media_vars=channel_columns,
-                            target=target_column,
-                            date_var=date_column
-                        )
-                        
-                        # Create model from processed data
+                        # Create minimal model as a last resort
                         mmm = MMM(
-                            media_vars=channel_columns,
-                            target=target_column,
-                            date_var=date_column
+                            channel_columns=channel_columns
                         )
                         print("Created MMM using PyMC-Marketing documentation example", file=sys.stderr)
                         
