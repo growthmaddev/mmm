@@ -1,0 +1,66 @@
+Thank you for running the latest test with `fit_mmm_with_monkey_patch.py` and providing the log.
+
+This is very informative! Here's what we've learned:
+1.  **SUCCESS with `.dims` Monkey-Patch & MMM Initialization:**
+    * The debug logs clearly show the monkey-patch is successfully adding `.dims = ('channel',)` to your channel-dimensioned Random Variables (like `alpha_rv_chan`).
+    * The `MMM` object was then **successfully built and initialized** (`Successfully built MMM model!`). This means the previous `AttributeError` related to `.dims` during initialization is resolved by this combination of channel-dimensioned priors and the monkey-patch. This is excellent progress on that front!
+
+2.  **NEW Error During `mmm.fit()` (specifically, when PyMC calls `model.logp()`):**
+    * The script now fails during the fitting process with:
+      `ValueError: Random variables detected in the logp graph: {..., fixed_alphas_per_channel, ... MeasurableCheckAndRaise{raises=ParameterValueError, msg='0 <= alpha <= 1'}.0, ...}`
+    * This error, especially the message `0 <= alpha <= 1`, points directly to an issue with how the `fixed_alphas_per_channel` (our Random Variable for adstock alpha) is interacting with the hard requirement that adstock alpha must be between 0 and 1.
+    * Using `pm.Normal(..., mu=config_alpha_values, sigma=1e-6, dims="channel")` for `alpha`, even though it's very narrowly peaked, is still an unbounded distribution. This is likely causing a conflict with PyMC's internal mechanisms for enforcing the [0,1] bound on `alpha` when it calculates the model's log probability.
+
+**To address this new `ValueError` during `model.logp()`:**
+
+Please modify `python_scripts/fit_mmm_with_monkey_patch.py` (or the core MMM function it calls) to define `fixed_alphas_per_channel` (the RV for adstock alpha) using a **`pm.Beta` distribution**. This distribution is naturally bounded between 0 and 1.
+
+**Specific Changes Required:**
+
+1.  **When creating the Random Variable for adstock `alpha` (inside the `with pm.Model...` block):**
+    * Instead of using `pm.Normal` for `alpha_rv_chan` (or `fixed_alphas_per_channel`):
+        ```python
+        # Current problematic line:
+        # alpha_rv_chan = pm.Normal("fixed_alphas_per_channel", mu=alpha_values_array, sigma=1e-6, dims="channel")
+        ```
+    * Implement this using `pm.Beta`:
+        ```python
+        # alpha_mu_values are your target fixed alpha values from config, e.g., [0.65, 0.55, ...]
+        # (This is the np.array you already prepare, named alpha_values in the log)
+        alpha_mu_values = np.array([
+            config['adstockSettings']['channel_specific_params'].get(ch, config['adstockSettings']['default'])['adstock_alpha'] 
+            for ch in channel_name_list 
+        ])
+        # Ensure mu values are strictly within (0,1) for Beta distribution's mean to be well-defined
+        clipped_alpha_mu_values = np.clip(alpha_mu_values, 1e-6, 1.0 - 1e-6)
+
+        kappa = 1_000_000  # A large concentration parameter to make Beta sharply peaked at the mean
+
+        # Calculate alpha and beta parameters for the pm.Beta distribution
+        # For Beta(a,b), mean = a / (a+b). If mean = m, and a+b = kappa, then a = m*kappa, b = (1-m)*kappa
+        beta_dist_alpha_param_values = clipped_alpha_mu_values * kappa
+        beta_dist_beta_param_values = (1.0 - clipped_alpha_mu_values) * kappa
+
+        alpha_rv_chan = pm.Beta("fixed_alphas_per_channel", 
+                                alpha=beta_dist_alpha_param_values, 
+                                beta=beta_dist_beta_param_values, 
+                                dims="channel")
+        ```
+    * **Crucially, continue to apply the monkey-patch for `.dims` to this new `alpha_rv_chan` (Beta RV) as before:**
+        ```python
+        if not hasattr(alpha_rv_chan, 'dims') or getattr(alpha_rv_chan, 'dims', None) != ("channel",):
+            print(f"DEBUG: Monkey-patching .dims for alpha_rv_chan (Beta)", file=sys.stderr)
+            alpha_rv_chan.dims = ("channel",)
+        print(f"DEBUG: {alpha_rv_chan.name} (Beta) - hasattr .dims: {hasattr(alpha_rv_chan, 'dims')}, .dims value: {getattr(alpha_rv_chan, 'dims', 'NOT FOUND')}", file=sys.stderr)
+        ```
+
+2.  **Parameters `L`, `k`, `x0` for Saturation:** For now, let's keep `L_rv_chan`, `k_rv_chan`, `x0_rv_chan` as `pm.Normal` with tiny sigmas and the monkey-patch, as the error messages do not yet point to them being an issue for the `logp` calculation. We'll address them if new errors arise after fixing `alpha`.
+
+3.  The rest of the script (global adstock/saturation objects using these RVs, MMM init inside the context, and the `fit` call) should remain structurally the same.
+
+Please:
+a.  Implement this specific change for the adstock `alpha` Random Variable using `pm.Beta` and ensure the monkey-patch is still applied to it.
+b.  Run your test script (`python test_fixed_dims_monkey.py` or `python run_robust_test.py ... --quick` if it calls the latest script) with `test_config_quick.json`.
+c.  Provide the full console output.
+
+This change directly addresses the `0 <= alpha <= 1` constraint implied by the `ValueError` during `model.logp()`.

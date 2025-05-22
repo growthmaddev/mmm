@@ -1,0 +1,24 @@
+gent, thank you for your persistence. Your last test run with `fit_mmm_with_monkey_patch.py` (where you implemented `pm.Beta` for the adstock alpha and continued with the monkey-patch for `.dims`) was very informative.
+
+The key takeaways are:
+1.  The monkey-patch for `.dims` is working, and the `MMM` object initializes successfully. This is great progress!
+2.  However, the script still fails during `mmm.fit()` with the `ValueError: Random variables detected in the logp graph...` specifically mentioning `fixed_alphas_per_channel` and the `0 <= alpha <= 1` constraint. This occurred even when `fixed_alphas_per_channel` was defined as a `pm.Beta` distribution (which is correctly bounded [0,1]).
+
+Your new suggestion to "use fixed values instead of random variables for the transformation parameters" is concerning. If this means passing raw Python floats or NumPy arrays directly into the `priors` dictionary of `GeometricAdstock` (e.g., `priors={"alpha": 0.65}`), this will likely reintroduce the original `AttributeError: ... object has no attribute 'dims'` during `MMM` initialization, as those raw types don't have a `.dims` attribute and our monkey-patch wouldn't apply. We need to keep using PyMC RVs (like `pm.Beta` or tightly constrained `pm.Normal`) for these priors to ensure they are graph components that can potentially have `.dims`.
+
+The current `ValueError` in `logp` with `pm.Beta` (and the monkey-patch) is puzzling, as `pm.Beta` should satisfy the [0,1] bound.
+
+Before trying to remove RVs for priors, let's ensure the `pm.Beta` definition for `alpha` and its usage was as robust as possible.
+
+Could you please:
+1.  **Show me the exact code section** from the latest `fit_mmm_with_monkey_patch.py` where:
+    * `alpha_rv_chan` (the channel-dimensioned Beta RV for adstock alpha) is defined.
+    * The monkey-patch `.dims = ("channel",)` is applied to it.
+    * `global_adstock_obj` is created using this `alpha_rv_chan` in its `priors`.
+    * `global_saturation_obj` is created (showing how `L_rv_chan`, `k_rv_chan`, `x0_rv_chan` are defined with `pm.Normal` and monkey-patched).
+    * The `MMM` object is initialized with these global transform objects.
+    * The `mmm.fit()` call is made.
+
+2.  **Regarding the `pm.Beta` parameters `alpha` and `beta`:** When you calculated `beta_dist_alpha_param_values` and `beta_dist_beta_param_values` using `kappa`, were these parameters themselves NumPy arrays with `dims="channel"` if `clipped_alpha_mu_values` was an array? The `alpha` and `beta` parameters of `pm.Beta` might also need to be explicitly dimensioned or broadcast correctly if `pm.Beta` itself is dimensioned by "channel".
+
+Let's verify the exact implementation of the `pm.Beta` approach that still led to the `logp` error. There might be a subtle detail in how the `pm.Beta` or its parameters were defined or used within the `GeometricAdstock` prior.

@@ -158,13 +158,29 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None, results_
         # Define Channel-Dimensioned "Fixed" Priors as Named RVs
         print(f"Creating channel-dimensioned priors...", file=sys.stderr)
         
-        # Create alpha RV with channel dimensions
-        alpha_rv_chan = pm.Normal("fixed_alphas_per_channel", mu=alpha_values, sigma=1e-6, dims="channel")
-        if not hasattr(alpha_rv_chan, 'dims'):
-            print(f"DEBUG: Monkey-patching .dims for alpha_rv_chan", file=sys.stderr)
+        # Create alpha RV with channel dimensions using Beta distribution to respect the 0 <= alpha <= 1 constraint
+        # Ensure mu values are strictly within (0,1) for Beta distribution's mean to be well-defined
+        clipped_alpha_mu_values = np.clip(alpha_values, 1e-6, 1.0 - 1e-6)
+        
+        # Use a large concentration parameter to make Beta sharply peaked at the mean
+        kappa = 1_000_000
+        
+        # Calculate alpha and beta parameters for the pm.Beta distribution
+        # For Beta(a,b), mean = a / (a+b). If mean = m, and a+b = kappa, then a = m*kappa, b = (1-m)*kappa
+        beta_dist_alpha_param_values = clipped_alpha_mu_values * kappa
+        beta_dist_beta_param_values = (1.0 - clipped_alpha_mu_values) * kappa
+        
+        alpha_rv_chan = pm.Beta("fixed_alphas_per_channel", 
+                              alpha=beta_dist_alpha_param_values, 
+                              beta=beta_dist_beta_param_values, 
+                              dims="channel")
+        
+        if not hasattr(alpha_rv_chan, 'dims') or getattr(alpha_rv_chan, 'dims', None) != ("channel",):
+            print(f"DEBUG: Monkey-patching .dims for alpha_rv_chan (Beta)", file=sys.stderr)
             alpha_rv_chan.dims = ("channel",)  # Forcibly assign the expected dims tuple
+            
         # Debug print
-        print(f"DEBUG: AFTER PATCH alpha_rv_chan type: {type(alpha_rv_chan)}, hasattr .dims: {hasattr(alpha_rv_chan, 'dims')}, .dims value: {getattr(alpha_rv_chan, 'dims', 'NOT FOUND')}", file=sys.stderr)
+        print(f"DEBUG: AFTER PATCH alpha_rv_chan (Beta) type: {type(alpha_rv_chan)}, hasattr .dims: {hasattr(alpha_rv_chan, 'dims')}, .dims value: {getattr(alpha_rv_chan, 'dims', 'NOT FOUND')}", file=sys.stderr)
         
         # Create L RV with channel dimensions
         L_rv_chan = pm.Normal("fixed_Ls_per_channel", mu=L_values, sigma=1e-6, dims="channel")
