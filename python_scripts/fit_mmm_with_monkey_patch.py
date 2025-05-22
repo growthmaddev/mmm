@@ -247,11 +247,24 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
             
             # Ensure date column is properly formatted
             if date_column in X.columns:
-                X[date_column] = pd.to_datetime(X[date_column])
+                # Try to detect the date format based on sample date
+                sample_date = X[date_column].iloc[0]
+                print(f"Sample date format: {sample_date}", file=sys.stderr)
+                
+                # Handle different date formats (DD/MM/YYYY or MM/DD/YYYY)
+                try:
+                    # Try with dayfirst=True (European format DD/MM/YYYY)
+                    X[date_column] = pd.to_datetime(X[date_column], dayfirst=True)
+                    print(f"Successfully parsed dates with dayfirst=True", file=sys.stderr)
+                except ValueError as e:
+                    # Fallback to mixed format
+                    print(f"Error parsing dates: {str(e)}", file=sys.stderr)
+                    X[date_column] = pd.to_datetime(X[date_column], format='mixed')
                 
             print(f"Input data X shape: {X.shape}, columns: {X.columns.tolist()}", file=sys.stderr)
             print(f"Target y shape: {y.shape}", file=sys.stderr)
             print(f"Date column format: {X[date_column].dtype}", file=sys.stderr)
+            print(f"Date range: {X[date_column].min()} to {X[date_column].max()}", file=sys.stderr)
             
             # Fit the model
             print(f"Fitting model with {len(X)} data points...", file=sys.stderr)
