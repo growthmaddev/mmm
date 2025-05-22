@@ -1,0 +1,74 @@
+Thank you, Agent, for your persistence and detailed testing. The information that `MMM(...)` in `pymc-marketing==0.13.1` gives an "Unexpected keyword argument" error when `model=` is passed is a critical finding. This means we must rely on PyMC's implicit context management by defining everything within the same `with pm.Model():` block.
+
+However, since the `'TensorVariable' object has no attribute 'dims'` error still occurs even when attempting to use named scalar RVs within that shared context, we need to try a different structure for our fixed priors, as suggested by external AI (Claude's "Channel-Dimensioned Approach").
+
+**Please modify/create `python_scripts/mmm_named_rvs.py` (and its calling function, e.g., `train_mmm_with_named_rvs`) to implement the following "Channel-Dimensioned Global Priors" strategy:**
+
+1.  **Single `pm.Model()` Context with Channel Coordinates:**
+    * At the beginning of your main MMM setup function:
+        ```python
+        channel_name_list = list(config['channelColumns'].keys()) # Get list of channel names
+        with pm.Model(coords={"channel": channel_name_list}) as mmm_model_context:
+            # All subsequent PyMC definitions go inside this block
+        ```
+
+2.  **Prepare NumPy Arrays for Fixed Parameter Values (per channel):**
+    * Inside the `with mmm_model_context:` block:
+    * For each parameter type (`alpha`, `L`, `k`, `x0`), create a NumPy array containing the specific fixed value for each channel in `channel_name_list`. You'll need to iterate through `channel_name_list` and retrieve the corresponding values from your `config` (e.g., from `config['adstockSettings']` and `config['saturationSettings']`, handling defaults and channel-specific values as your current script does).
+        ```python
+        # Example for alpha_values (ensure this logic correctly maps config to channel_name_list order)
+        alpha_values = np.array([
+            config['adstockSettings']['channel_specific_params'].get(ch, config['adstockSettings']['default'])['adstock_alpha'] 
+            for ch in channel_name_list
+        ])
+        # Create similar L_values, k_values, x0_values arrays
+        ```
+    * For `l_max` (which is an `int` for `GeometricAdstock`, not a prior RV), determine a single global value. This is a compromise of this approach.
+        ```python
+        l_max_config_values = [config['adstockSettings']['channel_specific_params'].get(ch, config['adstockSettings']['default'])['adstock_l_max'] for ch in channel_name_list]
+        global_l_max = int(max(l_max_config_values)) # Or a specific default if appropriate
+        print(f"DEBUG: Using global l_max for Adstock: {global_l_max}", file=sys.stderr)
+        ```
+
+3.  **Define Channel-Dimensioned "Fixed" Priors as Named RVs:**
+    * Still inside the `with mmm_model_context:` block, create **single** named RVs for `alpha`, `L`, `k`, and `x0`. These RVs will take the NumPy arrays (from step 2) as their `mu` and critically must have `dims="channel"`.
+        ```python
+        alpha_rv_chan = pm.Normal("fixed_alphas_per_channel", mu=alpha_values, sigma=1e-6, dims="channel")
+        L_rv_chan = pm.Normal("fixed_Ls_per_channel", mu=L_values, sigma=1e-6, dims="channel")
+        # Ensure sigma for k and x0 can handle array mu and are small & positive
+        k_sigma_val = np.maximum(np.abs(k_values * 0.001), 1e-7)
+        x0_sigma_val = np.maximum(np.abs(x0_values * 0.001), 1e-2)
+        k_rv_chan = pm.Normal("fixed_ks_per_channel", mu=k_values, sigma=k_sigma_val, dims="channel")
+        x0_rv_chan = pm.Normal("fixed_x0s_per_channel", mu=x0_values, sigma=x0_sigma_val, dims="channel")
+        ```
+
+4.  **Create GLOBAL Adstock and Saturation Objects:**
+    * Still inside the `with mmm_model_context:` block:
+    * Use the channel-dimensioned RVs in the `priors` dictionary of *single, global* `GeometricAdstock` and `LogisticSaturation` objects.
+        ```python
+        global_adstock_obj = GeometricAdstock(l_max=global_l_max, priors={"alpha": alpha_rv_chan})
+        global_saturation_obj = LogisticSaturation(priors={"L": L_rv_chan, "k": k_rv_chan, "x0": x0_rv_chan})
+        ```
+
+5.  **Instantiate `MMM` with these GLOBAL transforms:**
+    * Still inside the `with mmm_model_context:` block. **Do NOT pass `model=`**.
+        ```python
+        mmm = MMM(
+            date_column=date_column,                 # Ensure defined
+            channel_columns=channel_name_list,       # The list of channel names
+            control_columns=actual_control_list,     # Ensure defined and populated
+            adstock=global_adstock_obj,              # Pass the global adstock object
+            saturation=global_saturation_obj         # Pass the global saturation object
+        )
+        ```
+    * With this global, channel-dimensioned approach, you should **NOT** need to set `mmm.media_transforms` afterwards. The global transforms are already designed to be channel-aware.
+
+6.  **Consider Claude's `debug_distribution_dims` function:**
+    * It would be very helpful to include this debug function and use it to print the `dims` of `alpha_rv_chan` (and others) right after they are defined, to confirm they are indeed `("channel",)`.
+
+This "Channel-Dimensioned Global Priors" strategy directly addresses the `if dist.dims != ("channel",):` check by making `dist.dims` equal to `("channel",)`.
+
+Please:
+a.  Implement this new strategy in `python_scripts/mmm_named_rvs.py`.
+b.  Show me the key sections of the updated `train_mmm_with_named_rvs` function that reflect these changes.
+c.  Then, run your `test_run_mmm_named_rvs.py` script with `test_config_quick.json` and provide the full console output.

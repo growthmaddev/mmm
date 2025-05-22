@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 """
-Implementation for creating MMM with named PyMC random variables inside a model context
+Implementation of Channel-Dimensioned Global Priors approach for MMM with PyMC
 
-This approach follows the recommendation to use explicitly named PyMC Random Variables
-defined within a dedicated PyMC Model context, and then pass that context to the MMM
-constructor to avoid the AttributeError with TensorVariable objects.
+This implementation creates channel-dimensioned PyMC Random Variables with dims='channel'
+to ensure they're compatible with PyMC-Marketing's validation which expects this attribute.
 """
 
 import os
@@ -35,13 +34,20 @@ def debug_distribution_dims(dist, name="dist"):
     except Exception as e:
         print(f"DEBUG: Error getting {name}.name: {str(e)}", file=sys.stderr)
     
+    # Check if the object has PyMC dimensions
+    try:
+        if hasattr(dist, "eval"):
+            print(f"DEBUG: {name}.eval() shape: {dist.eval().shape}", file=sys.stderr)
+    except Exception as e:
+        print(f"DEBUG: Error evaluating {name}: {str(e)}", file=sys.stderr)
+        
     if hasattr(dist, "__dict__"):
         try:
-            print(f"DEBUG: {name}.__dict__: {dist.__dict__}", file=sys.stderr)
+            print(f"DEBUG: {name}.__dict__ keys: {list(dist.__dict__.keys())}", file=sys.stderr)
         except Exception as e:
             print(f"DEBUG: Error getting {name}.__dict__: {str(e)}", file=sys.stderr)
 
-def train_mmm_with_named_rvs(
+def train_mmm_with_channel_dims(
     df: pd.DataFrame,
     config: Dict[str, Any]
 ) -> MMM:
@@ -63,7 +69,7 @@ def train_mmm_with_named_rvs(
     date_column = config.get('dateColumn', 'Date')
     channel_columns = config.get('channelColumns', {})
     
-    # Create the channel list to pass to MMM constructor
+    # 1. Create the channel list to pass to MMM constructor
     channel_name_list = []
     if isinstance(channel_columns, dict):
         channel_name_list = list(channel_columns.keys())
@@ -159,38 +165,37 @@ def train_mmm_with_named_rvs(
         
         # Use max l_max for the global adstock object
         global_l_max = int(np.max(l_max_values))
-        print(f"DEBUG: Using global l_max: {global_l_max}", file=sys.stderr)
+        print(f"DEBUG: Using global l_max for Adstock: {global_l_max}", file=sys.stderr)
         
         # 3. Define Channel-Dimensioned "Fixed" Priors as Named RVs
         print(f"DEBUG: Creating channel-dimensioned priors in context: {pm.Model.get_context()}", file=sys.stderr)
         
-        # Create single named RVs with channel dimensions
-        alpha_dist_chan = pm.Normal("fixed_alphas_ch", mu=alpha_values, sigma=1e-6, dims="channel")
-        L_dist_chan = pm.Normal("fixed_Ls_ch", mu=L_values, sigma=1e-6, dims="channel")
+        # Create single named RVs with dims="channel"
+        alpha_rv_chan = pm.Normal("fixed_alphas_per_channel", mu=alpha_values, sigma=1e-6, dims="channel")
+        debug_distribution_dims(alpha_rv_chan, "alpha_rv_chan")
         
-        # Use small sigma values
-        k_sigma = np.maximum(np.abs(k_values * 0.001), 1e-7)
-        x0_sigma = np.maximum(np.abs(x0_values * 0.001), 1e-2)
+        L_rv_chan = pm.Normal("fixed_Ls_per_channel", mu=L_values, sigma=1e-6, dims="channel")
+        debug_distribution_dims(L_rv_chan, "L_rv_chan")
         
-        k_dist_chan = pm.Normal("fixed_ks_ch", mu=k_values, sigma=k_sigma, dims="channel")
-        x0_dist_chan = pm.Normal("fixed_x0s_ch", mu=x0_values, sigma=x0_sigma, dims="channel")
+        # Use small sigma values suitable for k and x0
+        k_sigma_val = np.maximum(np.abs(k_values * 0.001), 1e-7)
+        x0_sigma_val = np.maximum(np.abs(x0_values * 0.001), 1e-2)
         
-        # Debug the dimensions of our distributions
-        debug_distribution_dims(alpha_dist_chan, "alpha_dist_chan")
-        debug_distribution_dims(L_dist_chan, "L_dist_chan")
-        debug_distribution_dims(k_dist_chan, "k_dist_chan")
-        debug_distribution_dims(x0_dist_chan, "x0_dist_chan")
+        k_rv_chan = pm.Normal("fixed_ks_per_channel", mu=k_values, sigma=k_sigma_val, dims="channel")
+        debug_distribution_dims(k_rv_chan, "k_rv_chan")
+        
+        x0_rv_chan = pm.Normal("fixed_x0s_per_channel", mu=x0_values, sigma=x0_sigma_val, dims="channel")
+        debug_distribution_dims(x0_rv_chan, "x0_rv_chan")
         
         # 4. Create GLOBAL Adstock and Saturation Objects
         print(f"DEBUG: Creating global transform objects", file=sys.stderr)
-        global_adstock_obj = GeometricAdstock(l_max=global_l_max, priors={"alpha": alpha_dist_chan})
-        global_saturation_obj = LogisticSaturation(priors={"L": L_dist_chan, "k": k_dist_chan, "x0": x0_dist_chan})
+        global_adstock_obj = GeometricAdstock(l_max=global_l_max, priors={"alpha": alpha_rv_chan})
+        global_saturation_obj = LogisticSaturation(priors={"L": L_rv_chan, "k": k_rv_chan, "x0": x0_rv_chan})
         
         try:
             print(f"DEBUG: Initializing MMM object within context: {pm.Model.get_context()}", file=sys.stderr)
             
             # 5. Instantiate MMM with GLOBAL transforms (NO model parameter)
-            # The MMM object will automatically use mmm_model_context because we're within the with block
             mmm = MMM(
                 date_column=date_column,
                 channel_columns=channel_name_list,
