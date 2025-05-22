@@ -13,7 +13,8 @@ import numpy as np
 import pymc as pm
 import arviz as az
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_percentage_error
-from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
+from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation, DelayedAdstock
+from pymc_marketing.prior import Prior
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 from scipy import stats
@@ -926,23 +927,39 @@ def train_model(df, config):
             from pymc_marketing.prior import Prior
             
             # The Prior class is required to properly define model parameters
-            alpha_prior = Prior("Beta", alpha=1, beta=3)
-            alpha_prior.mean = adstock_params['alpha']  # Set the expected value
+            # We'll use the alpha value directly since Prior doesn't have a mean attribute
+            # The alpha value should be between 0 and 1 for geometric adstock
+            alpha_value = float(adstock_params['alpha'])  # Ensure it's a float
+            
+            # Constrain alpha to be between 0 and 1
+            alpha_value = max(0.01, min(0.99, alpha_value))
             
             # Create the adstock object with proper configuration
+            # Create a proper prior for alpha parameter
+            alpha_prior = Prior("Beta", alpha=2, beta=2)  # Create a Beta prior centered around 0.5
+            
             adstock_obj = GeometricAdstock(
-                l_max=adstock_params['l_max'],
-                priors={"alpha": alpha_prior}  # Pass alpha as a proper Prior object
+                l_max=int(adstock_params['l_max']),  # Ensure l_max is an integer
+                priors={"alpha": alpha_value}  # Pass alpha as a direct value instead of Prior object
             )
             
             # Create the saturation object with proper configuration
-            # For saturation parameters, we'll use fixed values
-            # Note: In a more advanced version, these could be proper Prior objects too
+            # Convert all parameters to the appropriate types and ensure they are within valid ranges
+            L_value = float(saturation_params['L'])
+            k_value = float(saturation_params['k'])
+            x0_value = float(saturation_params['x0'])
+            
+            # Ensure parameters are in valid ranges
+            L_value = max(0.1, L_value)        # L should be positive
+            k_value = max(0.000001, k_value)   # k should be positive
+            x0_value = max(1.0, x0_value)      # x0 should be positive
+            
+            # Create saturation object with proper parameters
             saturation_obj = LogisticSaturation(
                 priors={
-                    "L": saturation_params['L'],
-                    "k": saturation_params['k'],
-                    "x0": saturation_params['x0']
+                    "L": L_value,
+                    "k": k_value,
+                    "x0": x0_value
                 }
             )
             
