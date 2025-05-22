@@ -1615,8 +1615,40 @@ def train_model(df, config):
             "optimize_channel": top_channel.replace("_Spend", ""),
             "data_diagnostics_report": data_diagnostics,  # Add data diagnostics
             "data_transforms": {
-                "target_transform": transform_target_method,
-                "predictors_transform": scale_predictors_method
+                "target_transform": {
+                    "method": transform_target_method,
+                    "auto_selected": auto_transform and transform_target_method != 'none' and config.get('transform_target_method', 'none') == 'none',
+                    "parameters": transform_params,
+                    "target_stats": {
+                        "before_transform": {
+                            "min": float(y_original.min()),
+                            "max": float(y_original.max()),
+                            "mean": float(y_original.mean()),
+                            "median": float(y_original.median()),
+                            "skewness": float(stats.skew(y_original))
+                        },
+                        "after_transform": {
+                            "min": float(y.min()) if transform_target_method != 'none' else None,
+                            "max": float(y.max()) if transform_target_method != 'none' else None,
+                            "skewness": float(stats.skew(y)) if transform_target_method != 'none' else None
+                        }
+                    }
+                },
+                "predictors_transform": {
+                    "method": scale_predictors_method,
+                    "channel_ranges": {
+                        channel: {
+                            "before_scaling": {
+                                "min": float(X_predictors[channel].min()),
+                                "max": float(X_predictors[channel].max())
+                            },
+                            "after_scaling": {
+                                "min": float(df[channel].min()) if scale_predictors_method != 'none' else None,
+                                "max": float(df[channel].max()) if scale_predictors_method != 'none' else None
+                            }
+                        } for channel in channel_columns
+                    } if scale_predictors_method != 'none' else {}
+                }
             },
             "summary": {
                 "channels": {
@@ -1629,9 +1661,13 @@ def train_model(df, config):
                 },
                 "fit_metrics": {
                     "r_squared": float(r_squared),
+                    "r_squared_percent": float(r_squared * 100),
                     "rmse": float(rmse),
+                    "normalized_rmse": float(rmse / y_original.mean()) if y_original.mean() > 0 else None,
                     "mape": float(mape) if 'mape' in locals() else None,
                     "transform_method": transform_target_method,
+                    "was_auto_transformed": auto_transform and transform_target_method != 'none' and config.get('transform_target_method', 'none') == 'none',
+                    "transformation_reason": "Auto-selected based on data distribution characteristics" if auto_transform and transform_target_method != 'none' and config.get('transform_target_method', 'none') == 'none' else None,
                     "scaling_method": scale_predictors_method
                 },
                 "actual_model_intercept": total_baseline_sales,  # TRUE model-learned intercept scaled to total period
