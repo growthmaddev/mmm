@@ -59,7 +59,9 @@ const CustomTooltip = ({ active, payload }: any) => {
           <p className="text-xs font-medium">{data.roi.toFixed(2)}x</p>
           
           <p className="text-xs text-muted-foreground">Quadrant:</p>
-          <p className="text-xs font-medium">{QUADRANT_NAMES[data.quadrant as keyof typeof QUADRANT_NAMES]}</p>
+          <p className="text-xs font-medium">
+            {data.quadrant && QUADRANT_NAMES[data.quadrant as keyof typeof QUADRANT_NAMES]}
+          </p>
         </div>
       </div>
     );
@@ -67,12 +69,17 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
+interface ProcessedChannelData extends ChannelEfficiencyData {
+  quadrant: number;
+  size: number;
+}
+
 const ChannelEfficiencyChart: React.FC<ChannelEfficiencyChartProps> = ({ channelData }) => {
   // Process data to determine quadrants and add quadrant info
   const { processedData, boundaries } = useMemo(() => {
     if (!channelData || channelData.length === 0) {
       return { 
-        processedData: [],
+        processedData: [] as ProcessedChannelData[],
         boundaries: {
           medianSpend: 0,
           medianContribution: 0,
@@ -117,7 +124,7 @@ const ChannelEfficiencyChart: React.FC<ChannelEfficiencyChartProps> = ({ channel
         ...item,
         quadrant,
         // Size is based on ROI for visual representation
-        size: item.roi * 5 + 10 // Adjust size calculation as needed
+        size: Math.max(item.roi * 5 + 10, 10) // Ensure minimum size
       };
     });
     
@@ -141,45 +148,11 @@ const ChannelEfficiencyChart: React.FC<ChannelEfficiencyChartProps> = ({ channel
     );
   }
   
-  // Create data grouped by quadrant for rendering
-  const quadrantData = {
-    1: processedData.filter(item => item.quadrant === 1),
-    2: processedData.filter(item => item.quadrant === 2),
-    3: processedData.filter(item => item.quadrant === 3),
-    4: processedData.filter(item => item.quadrant === 4)
-  };
-
-  // Create labels for quadrants (positioned in each corner)
-  const quadrantLabels = [
-    // Stars (top right)
-    { 
-      x: boundaries.maxSpend * 0.75, 
-      y: boundaries.maxContribution * 0.15,
-      text: "Stars",
-      fill: QUADRANT_COLORS[1]
-    },
-    // Question Marks (bottom right)
-    { 
-      x: boundaries.maxSpend * 0.75, 
-      y: boundaries.maxContribution * 0.85,
-      text: "Question Marks",
-      fill: QUADRANT_COLORS[2]
-    },
-    // Low Priority (bottom left)
-    { 
-      x: boundaries.maxSpend * 0.15, 
-      y: boundaries.maxContribution * 0.85,
-      text: "Low Priority",
-      fill: QUADRANT_COLORS[3]
-    },
-    // Hidden Gems (top left)
-    { 
-      x: boundaries.maxSpend * 0.15, 
-      y: boundaries.maxContribution * 0.15,
-      text: "Hidden Gems",
-      fill: QUADRANT_COLORS[4]
-    }
-  ];
+  // Group data by quadrant
+  const q1Data = processedData.filter(item => item.quadrant === 1);
+  const q2Data = processedData.filter(item => item.quadrant === 2);
+  const q3Data = processedData.filter(item => item.quadrant === 3);
+  const q4Data = processedData.filter(item => item.quadrant === 4);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -226,26 +199,37 @@ const ChannelEfficiencyChart: React.FC<ChannelEfficiencyChartProps> = ({ channel
         />
         
         {/* Scatter plots by quadrant */}
-        <Scatter 
-          name="Stars" 
-          data={quadrantData[1]}
-          fill={QUADRANT_COLORS[1]}
-        />
-        <Scatter 
-          name="Question Marks" 
-          data={quadrantData[2]}
-          fill={QUADRANT_COLORS[2]}
-        />
-        <Scatter 
-          name="Low Priority" 
-          data={quadrantData[3]}
-          fill={QUADRANT_COLORS[3]}
-        />
-        <Scatter 
-          name="Hidden Gems" 
-          data={quadrantData[4]}
-          fill={QUADRANT_COLORS[4]}
-        />
+        {q1Data.length > 0 && (
+          <Scatter 
+            name="Stars" 
+            data={q1Data}
+            fill={QUADRANT_COLORS[1]}
+          />
+        )}
+        
+        {q2Data.length > 0 && (
+          <Scatter 
+            name="Question Marks" 
+            data={q2Data}
+            fill={QUADRANT_COLORS[2]}
+          />
+        )}
+        
+        {q3Data.length > 0 && (
+          <Scatter 
+            name="Low Priority" 
+            data={q3Data}
+            fill={QUADRANT_COLORS[3]}
+          />
+        )}
+        
+        {q4Data.length > 0 && (
+          <Scatter 
+            name="Hidden Gems" 
+            data={q4Data}
+            fill={QUADRANT_COLORS[4]}
+          />
+        )}
         
         <Legend />
       </ScatterChart>
