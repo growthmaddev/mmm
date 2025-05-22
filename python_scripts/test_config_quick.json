@@ -1,0 +1,68 @@
+{
+    "data_filename": "attached_assets/dankztestdata_v2.csv",
+    "dateColumn": "Date",
+    "targetColumn": "Sales",
+    "channelColumns": {
+        "PPCBrand_Spend": "PPCBrand_Spend",
+        "FBReach_Spend": "FBReach_Spend"
+    },
+    "controlColumns": ["interestrate_control"],
+    "eventColumns": [],
+    "adstockSettings": {
+        "default": {
+            "adstock_alpha": 0.6,
+            "adstock_l_max": 8
+        },
+        "channel_specific_params": {
+            "PPCBrand_Spend": {
+                "adstock_alpha": 0.8,
+                "adstock_l_max": 4
+            },
+            "FBReach_Spend": {
+                "adstock_alpha": 0.7,
+                "adstock_l_max": 6
+            }
+        }
+    },
+    "saturationSettings": {
+        "default": {
+            "saturation_L": 1.0,
+            "saturation_x0": 50000.0,
+            "saturation_k": 0.0001
+        },
+        "channel_specific_params": {
+            "PPCBrand_Spend": {
+                "saturation_L": 1.0,
+                "saturation_x0": 5000.0,
+                "saturation_k": 0.0005
+            },
+            "FBReach_Spend": {
+                "saturation_L": 1.0,
+                "saturation_x0": 10000.0,
+                "saturation_k": 0.0002
+            }
+        }
+    },
+    "mcmc_settings": {
+        "draws": 500,
+        "tune": 200,
+        "chains": 2,
+        "cores": 2,
+        "target_accept": 0.9,
+        "return_inferencedata": true
+    },
+    "autoTransform": true,
+    "transformTarget": "log",
+    "scaleSpend": "standardize",
+    "seasonality": {
+        "extract_from_date": true,
+        "features": ["month", "quarter", "is_holiday", "month_sin", "month_cos"]
+    },
+    "diagnostics": {
+        "run_data_checks": true,
+        "correlation_threshold": 0.8,
+        "multicollinearity_vif_threshold": 10.0
+    },
+    "model_name": "Quick Test - Channel Parameters",
+    "description": "Testing proper application of channel-specific adstock/saturation parameters"
+}
