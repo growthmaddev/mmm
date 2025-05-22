@@ -308,6 +308,7 @@ export default function ModelResults() {
               <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="sales-decomposition">Sales Decomposition</TabsTrigger>
                   <TabsTrigger value="channel-impact">Channel Impact</TabsTrigger>
                   <TabsTrigger value="budget-optimization">Budget Optimization</TabsTrigger>
                   <TabsTrigger value="technical">Technical Details</TabsTrigger>
@@ -341,6 +342,39 @@ export default function ModelResults() {
                               <h4 className="font-medium">Top Performing Channel</h4>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {model.results?.top_channel || "TV"} has the highest ROI at {model.results?.top_channel_roi || "$2.45"} per dollar spent.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="p-4 bg-slate-50 rounded-lg">
+                          <div className="flex items-start">
+                            <div className="mr-3 p-2 bg-primary/10 rounded-md">
+                              <PieChart className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium">Sales Contribution</h4>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {(() => {
+                                  // Find top channel
+                                  const channels = model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {};
+                                  const topChannel = Object.entries(channels).sort((a, b) => b[1] - a[1])[0];
+                                  if (topChannel) {
+                                    const [name, value] = topChannel;
+                                    return `${name} drives ${(value * 100).toFixed(1)}% of your sales, making it your top contributor.`;
+                                  }
+                                  return "Your top-performing channel drives a significant portion of your sales.";
+                                })()}
+                              </p>
+                              <p className="text-sm mt-2">
+                                <Button 
+                                  variant="link" 
+                                  className="p-0 h-auto text-primary text-sm"
+                                  onClick={() => setActiveTab("sales-decomposition")}
+                                >
+                                  View Sales Decomposition
+                                  <ChevronRight className="ml-1 h-3 w-3" />
+                                </Button>
                               </p>
                             </div>
                           </div>
@@ -381,14 +415,20 @@ export default function ModelResults() {
                       </div>
                     </div>
                   </div>
-                  
-                  {/* Sales Decomposition Section */}
-                  <div className="mt-8">
-                    <h3 className="text-lg font-medium mb-4">Sales Decomposition</h3>
+                </TabsContent>
+                
+                <TabsContent value="sales-decomposition" className="pt-4">
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-medium">Sales Decomposition Analysis</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Total Sales: {formatCurrency(model.results?.analytics?.sales_decomposition?.total_sales || 0)}
+                      </p>
+                    </div>
                     
-                    <div className="grid grid-cols-5 gap-4">
-                      {/* Pie Chart Section - 3 columns */}
-                      <div className="col-span-5 md:col-span-3 bg-white p-4 rounded-lg border">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Larger Pie Chart Section - 2 columns on large screens */}
+                      <div className="lg:col-span-2 bg-white p-6 rounded-lg border">
                         <h4 className="text-base font-medium mb-3 flex items-center">
                           <PieChart className="h-4 w-4 mr-2 text-primary" />
                           Sales Composition
@@ -399,52 +439,50 @@ export default function ModelResults() {
                             <Info className="h-3.5 w-3.5" />
                           </button>
                         </h4>
-                        <div className="flex flex-col md:flex-row items-center">
-                          <div className="w-full md:w-64 h-64">
-                            <SalesCompositionChart 
-                              basePercent={model.results?.analytics?.sales_decomposition?.percent_decomposition?.base || 0}
-                              channelContributions={model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {}}
-                              totalSales={model.results?.analytics?.sales_decomposition?.total_sales || 0}
-                            />
-                          </div>
-                          <div className="ml-0 md:ml-4 mt-4 md:mt-0">
-                            <p className="text-sm text-muted-foreground">
-                              This chart shows how your sales are attributed across marketing channels and baseline sales.
-                            </p>
-                            <p className="mt-2 font-medium">
-                              Total Sales: {formatCurrency(model.results?.analytics?.sales_decomposition?.total_sales || 0)}
-                            </p>
-                            
-                            <div className="mt-3 pt-3 border-t">
-                              <p className="text-sm font-medium">What This Means:</p>
-                              <ul className="mt-1 text-sm text-muted-foreground">
-                                <li className="flex items-start mt-1">
-                                  <div className="min-w-3 mr-1 text-primary">•</div>
-                                  <div>Channels with higher contribution percentages generally deserve more budget allocation</div>
-                                </li>
-                                <li className="flex items-start mt-1">
-                                  <div className="min-w-3 mr-1 text-primary">•</div>
-                                  <div>
-                                    {(() => {
-                                      // Find top channel
-                                      const channels = model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {};
-                                      const topChannel = Object.entries(channels).sort((a, b) => b[1] - a[1])[0];
-                                      if (topChannel) {
-                                        const [name, value] = topChannel;
-                                        return `${name} drives ${(value * 100).toFixed(1)}% of your sales, making it your top contributor`;
-                                      }
-                                      return "Your top-performing channel drives a significant portion of your sales";
-                                    })()}
-                                  </div>
-                                </li>
-                              </ul>
-                            </div>
-                          </div>
+                        
+                        {/* Chart container with increased height for better visibility */}
+                        <div className="h-96 mb-4">
+                          <SalesCompositionChart 
+                            basePercent={model.results?.analytics?.sales_decomposition?.percent_decomposition?.base || 0}
+                            channelContributions={model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {}}
+                            totalSales={model.results?.analytics?.sales_decomposition?.total_sales || 0}
+                          />
+                        </div>
+                        
+                        <div className="mt-4 pt-4 border-t">
+                          <p className="text-sm font-medium">What This Means:</p>
+                          <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
+                            <li className="flex items-start">
+                              <div className="min-w-3 mr-1 text-primary">•</div>
+                              <div>Channels with higher contribution percentages generally deserve more budget allocation</div>
+                            </li>
+                            <li className="flex items-start">
+                              <div className="min-w-3 mr-1 text-primary">•</div>
+                              <div>
+                                {(() => {
+                                  // Find top channel
+                                  const channels = model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {};
+                                  const topChannel = Object.entries(channels).sort((a, b) => b[1] - a[1])[0];
+                                  if (topChannel) {
+                                    const [name, value] = topChannel;
+                                    return `${name} drives ${(value * 100).toFixed(1)}% of your sales, making it your top contributor`;
+                                  }
+                                  return "Your top-performing channel drives a significant portion of your sales";
+                                })()}
+                              </div>
+                            </li>
+                            <li className="flex items-start">
+                              <div className="min-w-3 mr-1 text-primary">•</div>
+                              <div>
+                                Base Sales represent the organic sales you would achieve without any marketing activities
+                              </div>
+                            </li>
+                          </ul>
                         </div>
                       </div>
                       
-                      {/* Key Metrics Cards - 2 columns */}
-                      <div className="col-span-5 md:col-span-2 grid grid-cols-1 gap-4">
+                      {/* Key Metrics Cards - 1 column on large screens */}
+                      <div className="lg:col-span-1 space-y-4">
                         {/* Total Sales Card */}
                         <div className="bg-white p-4 rounded-lg border">
                           <div className="flex justify-between items-start">
@@ -529,6 +567,39 @@ export default function ModelResults() {
                             <div className="p-2 bg-primary/10 rounded-md">
                               <TrendingUp className="h-5 w-5 text-primary" />
                             </div>
+                          </div>
+                        </div>
+                        
+                        {/* Channel Insight Card */}
+                        <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+                          <h4 className="font-medium flex items-center">
+                            <Sparkles className="h-4 w-4 mr-2 text-primary" />
+                            Channel Insight
+                          </h4>
+                          <p className="text-sm mt-2">
+                            {(() => {
+                              // Find top and bottom channels
+                              const channels = model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {};
+                              const sortedChannels = Object.entries(channels).sort((a, b) => b[1] - a[1]);
+                              
+                              if (sortedChannels.length >= 2) {
+                                const [topName, topValue] = sortedChannels[0];
+                                const [bottomName, bottomValue] = sortedChannels[sortedChannels.length - 1];
+                                return `Your ${topName} channel (${(topValue * 100).toFixed(1)}%) is outperforming your ${bottomName} channel (${(bottomValue * 100).toFixed(1)}%) by ${((topValue - bottomValue) * 100).toFixed(1)} percentage points.`;
+                              }
+                              return "Analyze your channel performance to identify which channels are delivering the best return.";
+                            })()}
+                          </p>
+                          <div className="mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setActiveTab("channel-impact")}
+                              className="w-full"
+                            >
+                              View Channel Impact
+                              <ChevronRight className="ml-2 h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
                       </div>
