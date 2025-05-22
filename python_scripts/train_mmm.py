@@ -999,89 +999,132 @@ def train_model(df, config):
             print(f"  Saturation: L={saturation_params['L']:.1f}, k={saturation_params['k']:.6f}, x0={saturation_params['x0']:.1f}", file=sys.stderr)
 
             
-        # Try creating a PyMC-Marketing MMM with appropriate settings for the installed version
-        print("Detecting compatible PyMC-Marketing API approach...", file=sys.stderr)
+        # Try creating a PyMC-Marketing MMM with the specific parameters from our config
+        print("Configuring PyMC-Marketing MMM with exact parameters from config...", file=sys.stderr)
         
-        # First, identify which PyMC-Marketing version/API we're dealing with
+        # Import necessary components from pymc_marketing
         try:
-            # Try importing the version
             from pymc_marketing import __version__ as pymc_marketing_version
+            from pymc_marketing.mmm import GeometricAdstock, LogisticSaturation
             print(f"PyMC-Marketing version: {pymc_marketing_version}", file=sys.stderr)
-        except:
-            print("Could not determine PyMC-Marketing version, will try multiple API approaches", file=sys.stderr)
+        except ImportError as e:
+            print(f"Error importing PyMC-Marketing components: {str(e)}", file=sys.stderr)
+            raise ImportError("Failed to import required PyMC-Marketing components")
         
-        # Try to create the MMM with different approaches known to work with various versions
+        # Create channel-specific adstock and saturation objects using exact config parameters
+        channel_specific_transforms = {}
         
-        # Approach 1: Try with advanced adstock and saturation setup
+        # For each channel, create the specific adstock and saturation objects
+        for channel in channel_columns:
+            channel_clean = channel
+            print(f"Setting up exact transform parameters for {channel}...", file=sys.stderr)
+            
+            # Get adstock parameters for this channel
+            adstock_params = {}
+            if 'adstockSettings' in config:
+                # Try channel-specific params first
+                if ('channel_specific_params' in config['adstockSettings'] and 
+                    channel in config['adstockSettings']['channel_specific_params']):
+                    adstock_params = config['adstockSettings']['channel_specific_params'][channel]
+                    print(f"Using channel-specific adstock params from config for {channel}", file=sys.stderr)
+                # Fall back to default if no channel-specific params
+                elif 'default' in config['adstockSettings']:
+                    adstock_params = config['adstockSettings']['default']
+                    print(f"Using default adstock params from config for {channel}", file=sys.stderr)
+            
+            # Get saturation parameters for this channel
+            saturation_params = {}
+            if 'saturationSettings' in config:
+                # Try channel-specific params first
+                if ('channel_specific_params' in config['saturationSettings'] and 
+                    channel in config['saturationSettings']['channel_specific_params']):
+                    saturation_params = config['saturationSettings']['channel_specific_params'][channel]
+                    print(f"Using channel-specific saturation params from config for {channel}", file=sys.stderr)
+                # Fall back to default if no channel-specific params
+                elif 'default' in config['saturationSettings']:
+                    saturation_params = config['saturationSettings']['default']
+                    print(f"Using default saturation params from config for {channel}", file=sys.stderr)
+            
+            # Create the adstock object with exact parameters
+            alpha = adstock_params.get('adstock_alpha', 0.5)
+            l_max = adstock_params.get('adstock_l_max', 8)
+            adstock_obj = GeometricAdstock(alpha=alpha, l_max=l_max)
+            print(f"Created adstock for {channel} with alpha={alpha}, l_max={l_max}", file=sys.stderr)
+            
+            # Create the saturation object with exact parameters
+            L = saturation_params.get('saturation_L', 1.0)
+            k = saturation_params.get('saturation_k', 0.0001)
+            x0 = saturation_params.get('saturation_x0', 50000.0)
+            saturation_obj = LogisticSaturation(L=L, k=k, x0=x0)
+            print(f"Created saturation for {channel} with L={L}, k={k}, x0={x0}", file=sys.stderr)
+            
+            # Store these objects for this channel
+            channel_specific_transforms[channel] = {
+                'adstock': adstock_obj,
+                'saturation': saturation_obj
+            }
+        
+        # Create MMM with the first channel's transform to initialize
+        # (We'll set channel-specific transforms after initialization)
+        first_channel = list(channel_columns.keys())[0]
+        print(f"Initializing MMM with transforms from {first_channel}", file=sys.stderr)
         try:
-            print("Creating MMM with DelayedAdstock for better carryover modeling", file=sys.stderr)
-            
-            # Create advanced adstock and saturation objects
-            advanced_adstock = DelayedAdstock(l_max=12)  # Delayed adstock with 12-period memory
-            advanced_saturation = LogisticSaturation()   # Standard logistic saturation
-            
-            # Create MMM with advanced configuration
             mmm = MMM(
                 date_column=date_column,
                 channel_columns=channel_columns,
-                adstock=advanced_adstock,
-                saturation=advanced_saturation
+                adstock=channel_specific_transforms[first_channel]['adstock'],
+                saturation=channel_specific_transforms[first_channel]['saturation']
             )
-            print("Successfully created MMM with DelayedAdstock setup", file=sys.stderr)
+            print("Successfully created MMM with exact adstock/saturation parameters", file=sys.stderr)
             
-        except (ImportError, Exception) as e1:
-            print(f"Advanced adstock approach failed: {str(e1)}", file=sys.stderr)
+            # Now set channel-specific transforms
+            print("Setting channel-specific transforms in MMM model...", file=sys.stderr)
             
-            # Approach 2: Try with our data-driven adaptive parameters
+            # Try different approaches to set media transforms based on PyMC-Marketing version
             try:
-                print("Trying with data-driven adaptive media transforms", file=sys.stderr)
+                # First try direct media_transforms approach
+                mmm.media_transforms = {}
+                for channel, transforms in channel_specific_transforms.items():
+                    mmm.media_transforms[channel] = {
+                        'adstock': transforms['adstock'],
+                        'saturation': transforms['saturation']
+                    }
+                    print(f"Set transforms for {channel} using media_transforms", file=sys.stderr)
+            except (AttributeError, Exception) as e:
+                print(f"Direct media_transforms setting failed: {str(e)}", file=sys.stderr)
                 
-                # Create model with proper MMM initialization
-                # Import proper components 
-                from pymc_marketing.mmm import GeometricAdstock, LogisticSaturation
+                # Alternative approach - try using set_transforms method if available
+                try:
+                    for channel, transforms in channel_specific_transforms.items():
+                        if hasattr(mmm, 'set_transforms'):
+                            mmm.set_transforms(
+                                channel=channel,
+                                adstock=transforms['adstock'],
+                                saturation=transforms['saturation']
+                            )
+                            print(f"Set transforms for {channel} using set_transforms method", file=sys.stderr)
+                        else:
+                            print(f"WARNING: Could not set channel-specific transforms for {channel}", file=sys.stderr)
+                except Exception as e2:
+                    print(f"Alternative transform setting failed: {str(e2)}", file=sys.stderr)
+                    print("WARNING: Using default transforms, not channel-specific ones", file=sys.stderr)
                 
-                # Create the model with standard parameters - we'll use our transforms later
+            print("Successfully applied all channel-specific transforms", file=sys.stderr)
+            
+        except Exception as e:
+            print(f"Error creating MMM with exact parameters: {str(e)}", file=sys.stderr)
+            print("Falling back to standard MMM initialization", file=sys.stderr)
+            
+            # Basic fallback if the channel-specific approach fails
+            try:
                 mmm = MMM(
                     date_column=date_column,
-                    channel_columns=channel_columns,
-                    adstock=GeometricAdstock(l_max=4),  # Default adstock
-                    saturation=LogisticSaturation()     # Default saturation
+                    channel_columns=channel_columns
                 )
-                print("Created MMM with explicit single adstock/saturation", file=sys.stderr)
-                
+                print("WARNING: Using fallback MMM initialization - parameters from config may not be applied", file=sys.stderr)
             except Exception as e2:
-                print(f"Single adstock/saturation approach failed: {str(e2)}", file=sys.stderr)
-                
-                # Approach 3: Try using the most minimal approach possible but still use our adaptive parameters
-                try:
-                    print("Trying minimal approach with adaptive parameters", file=sys.stderr)
-                    
-                    # Create MMM using the most minimal approach possible
-                    mmm = MMM(
-                        date_column=date_column,
-                        channel_columns=channel_columns,
-                        adstock=GeometricAdstock(l_max=4),  # Simple default adstock
-                        saturation=LogisticSaturation()     # Simple default saturation
-                    )
-                    print("Created MMM with minimal parameters and adaptive transforms", file=sys.stderr)
-                    
-                except Exception as e3:
-                    # Final fallback - if all other approaches fail, try with minimal parameters
-                    # This is not ideal but better than failing completely
-                    try:
-                        print("Using fallback with minimal parameters (no adaptive transforms)", file=sys.stderr)
-                        print("WARNING: This means adaptive parameters won't be used!", file=sys.stderr)
-                        
-                        # Create minimal model as a last resort
-                        mmm = MMM(
-                            channel_columns=channel_columns
-                        )
-                        print("Created MMM using PyMC-Marketing documentation example", file=sys.stderr)
-                        
-                    except Exception as e4:
-                        print(f"All attempts to create MMM model failed", file=sys.stderr)
-                        print(f"Error details:\n- Approach 1: {str(e1)}\n- Approach 2: {str(e2)}\n- Approach 3: {str(e3)}\n- Approach 4: {str(e4)}", file=sys.stderr)
-                        raise Exception("Could not initialize MMM model with any known approach")
+                print(f"All attempts to create MMM model failed: {str(e2)}", file=sys.stderr)
+                raise Exception("Could not initialize MMM model with any known approach")
             
         # Sample with extremely reduced parameters for fast prototype
         try:
