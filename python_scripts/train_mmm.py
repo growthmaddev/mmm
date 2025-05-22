@@ -597,51 +597,40 @@ def train_model(df, config):
         # Extract intercept value (baseline sales per period)
         intercept_value = extract_model_intercept(idata, summary, mmm)
         
-        # Calculate and possibly scale the intercept value for more realistic baseline sales
+        # Calculate the total baseline sales based on the raw model intercept
         total_sales = sum(y)
         
         # If we have an intercept from the model
         if intercept_value is not None:
-            # Calculate raw total baseline sales (intercept * number of periods)
-            raw_total_baseline_sales = float(intercept_value * len(df))
+            # Calculate total baseline sales (intercept * number of periods)
+            # This is the TRUE value from the model, simply scaled to cover the entire data period
+            total_baseline_sales = float(intercept_value * len(df))
             
-            # Check if scaling might be needed
-            baseline_percent = (raw_total_baseline_sales / total_sales * 100) if total_sales > 0 else 0
+            # Calculate the baseline percentage for informational purposes
+            baseline_percent = (total_baseline_sales / total_sales * 100) if total_sales > 0 else 0
             
-            # If baseline is extremely low (less than 1% of total sales)
-            if baseline_percent < 1.0 and raw_total_baseline_sales > 0:
-                print(f"WARNING: Raw baseline sales ({raw_total_baseline_sales:.2f}) is only {baseline_percent:.4f}% of total sales ({total_sales:.2f})", 
+            # Check if baseline is unusually low, but DO NOT modify it
+            if baseline_percent < 1.0 and total_baseline_sales > 0:
+                print(f"WARNING: Model learned an unusually LOW BASELINE. Total baseline sales ({total_baseline_sales:.2f}) is only {baseline_percent:.4f}% of total sales ({total_sales:.2f})", 
                       file=sys.stderr)
-                
-                # Try to scale up the intercept to a more reasonable level
-                # Aim for intercept to be around 15-25% of total sales as a heuristic
-                # This is based on typical MMM models where baseline often represents 15-40% of sales
-                target_percent = 20.0  # Target 20% as a reasonable baseline
-                scaling_factor = (target_percent / 100 * total_sales) / raw_total_baseline_sales if raw_total_baseline_sales > 0 else 1.0
-                
-                # Cap the scaling factor to avoid extreme adjustments
-                scaling_factor = min(scaling_factor, 1000.0)
-                
-                # Apply the scaling to get a more realistic baseline
-                scaled_intercept = intercept_value * scaling_factor
-                total_baseline_sales = scaled_intercept * len(df)
-                scaled_percent = (total_baseline_sales / total_sales * 100) if total_sales > 0 else 0
-                
-                print(f"INFO: Scaling intercept by factor {scaling_factor:.2f} to make baseline more realistic", file=sys.stderr)
-                print(f"INFO: Scaled baseline now represents {scaled_percent:.2f}% of total sales", file=sys.stderr)
-                
-                # Use the scaled intercept
-                intercept_value = scaled_intercept
+                print(f"WARNING: This could indicate data quality issues or model specification problems.", file=sys.stderr)
+                print(f"WARNING: Consider revisiting your data preparation or model configuration, but the true model values will be preserved.", 
+                      file=sys.stderr)
+            elif baseline_percent > 80.0:
+                print(f"WARNING: Model learned an unusually HIGH BASELINE. Total baseline sales ({total_baseline_sales:.2f}) is {baseline_percent:.2f}% of total sales ({total_sales:.2f})", 
+                      file=sys.stderr)
+                print(f"WARNING: This could indicate that your media variables aren't explaining much variance.", 
+                      file=sys.stderr)
             else:
-                # Use the original intercept value (no scaling needed)
-                total_baseline_sales = raw_total_baseline_sales
-                print(f"INFO: Baseline sales ({total_baseline_sales:.2f}) is {baseline_percent:.2f}% of total sales - this looks reasonable", 
+                print(f"INFO: Baseline sales ({total_baseline_sales:.2f}) is {baseline_percent:.2f}% of total sales.", 
                       file=sys.stderr)
         else:
-            # No intercept found - use heuristic fallback
+            # No intercept found - use heuristic fallback as a last resort
             total_baseline_sales = total_sales * 0.2  # Assume 20% of sales is baseline
             intercept_value = total_baseline_sales / len(df) if len(df) > 0 else 0.0
-            print(f"WARNING: No intercept found. Using fallback heuristic: baseline = 20% of total sales ({total_baseline_sales:.2f})", 
+            print(f"WARNING: No intercept could be extracted from the model! Using emergency fallback heuristic: baseline = 20% of total sales ({total_baseline_sales:.2f})", 
+                  file=sys.stderr)
+            print(f"WARNING: This is a temporary solution only. The model appears to have serious issues. Please review your data and model configuration.", 
                   file=sys.stderr)
         
         # Calculate temporal contributions for each channel (for time series decomposition)
@@ -788,7 +777,10 @@ def train_model(df, config):
                     "r_squared": float(r_squared),
                     "rmse": float(rmse)
                 },
-                "actual_model_intercept": total_baseline_sales  # Store scaled total baseline sales for budget optimizer
+                "actual_model_intercept": total_baseline_sales,  # TRUE model-learned intercept scaled to total period
+                "raw_per_period_intercept": float(intercept_value) if intercept_value is not None else 0.0,  # Raw model intercept per period
+                "total_data_periods": len(df),  # Number of periods for context
+                "baseline_percent_of_total": float(baseline_percent) if 'baseline_percent' in locals() else 0.0  # For diagnostic purposes
             },
             "raw_data": {
                 "predictions": predictions.tolist(),
