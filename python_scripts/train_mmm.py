@@ -467,16 +467,23 @@ def train_model(df, config):
             
         # Sample with extremely reduced parameters for fast prototype
         try:
+            # Save transform methods for back-transformation if needed
+            transform_info = {
+                "target_method": transform_target_method,
+                "predictors_method": scale_predictors_method,
+                "was_transformed": transform_target_method != 'none'
+            }
+            
             # Use minimal MCMC parameters for fast testing
             # These are deliberately reduced for testing purposes
-            # In production they should be higher for better accuracy
+            print(f"Fitting model with transformed target ({transform_target_method}) and data-driven parameters...", file=sys.stderr)
             idata = mmm.fit(
                 X=X, 
                 y=y,
-                draws=2000,      # Reduced for faster testing
-                tune=1000,       # Reduced for faster testing
-                chains=4,       # Reduced for faster testing
-                cores=4,        # Reduced for compatibility
+                draws=200,      # Reduced for faster testing
+                tune=100,       # Reduced for faster testing
+                chains=2,       # Reduced for faster testing
+                cores=2,        # Reduced for compatibility
                 progressbar=False,  # No progress bar in API mode
                 target_accept=0.9  # Keep high to reduce divergences
             )
@@ -487,7 +494,16 @@ def train_model(df, config):
         
         # Calculate predictions with error handling
         try:
-            predictions = mmm.predict(X)
+            # Get predictions in transformed space
+            predictions_transformed = mmm.predict(X)
+            
+            # If target was transformed, need to back-transform predictions
+            if transform_target_method != 'none':
+                print(f"Back-transforming predictions from {transform_target_method} space...", file=sys.stderr)
+                predictions = inverse_transform_target(predictions_transformed, method=transform_target_method)
+            else:
+                predictions = predictions_transformed
+                
         except Exception as e:
             print(f"Prediction error: {str(e)}", file=sys.stderr)
             # If predict fails, use a simple linear regression model as fallback
@@ -495,8 +511,19 @@ def train_model(df, config):
             lr_model = LinearRegression()
             # Create feature matrix from channel columns
             X_features = df[channel_columns].values
-            lr_model.fit(X_features, y)
-            predictions = lr_model.predict(X_features)
+            
+            # Use the appropriate target for fallback model based on transformation
+            fallback_y = y  # Already transformed if applicable
+            
+            lr_model.fit(X_features, fallback_y)
+            predictions_transformed = lr_model.predict(X_features)
+            
+            # Back-transform if needed
+            if transform_target_method != 'none':
+                predictions = inverse_transform_target(predictions_transformed, method=transform_target_method)
+            else:
+                predictions = predictions_transformed
+                
             print(json.dumps({"status": "warning", "message": "Using fallback prediction model due to PyMC error"}))
         
         # Calculate channel contributions using model parameters
@@ -632,9 +659,34 @@ def train_model(df, config):
                 channel_ratio = df[channel] / df[channel].sum() if channel in df.columns and df[channel].sum() > 0 else np.ones(len(df)) / len(df)
                 temporal_contributions[channel] = channel_ratio * contributions[channel]
         
-        # Use scikit-learn for metrics calculation
-        r_squared = r2_score(y, predictions)
-        rmse = np.sqrt(mean_squared_error(y, predictions))
+        # Calculate model metrics
+        # Always evaluate against original (non-transformed) target values
+        # Calculate metrics on original scale for interpretability
+        if transform_target_method != 'none':
+            print(f"Calculating metrics against original target values (not transformed)", file=sys.stderr)
+            r_squared = r2_score(y_original, predictions)
+            rmse = np.sqrt(mean_squared_error(y_original, predictions))
+            try:
+                # Calculate MAPE if there are no zeros in the target
+                if not np.any(y_original == 0):
+                    mape = mean_absolute_percentage_error(y_original, predictions) * 100
+                else:
+                    mape = np.mean(np.abs((y_original - predictions) / (y_original + 1e-5))) * 100
+            except Exception as e:
+                print(f"Error calculating MAPE: {str(e)}", file=sys.stderr)
+                mape = 0.0
+        else:
+            r_squared = r2_score(y, predictions)
+            rmse = np.sqrt(mean_squared_error(y, predictions))
+            try:
+                # Calculate MAPE if there are no zeros in the target
+                if not np.any(y == 0):
+                    mape = mean_absolute_percentage_error(y, predictions) * 100
+                else:
+                    mape = np.mean(np.abs((y - predictions) / (y + 1e-5))) * 100
+            except Exception as e:
+                print(f"Error calculating MAPE: {str(e)}", file=sys.stderr)
+                mape = 0.0
         
         # Add some informative metrics about the model performance
         print(json.dumps({"status": "training", "progress": 85, "r_squared": float(r_squared)}), flush=True)
