@@ -105,12 +105,28 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
         raise ValueError("Either data_file or data_df must be provided")
     
     # Get data configuration
-    date_column = data_config.get("date_column", "date")
-    target_column = data_config.get("response_column", "y")
+    date_column = data_config.get("date_column", "Date")
+    target_column = data_config.get("response_column", "Sales")
+    control_columns = data_config.get("control_columns", [])
+    
+    # Get channel names first to use in data cleaning
+    channels = list(channel_config.keys())
+    
+    # Clean numeric columns (remove commas and convert to float)
+    numeric_cols = [target_column] + channels + control_columns
+    for col in numeric_cols:
+        if col in df.columns:
+            if df[col].dtype == 'object':
+                df[col] = df[col].str.replace(',', '').astype(float)
+            else:
+                df[col] = df[col].astype(float)
     
     # 3. Prepare Channel Parameters
-    channels = list(channel_config.keys())
+    # Note: We've already defined channels earlier for data cleaning
     channel_name_list = channels
+    
+    # Debug output channel info
+    print(f"Found channels in data: {[c for c in channels if c in df.columns]}", file=sys.stderr)
     print(f"Channel names: {channel_name_list}", file=sys.stderr)
     
     # Create arrays for channel-specific parameters
@@ -181,9 +197,15 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
         try:
             print(f"Building MMM model without explicit model context...", file=sys.stderr)
             
-            # Ensure we have a dummy control column for the MMM validation
-            if "dummy_control" not in df.columns:
+            # Ensure we have all necessary control columns
+            existing_controls = [col for col in control_columns if col in df.columns]
+            
+            # If no control columns exist in data, add a dummy one
+            if not existing_controls:
                 df["dummy_control"] = 0.0
+                existing_controls = ["dummy_control"]
+            
+            print(f"Using control columns: {existing_controls}", file=sys.stderr)
             
             # Create MMM with minimal parameters based on validation errors
             mmm = MMM(
@@ -191,7 +213,7 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
                 channel_columns=channels,
                 adstock=global_adstock_obj,
                 saturation=global_saturation_obj,
-                control_columns=["dummy_control"],
+                control_columns=existing_controls,
                 date_column=date_column
             )
             
@@ -218,9 +240,18 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None):
             
             print(f"Fitting with settings: {mcmc_settings}", file=sys.stderr)
             
-            # Prepare data for fitting
-            X = df[channels + ["dummy_control"]].copy()
+            # Prepare data for fitting - ensure date column is included
+            X_columns = [date_column] + channels + existing_controls
+            X = df[X_columns].copy()
             y = df[target_column].copy()
+            
+            # Ensure date column is properly formatted
+            if date_column in X.columns:
+                X[date_column] = pd.to_datetime(X[date_column])
+                
+            print(f"Input data X shape: {X.shape}, columns: {X.columns.tolist()}", file=sys.stderr)
+            print(f"Target y shape: {y.shape}", file=sys.stderr)
+            print(f"Date column format: {X[date_column].dtype}", file=sys.stderr)
             
             # Fit the model
             print(f"Fitting model with {len(X)} data points...", file=sys.stderr)
