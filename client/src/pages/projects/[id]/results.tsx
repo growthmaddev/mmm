@@ -710,8 +710,8 @@ export default function ModelResults() {
                               const tableData = Object.entries(channels).map(([channel, data]) => {
                                 return {
                                   channel,
-                                  // Use mock spend values for now (can be replaced with actual spend data)
-                                  spend: data.spend || 50000,
+                                  // Use actual spend data from model results
+                                  spend: data.spend || 0, // Using actual spend data added to the model output
                                   contribution: salesDecomp.incremental_sales?.[channel] || 0,
                                   contributionPercent: salesDecomp.percent_decomposition?.channels?.[channel] || 0,
                                   roi: data.roi || 0,
