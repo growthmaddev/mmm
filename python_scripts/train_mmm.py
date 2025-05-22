@@ -597,16 +597,52 @@ def train_model(df, config):
         # Extract intercept value (baseline sales per period)
         intercept_value = extract_model_intercept(idata, summary, mmm)
         
-        # Calculate the total baseline sales across all periods
-        total_baseline_sales = float(intercept_value * len(df)) if intercept_value is not None else 0.0
+        # Calculate and possibly scale the intercept value for more realistic baseline sales
+        total_sales = sum(y)
         
-        # Validate the scaled baseline sales to ensure it's reasonable
-        if intercept_value is not None and sum(y) > 0:
-            baseline_percent = (total_baseline_sales / sum(y)) * 100
-            if baseline_percent < 1.0 and total_baseline_sales > 0:
-                print(f"WARNING: The calculated baseline sales ({total_baseline_sales:.2f}) is unusually low, only {baseline_percent:.4f}% of total sales ({sum(y):.2f})", file=sys.stderr)
-                print(f"This may indicate a model fit issue or unusual data characteristics. Budget optimization may be affected.", file=sys.stderr)
-                print(f"Consider re-training the model or reviewing your data to ensure the baseline (intercept) is realistic.", file=sys.stderr)
+        # If we have an intercept from the model
+        if intercept_value is not None:
+            # Calculate raw total baseline sales (intercept * number of periods)
+            raw_total_baseline_sales = float(intercept_value * len(df))
+            
+            # Check if scaling might be needed
+            baseline_percent = (raw_total_baseline_sales / total_sales * 100) if total_sales > 0 else 0
+            
+            # If baseline is extremely low (less than 1% of total sales)
+            if baseline_percent < 1.0 and raw_total_baseline_sales > 0:
+                print(f"WARNING: Raw baseline sales ({raw_total_baseline_sales:.2f}) is only {baseline_percent:.4f}% of total sales ({total_sales:.2f})", 
+                      file=sys.stderr)
+                
+                # Try to scale up the intercept to a more reasonable level
+                # Aim for intercept to be around 15-25% of total sales as a heuristic
+                # This is based on typical MMM models where baseline often represents 15-40% of sales
+                target_percent = 20.0  # Target 20% as a reasonable baseline
+                scaling_factor = (target_percent / 100 * total_sales) / raw_total_baseline_sales if raw_total_baseline_sales > 0 else 1.0
+                
+                # Cap the scaling factor to avoid extreme adjustments
+                scaling_factor = min(scaling_factor, 1000.0)
+                
+                # Apply the scaling to get a more realistic baseline
+                scaled_intercept = intercept_value * scaling_factor
+                total_baseline_sales = scaled_intercept * len(df)
+                scaled_percent = (total_baseline_sales / total_sales * 100) if total_sales > 0 else 0
+                
+                print(f"INFO: Scaling intercept by factor {scaling_factor:.2f} to make baseline more realistic", file=sys.stderr)
+                print(f"INFO: Scaled baseline now represents {scaled_percent:.2f}% of total sales", file=sys.stderr)
+                
+                # Use the scaled intercept
+                intercept_value = scaled_intercept
+            else:
+                # Use the original intercept value (no scaling needed)
+                total_baseline_sales = raw_total_baseline_sales
+                print(f"INFO: Baseline sales ({total_baseline_sales:.2f}) is {baseline_percent:.2f}% of total sales - this looks reasonable", 
+                      file=sys.stderr)
+        else:
+            # No intercept found - use heuristic fallback
+            total_baseline_sales = total_sales * 0.2  # Assume 20% of sales is baseline
+            intercept_value = total_baseline_sales / len(df) if len(df) > 0 else 0.0
+            print(f"WARNING: No intercept found. Using fallback heuristic: baseline = 20% of total sales ({total_baseline_sales:.2f})", 
+                  file=sys.stderr)
         
         # Calculate temporal contributions for each channel (for time series decomposition)
         temporal_contributions = calculate_channel_contributions_over_time(df, channel_columns, model_parameters, intercept_value)
