@@ -791,15 +791,23 @@ def train_model(df, config):
         y_original = df[target_column].copy()
         
         # Transform target if specified
+        transform_params = None
         if transform_target_method != 'none':
             print(f"Applying {transform_target_method} transformation to target variable", file=sys.stderr)
-            y = transform_target(df[target_column], method=transform_target_method)
+            y_transformed, transform_params = transform_target(df[target_column], method=transform_target_method)
             print(f"Target range before transformation: [{y_original.min():.2f}, {y_original.max():.2f}]", file=sys.stderr)
-            print(f"Target range after transformation: [{y.min():.2f}, {y.max():.2f}]", file=sys.stderr)
+            print(f"Target range after transformation: [{y_transformed.min():.2f}, {y_transformed.max():.2f}]", file=sys.stderr)
+            
+            # Print transformation parameters for debugging
+            if transform_params.get('lambda') is not None:
+                print(f"Transformation parameters - lambda: {transform_params['lambda']:.4f}, shift: {transform_params['shift']}", file=sys.stderr)
+            
             # Update the target in the dataframe
-            df[target_column] = y
+            df[target_column] = y_transformed
+            y = y_transformed
         else:
             y = df[target_column].copy()
+            transform_params = {'method': 'none'}
         
         # Scale predictors if specified
         X_predictors = df[channel_columns].copy()
@@ -957,7 +965,8 @@ def train_model(df, config):
             # If target was transformed, need to back-transform predictions
             if transform_target_method != 'none':
                 print(f"Back-transforming predictions from {transform_target_method} space...", file=sys.stderr)
-                predictions = inverse_transform_target(predictions_transformed, method=transform_target_method)
+                predictions = inverse_transform_target(predictions_transformed, transform_params)
+                print(f"Transformation parameters used: {transform_params}", file=sys.stderr)
             else:
                 predictions = predictions_transformed
                 
@@ -977,7 +986,8 @@ def train_model(df, config):
             
             # Back-transform if needed
             if transform_target_method != 'none':
-                predictions = inverse_transform_target(predictions_transformed, method=transform_target_method)
+                predictions = inverse_transform_target(predictions_transformed, transform_params)
+                print(f"Fallback model using transformation parameters: {transform_params}", file=sys.stderr)
             else:
                 predictions = predictions_transformed
                 
