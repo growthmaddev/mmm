@@ -20,7 +20,7 @@ from sklearn.decomposition import PCA
 from scipy import stats
 import warnings
 
-def load_data(file_path):
+def load_data(file_path, extract_seasonality=False, date_column='Date'):
     """Load and preprocess data for MMM"""
     try:
         # Read CSV file
@@ -29,7 +29,7 @@ def load_data(file_path):
         # Clean up numeric columns that might have commas as thousand separators
         # or are formatted as strings
         for col in df.columns:
-            if col != 'Date':  # Skip the date column
+            if col != date_column:  # Skip the date column
                 try:
                     # First, replace any commas in numeric strings
                     if df[col].dtype == 'object':
@@ -46,25 +46,35 @@ def load_data(file_path):
                     print(f"Could not convert column {col} to numeric: {str(e)}", file=sys.stderr)
         
         # Parse dates if date column exists
-        if 'Date' in df.columns:
+        if date_column in df.columns:
             # Try multiple date formats to handle international date formats
             try:
                 # First try with dayfirst=True for DD/MM/YYYY format
-                df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
+                df[date_column] = pd.to_datetime(df[date_column], dayfirst=True)
                 print(f"Successfully parsed dates with dayfirst=True format", file=sys.stderr)
             except Exception as date_error:
                 print(f"Failed to parse dates with dayfirst=True, trying alternative formats: {str(date_error)}", file=sys.stderr)
                 try:
                     # Then try with format='mixed' to let pandas infer the format
-                    df['Date'] = pd.to_datetime(df['Date'], format='mixed')
+                    df[date_column] = pd.to_datetime(df[date_column], format='mixed')
                     print(f"Successfully parsed dates with format='mixed'", file=sys.stderr)
                 except:
                     # Last resort, try without any special handling
-                    df['Date'] = pd.to_datetime(df['Date'])
+                    df[date_column] = pd.to_datetime(df[date_column])
                     print(f"Successfully parsed dates with default format", file=sys.stderr)
             
             # Sort by date
-            df = df.sort_values('Date')
+            df = df.sort_values(date_column)
+        
+        # Extract seasonality features if requested
+        if extract_seasonality:
+            try:
+                # Import the seasonality utility
+                from utils.seasonality import extract_seasonality_features
+                df = extract_seasonality_features(df, date_column=date_column)
+                print(f"Successfully extracted seasonality features", file=sys.stderr)
+            except Exception as e:
+                print(f"Failed to extract seasonality features: {str(e)}", file=sys.stderr)
         
         # Use the full dataset for more accurate model training
         print(f"Using full dataset with {len(df)} rows for more accurate model training", file=sys.stderr)
@@ -805,11 +815,21 @@ def parse_config(config_json_path):
         channel_columns = config.get('channelColumns', {})
         adstock_settings = config.get('adstockSettings', {})
         saturation_settings = config.get('saturationSettings', {})
-        control_variables = config.get('controlVariables', {})
+        control_columns = config.get('controlColumns', [])
+        event_columns = config.get('eventColumns', [])
+        
+        # MCMC settings
+        mcmc_settings = config.get('mcmc_settings', {})
+        
         # New configuration options for data transformation
         transform_target_method = config.get('transformTarget', 'none')  # 'log', 'sqrt', 'boxcox', 'yeo-johnson', or 'none'
         scale_predictors_method = config.get('scaleSpend', 'none')  # 'standardize', 'minmax', or 'none'
         auto_transform = config.get('autoTransform', True)  # Whether to automatically select transformation method based on data
+        
+        # Seasonality extraction settings
+        seasonality_settings = config.get('seasonality', {})
+        extract_seasonality = seasonality_settings.get('extract_from_date', False)
+        seasonality_features = seasonality_settings.get('features', [])
         
         # For channel columns, convert the values to actual column names if needed
         # In our test config, the values are descriptive names but we need the actual column names
@@ -826,10 +846,14 @@ def parse_config(config_json_path):
             'channel_columns': channel_column_names,
             'adstock_settings': adstock_settings,
             'saturation_settings': saturation_settings,
-            'control_variables': control_variables,
+            'control_columns': control_columns,
+            'event_columns': event_columns,
             'transform_target_method': transform_target_method,
             'scale_predictors_method': scale_predictors_method,
-            'auto_transform': auto_transform
+            'auto_transform': auto_transform,
+            'extract_seasonality': extract_seasonality,
+            'seasonality_features': seasonality_features,
+            'mcmc_settings': mcmc_settings
         }
     except Exception as e:
         print(f"Config parsing error detail: {str(e)}", file=sys.stderr)
@@ -2221,19 +2245,49 @@ def main():
         import time  # For simulating steps in development
         time.sleep(0.5)  # Reduced sleep time for faster testing
         
-        # Load data
+        # Parse configuration
         print(json.dumps({"status": "preprocessing", "progress": 15}), flush=True)
-        df = load_data(data_file_path)
+        config = parse_config(config_json)
+        
+        # Get date column from config
+        date_column = config.get('date_column', 'Date')
+        
+        # Check if seasonality extraction is enabled
+        extract_seasonality = config.get('extract_seasonality', False)
+        
+        # Load data with seasonality extraction if enabled
+        print(json.dumps({"status": "preprocessing", "progress": 20}), flush=True)
+        df = load_data(data_file_path, extract_seasonality=extract_seasonality, date_column=date_column)
         
         # Print dataset info for debugging
         print(f"Dataset loaded with {len(df)} rows and columns: {df.columns.tolist()}", file=sys.stderr)
         
-        # Parse configuration
-        print(json.dumps({"status": "preprocessing", "progress": 25}), flush=True)
-        config = parse_config(config_json)
+        # Update control columns with seasonality features if they were extracted
+        if extract_seasonality:
+            seasonality_feature_list = config.get('seasonality_features', [])
+            # Get the columns that were added by the seasonality extraction
+            seasonality_cols = [col for col in df.columns if col.startswith(('month_', 'quarter_', 'is_holiday'))]
+            if seasonality_cols:
+                # Find any specific seasonality features we want to include
+                selected_seasonality_cols = []
+                for feature in seasonality_feature_list:
+                    matching_cols = [col for col in seasonality_cols if feature in col]
+                    selected_seasonality_cols.extend(matching_cols)
+                
+                # If specific features were requested but none found, use all seasonality columns
+                if seasonality_feature_list and not selected_seasonality_cols:
+                    selected_seasonality_cols = seasonality_cols
+                
+                # Add seasonality columns to control columns
+                control_columns = config.get('control_columns', [])
+                control_columns.extend(selected_seasonality_cols)
+                config['control_columns'] = control_columns
+                print(f"Added seasonality features to control columns: {selected_seasonality_cols}", file=sys.stderr)
         
         # Print key config elements for debugging
         print(f"Target column: {config['target_column']}, Channels: {list(config['channel_columns'].keys())}", file=sys.stderr)
+        print(f"Control columns: {config.get('control_columns', [])}", file=sys.stderr)
+        print(f"MCMC settings: {config.get('mcmc_settings', {})}", file=sys.stderr)
         
         # Start training
         print(json.dumps({"status": "training", "progress": 35}), flush=True)
