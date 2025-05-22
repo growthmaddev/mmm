@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import SalesCompositionChart from "@/components/charts/SalesCompositionChart";
+import ChannelROIChart from "@/components/charts/ChannelROIChart";
+import ChannelEfficiencyChart from "@/components/charts/ChannelEfficiencyChart";
 
 export default function ModelResults() {
   const { id } = useParams();
@@ -608,13 +610,231 @@ export default function ModelResults() {
                 </TabsContent>
                 
                 <TabsContent value="channel-impact" className="pt-4">
-                  <div className="text-center py-10">
-                    <h3 className="text-lg font-medium mb-2">Channel Impact Analysis</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Detailed analysis of how each marketing channel impacts your business outcomes.
-                    </p>
-                    <div className="p-8 rounded-lg bg-slate-50 flex items-center justify-center">
-                      <p className="italic text-muted-foreground">Channel impact visualization will appear here</p>
+                  <div className="space-y-8">
+                    <div>
+                      <h3 className="text-lg font-medium mb-2">Channel ROI Comparison</h3>
+                      <p className="text-muted-foreground mb-4">
+                        This chart shows the return on investment (ROI) for each marketing channel. Error bars indicate confidence intervals - wider bars mean less certainty.
+                      </p>
+                      
+                      {/* ROI Chart */}
+                      <div className="bg-white p-6 rounded-lg border h-96">
+                        {(() => {
+                          // Prepare channel ROI data
+                          const channelData = Object.entries(model.results?.analytics?.channel_effectiveness_detail || {})
+                            .map(([channel, data]) => ({
+                              channel,
+                              roi: data.roi || 0,
+                              roiLow: data.roi_ci_low || 0,
+                              roiHigh: data.roi_ci_high || 0,
+                              significance: data.statistical_significance || 'medium'
+                            }));
+                            
+                          return channelData.length > 0 ? (
+                            <ChannelROIChart channelData={channelData} />
+                          ) : (
+                            <div className="flex items-center justify-center h-full">
+                              <p className="text-muted-foreground">No channel ROI data available</p>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      
+                      {/* ROI Significance Legend */}
+                      <div className="flex flex-wrap gap-4 mt-4 justify-center">
+                        <div className="flex items-center">
+                          <div className="w-4 h-4 bg-emerald-500 rounded-full mr-2"></div>
+                          <span className="text-sm">High confidence (95%+)</span>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="w-4 h-4 bg-amber-500 rounded-full mr-2"></div>
+                          <span className="text-sm">Medium confidence (80-95%)</span>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="w-4 h-4 bg-red-500 rounded-full mr-2"></div>
+                          <span className="text-sm">Low confidence (&lt;80%)</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Channel Performance Table */}
+                    <div>
+                      <h3 className="text-lg font-medium mb-2">Channel Performance Details</h3>
+                      <div className="bg-white rounded-lg border overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Channel
+                              </th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Spend
+                              </th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Sales Contribution
+                              </th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                % of Sales
+                              </th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                ROI
+                              </th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Cost per Outcome
+                              </th>
+                              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Rank
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {(() => {
+                              const channels = model.results?.analytics?.channel_effectiveness_detail || {};
+                              const salesDecomp = model.results?.analytics?.sales_decomposition || {};
+                              
+                              // If there's no data, show a placeholder row
+                              if (Object.keys(channels).length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={7} className="px-4 py-3 text-sm text-center text-muted-foreground">
+                                      No channel data available
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              
+                              // Process and sort channel data
+                              const tableData = Object.entries(channels).map(([channel, data]) => {
+                                return {
+                                  channel,
+                                  // Use mock spend values for now (can be replaced with actual spend data)
+                                  spend: data.spend || 50000,
+                                  contribution: salesDecomp.incremental_sales?.[channel] || 0,
+                                  contributionPercent: salesDecomp.percent_decomposition?.channels?.[channel] || 0,
+                                  roi: data.roi || 0,
+                                  costPerOutcome: data.cost_per_outcome || 0,
+                                  rank: data.effectiveness_rank || 999,
+                                };
+                              });
+                              
+                              // Sort by ROI (highest first)
+                              tableData.sort((a, b) => b.roi - a.roi);
+                              
+                              // Helper functions for styling
+                              const getRoiColorClass = (roi: number) => {
+                                if (roi >= 2) return "bg-emerald-100 text-emerald-800";
+                                if (roi >= 1) return "bg-blue-100 text-blue-800";
+                                return "bg-red-100 text-red-800";
+                              };
+                              
+                              const getRankColorClass = (rank: number) => {
+                                if (rank === 1) return "bg-emerald-500 text-white";
+                                if (rank <= 3) return "bg-blue-500 text-white";
+                                return "bg-gray-400 text-white";
+                              };
+                              
+                              return tableData.map((row) => (
+                                <tr key={row.channel} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                    {row.channel}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-900">
+                                    {formatCurrency(row.spend)}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-900">
+                                    {formatCurrency(row.contribution)}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-900">
+                                    {(row.contributionPercent * 100).toFixed(1)}%
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <span className={`px-2 py-1 rounded-full ${getRoiColorClass(row.roi)}`}>
+                                      {row.roi.toFixed(2)}x
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-900">
+                                    {formatCurrency(row.costPerOutcome)}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full ${getRankColorClass(row.rank)}`}>
+                                      {row.rank}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    
+                    {/* Channel Efficiency Quadrant Chart */}
+                    <div>
+                      <h3 className="text-lg font-medium mb-2">Channel Efficiency Matrix</h3>
+                      <p className="text-muted-foreground mb-4">
+                        This chart helps identify channels by their spend level and sales contribution. Bubble size represents ROI.
+                      </p>
+                      
+                      <div className="bg-white p-6 rounded-lg border h-96">
+                        {(() => {
+                          // Prepare channel efficiency data
+                          const channels = model.results?.analytics?.channel_effectiveness_detail || {};
+                          const salesDecomp = model.results?.analytics?.sales_decomposition || {};
+                          
+                          const channelData = Object.entries(channels).map(([channel, data]) => ({
+                            channel,
+                            // Use mock spend values for now (can be replaced with actual spend data)
+                            spend: data.spend || 50000,
+                            contribution: salesDecomp.incremental_sales?.[channel] || 0,
+                            roi: data.roi || 0
+                          }));
+                          
+                          return channelData.length > 0 ? (
+                            <ChannelEfficiencyChart channelData={channelData} />
+                          ) : (
+                            <div className="flex items-center justify-center h-full">
+                              <p className="text-muted-foreground">No channel efficiency data available</p>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      
+                      {/* Quadrant Explanations */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div className="bg-blue-50 p-3 rounded">
+                          <h4 className="font-medium">Stars (High Spend, High Contribution)</h4>
+                          <p className="text-xs text-muted-foreground">Continue investing in these high-performing channels</p>
+                        </div>
+                        
+                        <div className="bg-amber-50 p-3 rounded">
+                          <h4 className="font-medium">Question Marks (High Spend, Low Contribution)</h4>
+                          <p className="text-xs text-muted-foreground">Consider optimizing or reducing spend on these channels</p>
+                        </div>
+                        
+                        <div className="bg-green-50 p-3 rounded">
+                          <h4 className="font-medium">Hidden Gems (Low Spend, High Contribution)</h4>
+                          <p className="text-xs text-muted-foreground">Opportunity to increase investment in these efficient channels</p>
+                        </div>
+                        
+                        <div className="bg-gray-50 p-3 rounded">
+                          <h4 className="font-medium">Low Priority (Low Spend, Low Contribution)</h4>
+                          <p className="text-xs text-muted-foreground">Maintain or test these channels at low investment levels</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Budget Optimization Link */}
+                    <div className="bg-primary/5 p-6 rounded-lg border border-primary/20 text-center">
+                      <h3 className="text-lg font-medium mb-2">Ready to Optimize Your Budget?</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Based on this channel analysis, our Budget Optimizer can help you allocate your marketing budget more effectively.
+                      </p>
+                      <Button
+                        onClick={() => setActiveTab("budget-optimization")}
+                      >
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Open Budget Optimizer
+                      </Button>
                     </div>
                   </div>
                 </TabsContent>
