@@ -329,7 +329,12 @@ export default function ModelResults() {
                             <div>
                               <h4 className="font-medium">Model Accuracy</h4>
                               <p className="text-sm text-muted-foreground mt-1">
-                                Your model explains {model.results?.model_accuracy || "80"}% of the variation in your sales data.
+                                Your model explains {model.results?.model_accuracy ? Number(model.results.model_accuracy).toFixed(2) : "80"}% of the variation in your sales data.
+                                {model.results?.model_accuracy && Number(model.results.model_accuracy) < 10 && (
+                                  <span className="block mt-1 text-amber-600">
+                                    <strong>Note:</strong> The low R-squared value indicates this model may have limited predictive power. Consider reviewing your data or model configuration for better results.
+                                  </span>
+                                )}
                               </p>
                             </div>
                           </div>
