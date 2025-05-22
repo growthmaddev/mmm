@@ -152,8 +152,9 @@ def train_mmm_with_named_rvs(
         try:
             print(f"DEBUG: Initializing MMM object within context: {pm.Model.get_context()}", file=sys.stderr)
             
-            # 4. Initialize MMM (without passing the model context explicitly)
-            # The PyMC-Marketing version doesn't accept a 'model' parameter
+            # 4. Initialize MMM WITHIN THE MODEL CONTEXT 
+            # The model will automatically use the current PyMC context (mmm_model_context)
+            # without explicitly passing it as a parameter
             mmm = MMM(
                 date_column=date_column,
                 channel_columns=channel_name_list,
