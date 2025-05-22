@@ -1,0 +1,38 @@
+Hi Agent,
+
+While the Channel Impact tab visualizations are progressing, we've identified two critical data issues on the model results page (`MarketMixMaster/client/src/pages/projects/[id]/results.tsx`/results.tsx]) for model 24 that need immediate attention:
+
+1.  **Incorrect Channel Spend Display:** In the "Channel Performance Details" table on the "Channel Impact" tab, all channels are incorrectly showing the same spend value (e.g., $50,000).
+2.  **Questionable Model Accuracy Display:** On the "Overview" tab, the "Model Accuracy" is displayed as a very low number (e.g., ~2.17%), which needs verification.
+
+These issues raise concerns about data integrity and potentially the underlying model training's output. Our priority is to ensure accurate data is presented.
+
+**Your tasks are to investigate and fix these issues:**
+
+**Task 1: Fix Incorrect Channel Spend Display**
+    a.  **Investigate Current Data Source:** Determine how the "Spend" column in the "Channel Performance Details" table (`MarketMixMaster/client/src/pages/projects/[id]/results.tsx`) is currently being populated. (You previously noted this might be from a `channelSpends` variable calculated in the frontend).
+    b.  **Identify Correct Data Source:** The spend displayed should be the actual spend for each channel corresponding to the data period used for training model 24. This data is present in the input CSV and is used by `train_mmm.py`. Determine if this spend data per channel is already available in the `model.results` object passed to the frontend (e.g., within `model.results.analytics.sales_decomposition.time_series.channels[channelName]` by summing the spend, or if the original spend columns are passed through in `model_parameters` or `raw_data`).
+    c.  **Implement Fix:** Modify `MarketMixMaster/client/src/pages/projects/[id]/results.tsx` to ensure the "Spend" column accurately reflects the actual spend for each respective channel from the model training period. If necessary, adjust `train_mmm.py` to ensure this data is clearly available in its output JSON if it's not already.
+
+**Task 2: Verify and Correct Model Accuracy Display**
+    a.  **Trace Model Accuracy Value:**
+        * In `train_mmm.py`, review the calculation `r_squared = r2_score(y, predictions)` and how `results["model_accuracy"] = float(r_squared * 100)` is derived for model 24. Confirm the raw `r_squared` value.
+        * Trace how this `model_accuracy` value from `model.results.model_accuracy` is fetched and displayed in the "Key Insights" section of the "Overview" tab in `MarketMixMaster/client/src/pages/projects/[id]/results.tsx`.
+    b.  **Implement Fix/Clarification:**
+        * If there's a calculation or formatting error causing the strange display, correct it.
+        * If the R-squared value from the model is genuinely very low (e.g., ~0.02), the display of ~2.17% is technically showing that value. In this case, consider adding a qualitative descriptor or a note in the UI if the R-squared is below a certain threshold (e.g., "Model fit is low, indicating results may not be reliable") to provide context to the user. Ensure the value is presented clearly as a percentage.
+
+**Task 3: Initial Assessment of Model Training Output (for Model 24)**
+    a.  Given the concerns, briefly review the key outputs from `train_mmm.py` for model 24 that *are* available (e.g., the confirmed R-squared, RMSE if available, the `actual_model_intercept` which was recently fixed, and the general scale of channel contributions vs. baseline).
+    b.  Provide a brief assessment: Does the model training for model 24 seem to be producing outputs that are broadly sensible, even if the MCMC settings are simplified for speed? Or are there immediate red flags beyond the R-squared that suggest a more fundamental issue with the training process or its interpretation of the data for model 24? (Note: We understand MCMC settings are low for speed).
+
+**Deliverables:**
+1.  Updated `MarketMixMaster/client/src/pages/projects/[id]/results.tsx` file with fixes for spend and model accuracy display.
+2.  If changed, the updated `train_mmm.py` file.
+3.  A summary of your findings, including:
+    * The root cause for both data display issues.
+    * Confirmation of the fixes.
+    * The verified raw R-squared value for model 24 and how `model_accuracy` is now presented.
+    * Your brief assessment from Task 3b.
+
+Please address these data integrity issues before we proceed further with new frontend features.
