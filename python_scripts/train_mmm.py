@@ -1069,30 +1069,52 @@ def train_model(df, config):
         print(f"DEBUG: channel_columns type: {type(channel_columns)}", file=sys.stderr)
         print(f"DEBUG: channel_columns content: {channel_columns}", file=sys.stderr)
         
-        # Check if channel_columns is a dict or list
+        # Create the channel list to pass to MMM constructor - ALWAYS pass as a list of strings
+        channel_list = []
+        
+        # Check if channel_columns is a dict or list and extract channel names
         if isinstance(channel_columns, dict):
-            first_channel_key = list(channel_columns.keys())[0]
-            print(f"DEBUG: channel_columns is a dict, first key: {first_channel_key}", file=sys.stderr)
+            # If it's a dict, extract the keys as our channel list
+            channel_list = list(channel_columns.keys())
+            print(f"DEBUG: Using channel names from dictionary keys: {channel_list}", file=sys.stderr)
+            first_channel_key = channel_list[0]
         elif isinstance(channel_columns, list):
-            first_channel_key = channel_columns[0]
-            print(f"DEBUG: channel_columns is a list, first item: {first_channel_key}", file=sys.stderr)
-            print(f"DEBUG: Converting channel_columns to proper format...", file=sys.stderr)
-            # Convert list to dict if needed
-            if isinstance(first_channel_key, str):
-                channel_columns = {col: col for col in channel_columns}
-                first_channel_key = list(channel_columns.keys())[0]
-                print(f"DEBUG: Converted channel_columns to dict: {channel_columns}", file=sys.stderr)
+            # If it's already a list, use it directly
+            channel_list = channel_columns
+            print(f"DEBUG: Using channel names from list directly: {channel_list}", file=sys.stderr)
+            first_channel_key = channel_list[0]
         else:
             print(f"DEBUG: WARNING: channel_columns is neither dict nor list: {type(channel_columns)}", file=sys.stderr)
+            # Create an empty list as fallback
+            channel_list = []
+            if len(channel_specific_transforms) > 0:
+                first_channel_key = next(iter(channel_specific_transforms))
+                print(f"DEBUG: Using first channel from transforms as fallback: {first_channel_key}", file=sys.stderr)
+            else:
+                print(f"CRITICAL: No channels available from any source!", file=sys.stderr)
+                raise ValueError("No channel names available")
             
-        print(f"DEBUG: Attempting to print before MMM initialization. First channel for init: {first_channel_key}", file=sys.stderr)
+        print(f"DEBUG: Using channel list for MMM initialization: {channel_list}", file=sys.stderr)
+        print(f"DEBUG: First channel for transforms: {first_channel_key}", file=sys.stderr)
         
         try:
             print(f"DEBUG: Initializing MMM object now...", file=sys.stderr)
+            # Get control columns from config - ensure we use the correct key
+            control_cols = []
+            if 'controlColumns' in config:
+                control_cols = config['controlColumns']
+                print(f"DEBUG: Found controlColumns in config: {control_cols}", file=sys.stderr)
+            elif 'control_columns' in config:
+                control_cols = config['control_columns']
+                print(f"DEBUG: Found control_columns in config: {control_cols}", file=sys.stderr)
+            
+            print(f"DEBUG: Using control columns for MMM: {control_cols}", file=sys.stderr)
+            
+            # Initialize MMM with the properly formatted parameters
             mmm = MMM(
                 date_column=date_column,
-                channel_columns=channel_columns,
-                control_columns=config.get('controlColumns', []),
+                channel_columns=channel_list,  # Pass the list of channel names
+                control_columns=control_cols,  # Pass the proper control columns
                 adstock=channel_specific_transforms[first_channel_key]['adstock'],
                 saturation=channel_specific_transforms[first_channel_key]['saturation']
             )
