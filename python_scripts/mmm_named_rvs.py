@@ -152,14 +152,14 @@ def train_mmm_with_named_rvs(
         try:
             print(f"DEBUG: Initializing MMM object within context: {pm.Model.get_context()}", file=sys.stderr)
             
-            # 4. Initialize MMM and Pass the Model Context
+            # 4. Initialize MMM (without passing the model context explicitly)
+            # The PyMC-Marketing version doesn't accept a 'model' parameter
             mmm = MMM(
                 date_column=date_column,
                 channel_columns=channel_name_list,
                 control_columns=control_list,
                 adstock=channel_specific_transforms[first_channel_key]['adstock'],
-                saturation=channel_specific_transforms[first_channel_key]['saturation'],
-                model=mmm_model_context  # CRITICAL: Pass the model context
+                saturation=channel_specific_transforms[first_channel_key]['saturation']
             )
             
             # 5. Set mmm.media_transforms
