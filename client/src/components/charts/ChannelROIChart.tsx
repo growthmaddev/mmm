@@ -8,7 +8,8 @@ import {
   Tooltip,
   ReferenceLine,
   ResponsiveContainer,
-  LabelList
+  LabelList,
+  Cell
 } from 'recharts';
 import { formatCurrency } from '@/lib/utils';
 
@@ -19,7 +20,6 @@ export interface ChannelROIData {
   roiLow: number;
   roiHigh: number;
   significance: 'high' | 'medium' | 'low' | string;
-  color?: string;
 }
 
 interface ChannelROIChartProps {
@@ -40,14 +40,34 @@ const CustomTooltip = ({ active, payload }: any) => {
         <p className="text-xs mt-1">
           <span 
             className="inline-block w-2 h-2 rounded-full mr-1" 
-            style={{ backgroundColor: data.color }}
+            style={{ backgroundColor: getSignificanceColor(data.significance) }}
           ></span>
-          {data.significance.charAt(0).toUpperCase() + data.significance.slice(1)} confidence
+          {typeof data.significance === 'string' 
+            ? data.significance.charAt(0).toUpperCase() + data.significance.slice(1) 
+            : 'Medium'} confidence
         </p>
       </div>
     );
   }
   return null;
+};
+
+// Get color based on significance level
+const getSignificanceColor = (significance: any): string => {
+  const significanceValue = typeof significance === 'string'
+    ? significance.toLowerCase()
+    : String(significance || 'medium').toLowerCase();
+    
+  switch (significanceValue) {
+    case 'high':
+      return '#10b981'; // emerald-500
+    case 'medium':
+      return '#f59e0b'; // amber-500
+    case 'low':
+      return '#ef4444'; // red-500
+    default:
+      return '#6b7280'; // gray-500
+  }
 };
 
 // Render custom label for bar
@@ -69,30 +89,13 @@ const ChannelROIChart: React.FC<ChannelROIChartProps> = ({
   const processedData = React.useMemo(() => {
     return [...channelData]
       .sort((a, b) => b.roi - a.roi)
-      .map(item => {
-        // Assign color based on significance
-        let color;
-        // Handle case where significance might be null, undefined, or not a string
-        const significanceValue = typeof item.significance === 'string' 
-          ? item.significance.toLowerCase() 
-          : String(item.significance || 'medium').toLowerCase();
-          
-        switch (significanceValue) {
-          case 'high':
-            color = '#10b981'; // emerald-500
-            break;
-          case 'medium':
-            color = '#f59e0b'; // amber-500
-            break;
-          case 'low':
-            color = '#ef4444'; // red-500
-            break;
-          default:
-            color = '#6b7280'; // gray-500
-        }
-        
-        return { ...item, color };
-      });
+      .map(item => ({
+        ...item,
+        // Ensure ROI and confidence intervals are numbers
+        roi: Number(item.roi) || 0,
+        roiLow: Number(item.roiLow) || 0,
+        roiHigh: Number(item.roiHigh) || 0
+      }));
   }, [channelData]);
   
   // Calculate average ROI if needed
@@ -144,23 +147,20 @@ const ChannelROIChart: React.FC<ChannelROIChartProps> = ({
           />
         )}
         
-        {/* Create individual bars for each data point to properly color by significance */}
-        {processedData.map((entry, index) => (
-          <Bar 
-            key={`bar-${index}`}
-            dataKey="roi" 
-            data={[entry]}
-            name={entry.channel}
-            radius={[0, 4, 4, 0]}
-            barSize={25}
-            fill={entry.color}
-            fillOpacity={0.9}
-            stroke="#fff"
-            strokeWidth={1}
-          >
-            <LabelList dataKey="roi" content={renderCustomizedLabel} />
-          </Bar>
-        ))}
+        <Bar 
+          dataKey="roi" 
+          radius={[0, 4, 4, 0]}
+          barSize={25}
+          name="Return on Investment"
+        >
+          {processedData.map((entry, index) => (
+            <Cell 
+              key={`cell-${index}`} 
+              fill={getSignificanceColor(entry.significance)} 
+            />
+          ))}
+          <LabelList dataKey="roi" content={renderCustomizedLabel} />
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
