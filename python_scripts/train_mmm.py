@@ -1048,7 +1048,7 @@ def train_model(df, config):
             # Create the adstock object with exact parameters in priors dictionary
             alpha = adstock_params.get('adstock_alpha', 0.5)
             l_max = adstock_params.get('adstock_l_max', 8)
-            alpha_dist = pm.DiracDelta.dist(c=alpha)  # Wrap alpha in pm.DiracDelta.dist()
+            alpha_dist = pm.Normal.dist(mu=alpha, sigma=0.001)  # Use Normal with very small sigma
             adstock_obj = GeometricAdstock(l_max=l_max, priors={"alpha": alpha_dist})
             print(f"Created adstock for {channel} with alpha={alpha}, l_max={l_max}", file=sys.stderr)
             
@@ -1056,10 +1056,10 @@ def train_model(df, config):
             L = saturation_params.get('saturation_L', 1.0)
             k = saturation_params.get('saturation_k', 0.0001)
             x0 = saturation_params.get('saturation_x0', 50000.0)
-            # Wrap L, k, and x0 in pm.DiracDelta.dist()
-            L_dist = pm.DiracDelta.dist(c=L)
-            k_dist = pm.DiracDelta.dist(c=k)
-            x0_dist = pm.DiracDelta.dist(c=x0)
+            # Use Normal distributions with very small sigmas to represent fixed values
+            L_dist = pm.Normal.dist(mu=L, sigma=0.001)  # L is the float value
+            k_dist = pm.Normal.dist(mu=k, sigma=max(abs(k * 0.001), 0.000001))  # k is the float value, ensure sigma is positive and small
+            x0_dist = pm.Normal.dist(mu=x0, sigma=max(abs(x0 * 0.001), 0.1))  # x0 is the float value, ensure sigma is positive and small relative to x0
             saturation_obj = LogisticSaturation(priors={"L": L_dist, "k": k_dist, "x0": x0_dist})
             print(f"Created saturation for {channel} with L={L}, k={k}, x0={x0}", file=sys.stderr)
             
