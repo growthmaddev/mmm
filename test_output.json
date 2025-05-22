@@ -1,0 +1,128 @@
+{
+  "success": true,
+  "model_accuracy": 80.5,
+  "data_diagnostics_report": {
+    "data_volume": {
+      "periods": 90,
+      "sufficiency": "Good",
+      "density_by_channel": {
+        "PPCBrand_Spend": 1.0,
+        "PPCNonBrand_Spend": 1.0,
+        "PPCShopping_Spend": 1.0,
+        "FBReach_Spend": 0.8888888888888888,
+        "OfflineMedia_Spend": 0.7888888888888889
+      }
+    },
+    "correlation_analysis": {
+      "channel_correlations": {
+        "PPCBrand_Spend": -0.05540354139897064,
+        "PPCNonBrand_Spend": 0.03656941443106619,
+        "PPCShopping_Spend": 0.1262304385884226,
+        "FBReach_Spend": 0.2585557398293641,
+        "OfflineMedia_Spend": 0.004327148551806378
+      },
+      "negative_correlations": [
+        "PPCBrand_Spend"
+      ],
+      "weak_correlations": [
+        "PPCNonBrand_Spend",
+        "OfflineMedia_Spend"
+      ],
+      "recommendations": [
+        "Review data for channels with negative correlations: PPCBrand_Spend",
+        "Consider analyzing channels with very weak correlations: PPCNonBrand_Spend, OfflineMedia_Spend"
+      ]
+    },
+    "collinearity_checks": {
+      "highly_correlated_pairs": [],
+      "recommendations": []
+    },
+    "time_series_checks": {
+      "target_stationarity": {
+        "trend_correlation": -0.17518346040880553,
+        "has_strong_trend": false,
+        "recommendation": "No strong trend detected"
+      }
+    }
+  },
+  "data_transforms": {
+    "target_transform": {
+      "method": "none",
+      "auto_selected": false,
+      "parameters": {
+        "method": "none",
+        "lambda": null,
+        "shift": 0.0
+      },
+      "target_stats": {
+        "before_transform": {
+          "min": 126060.0,
+          "max": 535218.0,
+          "mean": 298824.4,
+          "median": 285660.5,
+          "skewness": 0.536028627584812
+        },
+        "after_transform": {
+          "min": null,
+          "max": null,
+          "skewness": null
+        }
+      }
+    },
+    "predictors_transform": {
+      "method": "standardize",
+      "channel_ranges": {
+        "PPCBrand_Spend": {
+          "before_scaling": {
+            "min": 48.56,
+            "max": 1245.48
+          },
+          "after_scaling": {
+            "min": -1.6870389693229009,
+            "max": 2.3177589080203944
+          }
+        },
+        "PPCNonBrand_Spend": {
+          "before_scaling": {
+            "min": 143.81,
+            "max": 4779.5
+          },
+          "after_scaling": {
+            "min": -2.2575583311345873,
+            "max": 3.348733631460616
+          }
+        },
+        "PPCShopping_Spend": {
+          "before_scaling": {
+            "min": 77.75,
+            "max": 2420.35
+          },
+          "after_scaling": {
+            "min": -1.731388331749723,
+            "max": 3.386650586462737
+          }
+        },
+        "FBReach_Spend": {
+          "before_scaling": {
+            "min": 0.0,
+            "max": 4422.66
+          },
+          "after_scaling": {
+            "min": -1.2730195852255455,
+            "max": 3.356580080261791
+          }
+        },
+        "OfflineMedia_Spend": {
+          "before_scaling": {
+            "min": 0.0,
+            "max": 31725.0
+          },
+          "after_scaling": {
+            "min": -0.8433032271575184,
+            "max": 4.3810836358159015
+          }
+        }
+      }
+    }
+  }
+}

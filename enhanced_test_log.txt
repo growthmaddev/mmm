@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/runner/workspace/run_direct_mmm_test.py", line 16, in <module>
+    from train_mmm import (
+ImportError: cannot import name 'parse_adstock_params' from 'train_mmm' (/home/runner/workspace/python_scripts/train_mmm.py)
