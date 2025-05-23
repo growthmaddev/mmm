@@ -183,13 +183,6 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
                 x0 = x0_values[i]
                 x = adstocked_data[:, i]
                 saturated_data[:, i] = L / (1 + np.exp(-k * (x - x0)))
-                
-                # Debug: Check saturation values
-                print(f"\nDEBUG Channel {ch}:")
-                print(f"  Raw spend: {X[ch].sum()}")
-                print(f"  Saturation params - L: {L}, k: {k}, x0: {x0}")
-                print(f"  Saturated value: {saturated_data[:, i].sum()}")
-                print(f"  As percentage of L: {(saturated_data[:, i].sum()/L)*100:.2f}%")
             
             # Calculate contributions (simplified - proportional to transformed spend)
             channel_contributions = {}
@@ -198,9 +191,6 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
             for i, ch in enumerate(channels):
                 contribution = saturated_data[:, i].sum()
                 channel_contributions[ch] = float(contribution)
-                
-                # Debug: Check contribution values
-                print(f"  Contribution value for {ch}: {contribution}")
             
             # Calculate ROI
             channel_spend = X[channels].sum().to_dict()
@@ -216,9 +206,6 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
                     # Our transformed contributions are unitless saturation values summed across weeks,
                     # so we use a scaling factor of 20k to produce realistic marketing ROI (typically 0.5x-5x)
                     channel_roi[ch] = (contrib / spend) * 20000
-                    
-                    # Debug: Check ROI calculation
-                    print(f"  ROI calculation: {contrib} / {spend} * 20000 = {channel_roi[ch]}")
                 else:
                     channel_roi[ch] = 0.0
                 
