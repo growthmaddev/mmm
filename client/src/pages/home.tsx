@@ -21,14 +21,6 @@ export default function HomePage() {
             <Button asChild>
               <Link href="/register">Sign Up</Link>
             </Button>
-            {/* Added for testing - Direct dashboard access */}
-            <Button 
-              variant="default"
-              className="bg-green-600 hover:bg-green-700"
-              asChild
-            >
-              <Link href="/dashboard">Test Dashboard Access</Link>
-            </Button>
           </div>
         </header>
 

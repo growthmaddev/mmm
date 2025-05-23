@@ -32,12 +32,6 @@ export const validateRequest = (schema: any) => {
 // Authentication middleware - verify token from cookies
 export const isAuthenticated = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // For testing purposes: bypass authentication and set a test user ID
-    // This allows testing without database tables for authentication
-    req.userId = 1; // Test user ID
-    return next();
-    
-    /* Original authentication code - commented out for testing
     const token = req.cookies?.auth_token;
     
     if (!token) {
@@ -62,7 +56,6 @@ export const isAuthenticated = async (req: AuthRequest, res: Response, next: Nex
     // Add userId to request
     req.userId = session.userId;
     next();
-    */
   } catch (error) {
     console.error("Authentication error:", error);
     res.status(500).json({ message: "Authentication error" });

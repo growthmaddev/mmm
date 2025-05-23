@@ -63,30 +63,39 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = schema.loginUserSchema.parse(req.body);
     
-    // TESTING ONLY: Accept any credentials
-    console.log("Test mode: Accepting any login credentials");
+    // Find user by email
+    const user = await storage.getUserByEmail(email);
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
     
-    // Create a mock user for testing
-    const mockUser = {
-      id: 1,
-      email: email || "test@example.com",
-      firstName: "Test",
-      lastName: "User",
-      username: "testuser",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    // Validate password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
     
-    // Set a test token cookie
-    const token = "test-token-" + Date.now();
+    // Create a session for the user
+    const token = uuidv4();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+    
+    await db.insert(schema.sessions).values({
+      userId: user.id,
+      token,
+      expiresAt
+    });
+    
+    // Set token as cookie
     res.cookie("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
     
-    // Return mock user
-    res.json(mockUser);
+    // Return user info (without password)
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
     
   } catch (error) {
     console.error("Login error:", error);
@@ -109,21 +118,18 @@ export const logout = (req: Request, res: Response) => {
 // Get current user
 export const getCurrentUser = async (req: AuthRequest, res: Response) => {
   try {
-    // TESTING ONLY: Always return a mock user
-    console.log("Test mode: Returning mock user for getCurrentUser");
+    if (!req.userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
     
-    // Create a mock user for testing
-    const mockUser = {
-      id: 1,
-      email: "test@example.com",
-      firstName: "Test",
-      lastName: "User",
-      username: "testuser",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    const user = await storage.getUser(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
     
-    res.json(mockUser);
+    // Return user without password
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
   } catch (error) {
     console.error("Get current user error:", error);
     res.status(500).json({ message: "Failed to get current user" });
