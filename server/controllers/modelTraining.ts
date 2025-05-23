@@ -232,9 +232,19 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
       const pythonScriptPath = path.join(process.cwd(), 'python_scripts', 'fit_mmm_fixed_params.py');
       
       // Transform the UI model configuration to our fixed parameter format
+      // Log the model config for debugging
+      console.log('Model Config:', JSON.stringify(modelConfig, null, 2));
+      
+      // Handle both array and object formats for channelColumns
+      const channelsList = Array.isArray(modelConfig.channelColumns) 
+        ? modelConfig.channelColumns 
+        : Object.keys(modelConfig.channelColumns || {});
+      
+      console.log('Channels list:', channelsList);
+      
       const fixedParamConfig = {
         channels: Object.fromEntries(
-          modelConfig.channelColumns.map(channel => [
+          channelsList.map(channel => [
             channel,
             {
               alpha: modelConfig.adstockSettings?.[channel]?.alpha || 0.6,
