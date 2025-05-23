@@ -15,6 +15,7 @@ import { formatCurrency } from "@/lib/utils";
 import SalesCompositionChart from "@/components/charts/SalesCompositionChart";
 import ChannelROIChart from "@/components/charts/ChannelROIChart";
 import ChannelEfficiencyChart from "@/components/charts/ChannelEfficiencyChart";
+import { MediaMixCurves } from "@/components/features/MediaMixCurves";
 
 export default function ModelResults() {
   const { id } = useParams();
@@ -312,6 +313,7 @@ export default function ModelResults() {
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="sales-decomposition">Sales Decomposition</TabsTrigger>
                   <TabsTrigger value="channel-impact">Channel Impact</TabsTrigger>
+                  <TabsTrigger value="curves">Media Mix Curves</TabsTrigger>
                   <TabsTrigger value="budget-optimization">Budget Optimization</TabsTrigger>
                   <TabsTrigger value="technical">Technical Details</TabsTrigger>
                 </TabsList>
