@@ -308,7 +308,8 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
         pythonScriptPath,
         '--data_file', dataFilePath,
         '--config_file', tempConfigPath,
-        '--results_file', `./results/model_${modelId}_results.json`
+        '--results_file', `./results/model_${modelId}_results.json`,
+        '--model_id', modelId.toString()
       ];
       
       console.log('Running Python command:', pythonCmd, pythonArgs.join(' '));

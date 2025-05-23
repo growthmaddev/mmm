@@ -407,6 +407,7 @@ def main():
     parser.add_argument('--data_file', required=True, help='Path to CSV data file')
     parser.add_argument('--config_file', required=True, help='Path to model configuration JSON file')
     parser.add_argument('--results_file', required=True, help='Path to save results JSON file')
+    parser.add_argument('--model_id', type=int, help='Model ID for tracking')
     
     args = parser.parse_args()
     
@@ -463,9 +464,15 @@ def main():
     finally:
         # ALWAYS print results to stdout for the server to capture
         if results:
-            print(json.dumps(results))  # This is crucial - print to stdout without any other text
+            # Format results in the specific way the server expects
+            formatted_results = {
+                "success": True, 
+                "summary": results,
+                "model_id": args.model_id if args.model_id else config.get("model_id", 0)
+            }
+            print(json.dumps(formatted_results))  # This is crucial - print to stdout without any other text
         else:
-            print(json.dumps({"error": "No results generated", "status": "failed"}))
+            print(json.dumps({"success": False, "error": "No results generated", "status": "failed"}))
 
 if __name__ == "__main__":
     main()
