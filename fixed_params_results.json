@@ -1,0 +1,30 @@
+{
+  "model_info": {
+    "date": "2025-05-23 00:30:52",
+    "config_file": "test_simplified_config.json",
+    "data_file": "attached_assets/dankztestdata_v2.csv",
+    "data_points": 90,
+    "channels": [
+      "PPCBrand_Spend"
+    ],
+    "approach": "fixed_parameters"
+  },
+  "fixed_parameters": {
+    "alpha": {
+      "PPCBrand_Spend": 0.7
+    },
+    "L": {
+      "PPCBrand_Spend": 1.0
+    },
+    "k": {
+      "PPCBrand_Spend": 0.0005
+    },
+    "x0": {
+      "PPCBrand_Spend": 10000.0
+    }
+  },
+  "channel_spend": {
+    "PPCBrand_Spend": 49749.11
+  },
+  "status": "Model built successfully with fixed parameters"
+}
