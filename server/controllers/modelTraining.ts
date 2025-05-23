@@ -793,7 +793,6 @@ function transformMMMResults(ourResults: any, modelId: number) {
       error: 'Error transforming model results: ' + (error as Error).message
     };
   }
-}
   
   console.log('Transformed results structure:', JSON.stringify({
     model_id: transformedResults.model_id,
