@@ -186,7 +186,7 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
                 
                 # Debug: Check saturation values
                 print(f"\nDEBUG Channel {ch}:")
-                print(f"  Raw spend: {channel_spend[ch]}")
+                print(f"  Raw spend: {X[ch].sum()}")
                 print(f"  Saturation params - L: {L}, k: {k}, x0: {x0}")
                 print(f"  Saturated value: {saturated_data[:, i].sum()}")
                 print(f"  As percentage of L: {(saturated_data[:, i].sum()/L)*100:.2f}%")
