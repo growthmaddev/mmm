@@ -81,35 +81,52 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
         // Determine column type
         let type = 'string';
         
-        // Enhanced date detection for MMM models - handling DD/MM/YYYY format
-        if (header.toLowerCase().includes('date') ||
-            examples.some(ex => {
-              const dateStr = String(ex).trim();
-              // Check for DD/MM/YYYY pattern which is common in marketing data
-              if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
-                console.log(`Detected DD/MM/YYYY date format in column: ${header}`);
-                return true;
-              }
-              // Check for standard ISO format
-              if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-                return true;
-              }
-              // Fallback to standard date parsing
-              return !isNaN(Date.parse(dateStr));
-            })) {
-          type = 'date';
-          console.log(`Detected date column: ${header} - Example: ${examples[0]}`);
-        } else if (
-          examples.length > 0 && 
-          examples.every(ex => {
-            // Enhanced number detection handling comma-separated numbers
-            // (Common in marketing spend data like: "2,685.09")
-            const numStr = String(ex).replace(/,/g, '').trim();
-            return !isNaN(Number(numStr)) && numStr.length > 0;
-          })
+        // First, check for marketing spend/cost columns by name pattern
+        const isMarketingSpendColumn = header.toLowerCase().includes('spend') || 
+                                       header.toLowerCase().includes('cost');
+        
+        // Enhanced number detection - prioritize numeric check for marketing spend columns
+        if (isMarketingSpendColumn || 
+            (examples.length > 0 && 
+            examples.every(ex => {
+              // Enhanced number detection handling comma-separated numbers
+              // (Common in marketing spend data like: "2,685.09")
+              const numStr = String(ex).replace(/,/g, '').trim();
+              return !isNaN(Number(numStr)) && numStr.length > 0;
+            }))
         ) {
           type = 'number';
           console.log(`Detected numeric column: ${header} - Example: ${examples[0]}`);
+        }
+        // Only check for date format if it's not already detected as numeric AND has a date-like name or format
+        else if (header.toLowerCase().includes('date') || header.toLowerCase().includes('week') ||
+                examples.some(ex => {
+                  // Skip empty values or zeros for date detection
+                  const dateStr = String(ex).trim();
+                  if (dateStr === '0' || dateStr === '' || dateStr === '0.0') {
+                    return false;
+                  }
+                  
+                  // Must contain separators like / or - to be a date
+                  if (!dateStr.includes('/') && !dateStr.includes('-')) {
+                    return false;
+                  }
+                  
+                  // Check for DD/MM/YYYY pattern which is common in marketing data
+                  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+                    console.log(`Detected DD/MM/YYYY date format in column: ${header}`);
+                    return true;
+                  }
+                  // Check for standard ISO format
+                  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                    return true;
+                  }
+                  // Fallback to standard date parsing but only if it has date-like separators
+                  return dateStr.includes('/') || dateStr.includes('-') ? !isNaN(Date.parse(dateStr)) : false;
+                })
+        ) {
+          type = 'date';
+          console.log(`Detected date column: ${header} - Example: ${examples[0]}`);
         }
         
         columns.push({
