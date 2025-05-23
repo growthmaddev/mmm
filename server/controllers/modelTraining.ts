@@ -707,8 +707,33 @@ function transformMMMResults(ourResults: any, modelId: number) {
     // Store original parameters for reference
     fixed_parameters: ourResults.fixed_parameters,
     model_results: ourResults.model_results,
-    recommendations: recommendations
+    recommendations: recommendations,
+    
+    // Create config information for UI components
+    config: ourResults.config || {}
   };
+  
+  // Debug the transformed results
+  const transformedResults = {
+    success: true,
+    model_id: modelId,
+    model_accuracy: modelAccuracy * 100,
+    analytics: {
+      sales_decomposition: {
+        total_sales: totalSales,
+        base_sales: baseSales,
+        incremental_sales: incrementalSales,
+        percent_decomposition: {
+          base: (baseSales / totalSales) * 100,
+          channels: percentChannelContributions
+        }
+      }
+    },
+    config: ourResults.config || {}
+  };
+  
+  console.log('Transformed results structure:', JSON.stringify(transformedResults, null, 2));
+  return transformedResults;
 }
 
 /**
