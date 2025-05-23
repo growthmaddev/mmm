@@ -8,6 +8,7 @@ import { projectRoutes } from "./controllers/projects";
 import { modelRoutes } from "./controllers/models";
 import { dataSourceRoutes } from "./controllers/dataSources";
 import { budgetOptimizationRoutes } from "./controllers/budgetOptimization";
+import { organizationRoutes } from "./controllers/organizations";
 import { runMMMOptimizer, getOptimizationStatus } from './controllers/mmmOptimizerController';
 import { getFileTemplate } from "./utils/fileUpload";
 import { uploadMiddleware, uploadFile } from "./controllers/uploads";
@@ -40,6 +41,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   apiRouter.post('/auth/login', authRoutes.login);
   apiRouter.post('/auth/logout', authRoutes.logout);
   apiRouter.get('/auth/user', isAuthenticated, authRoutes.getCurrentUser);
+  
+  // Organization routes
+  apiRouter.post('/organizations', isAuthenticated, organizationRoutes.createOrganization);
+  apiRouter.get('/organizations/current', isAuthenticated, organizationRoutes.getUserOrganization);
   
   // Projects routes
   apiRouter.get('/projects', isAuthenticated, async (req: AuthRequest, res) => {
