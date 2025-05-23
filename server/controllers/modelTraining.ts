@@ -621,6 +621,10 @@ function transformMMMResults(ourResults: any, modelId: number) {
     console.log('Using fallback total sales value:', totalSales);
   }
   
+  console.log('DEBUG transformMMMResults:');
+  console.log('  Total spend:', totalSpend);
+  console.log('  Total sales:', totalSales);
+  
   // Calculate base sales (could be from intercept or a percentage)
   const baseSales = ourResults.summary?.baseline_sales || 
                    ourResults.model_results?.intercept || 
@@ -629,6 +633,9 @@ function transformMMMResults(ourResults: any, modelId: number) {
   
   const incrementalSales = totalSales - baseSales;
   console.log('Incremental sales:', incrementalSales);
+  
+  console.log('  Base sales:', baseSales);
+  console.log('  Incremental sales:', incrementalSales);
   
   // Calculate channel contributions in absolute values and percentages
   const channelContributions: Record<string, number> = {};
@@ -640,6 +647,9 @@ function transformMMMResults(ourResults: any, modelId: number) {
       channelContributions[channel] = contribution;
       percentChannelContributions[channel] = Number(percentage);
     });
+    
+    console.log('  Channel contributions:', channelContributions);
+    console.log('  Contribution percentages:', percentChannelContributions);
   }
   
   // Generate recommendations based on ROI and contribution
