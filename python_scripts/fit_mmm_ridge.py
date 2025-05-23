@@ -335,6 +335,29 @@ def train_mmm_ridge(config, data_file):
     # Load data
     df = pd.read_csv(data_file)
     
+    # Get lists of channels and controls for data cleaning
+    channels = []
+    if 'channelColumns' in config:
+        channels = list(config['channelColumns'].keys())
+    elif 'channels' in config:
+        channels = list(config['channels'].keys())
+        
+    control_columns = []
+    if 'controlVariables' in config:
+        control_columns = [col for col, enabled in config['controlVariables'].items() if enabled]
+    else:
+        control_columns = config.get('data', {}).get('control_columns', [])
+    
+    target_col = config.get('targetColumn', 'Sales')
+    
+    # Clean numeric columns (remove commas)
+    print(f"Cleaning numeric columns: channels + target + controls", file=sys.stderr)
+    numeric_cols = channels + [target_col] + control_columns
+    for col in numeric_cols:
+        if col in df.columns and df[col].dtype == 'object':
+            print(f"Converting column {col} from object to float (removing commas)", file=sys.stderr)
+            df[col] = df[col].str.replace(',', '').astype(float)
+    
     # Add data_file to config for ROI calculation
     config['data_file'] = data_file
     
