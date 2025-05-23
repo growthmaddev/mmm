@@ -878,6 +878,30 @@ export default function ModelResults() {
                   </div>
                 </TabsContent>
                 
+                <TabsContent value="curves" className="pt-4">
+                  {model?.analytics && model?.config ? (
+                    <MediaMixCurves
+                      channelData={Object.entries(model.analytics.channel_effectiveness_detail || {}).map(([channel, data]: [string, any]) => ({
+                        channel,
+                        L: model.config?.channels?.[channel]?.L || 1.0,
+                        k: model.config?.channels?.[channel]?.k || 0.0001,
+                        x0: model.config?.channels?.[channel]?.x0 || 50000,
+                        currentSpend: data.spend || 0,
+                        currentResponse: model.analytics.sales_decomposition?.percent_decomposition?.channels?.[channel] 
+                          ? (model.analytics.sales_decomposition.incremental_sales || 0) * 
+                            (model.analytics.sales_decomposition.percent_decomposition.channels[channel] / 100)
+                          : 0,
+                        roi: data.roi || 1.0
+                      }))}
+                      modelId={model.id.toString()}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No saturation curve data available for this model.
+                    </div>
+                  )}
+                </TabsContent>
+                
                 <TabsContent value="budget-optimization" className="pt-4">
                   <div className="text-center py-10">
                     <h3 className="text-lg font-medium mb-2">Budget Optimization</h3>
