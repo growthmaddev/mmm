@@ -8,6 +8,7 @@ import { projectRoutes } from "./controllers/projects";
 import { modelRoutes } from "./controllers/models";
 import { dataSourceRoutes } from "./controllers/dataSources";
 import { budgetOptimizationRoutes } from "./controllers/budgetOptimization";
+import { runMMMOptimizer, getOptimizationStatus } from './controllers/mmmOptimizerController';
 import { getFileTemplate } from "./utils/fileUpload";
 import { uploadMiddleware, uploadFile } from "./controllers/uploads";
 import { initializeOAuth, handleOAuthCallback } from "./utils/oauthConnectors";
