@@ -1,0 +1,233 @@
+Excellent work! The MMM-to-optimizer pipeline is working successfully. Now we need to create a production-ready integration that can be called from the Express.js backend to serve the React frontend.
+COMPLETE THE FOLLOWING TASKS IN ORDER:
+
+Create a new file named python_scripts/mmm_optimizer_service.py with the following content:
+
+python#!/usr/bin/env python
+"""
+Production service that combines MMM analysis with budget optimization
+Designed to be called from the Express.js backend
+"""
+
+import sys
+import json
+import argparse
+from datetime import datetime
+
+# Import our modules
+from fit_mmm_fixed_params import create_mmm_with_fixed_params
+from optimize_budget_marginal import optimize_budget_with_config
+
+def run_mmm_and_optimize(data_file, config_file, optimization_params):
+    """
+    Run complete MMM analysis and budget optimization pipeline
+    
+    Args:
+        data_file: Path to CSV data file
+        config_file: Path to MMM configuration JSON
+        optimization_params: Dict with budget optimization parameters
+    
+    Returns:
+        Combined results dictionary
+    """
+    
+    try:
+        # Step 1: Run MMM Analysis
+        print("Running MMM analysis...", file=sys.stderr)
+        mmm_results = create_mmm_with_fixed_params(config_file, data_file)
+        
+        if not mmm_results or "error" in mmm_results:
+            return {
+                "success": False,
+                "error": "MMM analysis failed",
+                "details": mmm_results
+            }
+        
+        # Extract data from MMM results
+        channels = mmm_results["model_info"]["channels"]
+        fixed_params = mmm_results["fixed_parameters"]
+        channel_analysis = mmm_results["channel_analysis"]
+        current_spend = channel_analysis["spend"]
+        
+        # Step 2: Prepare optimizer configuration
+        print("Preparing budget optimization...", file=sys.stderr)
+        
+        # Get optimization parameters
+        budget_multiplier = optimization_params.get("budget_multiplier", 1.0)
+        min_per_channel = optimization_params.get("min_per_channel", 100)
+        diversity_penalty = optimization_params.get("diversity_penalty", 0.1)
+        
+        total_budget = sum(current_spend.values()) * budget_multiplier
+        
+        optimizer_config = {
+            "channels": {},
+            "budget": {
+                "total": total_budget,
+                "min_per_channel": min_per_channel
+            },
+            "diversity_penalty": diversity_penalty
+        }
+        
+        # Map MMM parameters to optimizer
+        for ch in channels:
+            optimizer_config["channels"][ch] = {
+                "current_spend": current_spend[ch],
+                "alpha": fixed_params["alpha"][ch],
+                "L": fixed_params["L"][ch],
+                "k": fixed_params["k"][ch],
+                "x0": fixed_params["x0"][ch],
+                "l_max": fixed_params["l_max"]
+            }
+        
+        # Step 3: Run optimization
+        print("Running budget optimization...", file=sys.stderr)
+        opt_results = optimize_budget_with_config(optimizer_config)
+        
+        # Step 4: Combine results
+        optimized_allocation = {}
+        allocation_changes = {}
+        
+        for ch in channels:
+            current = current_spend[ch]
+            optimized = opt_results.get(ch, current)
+            optimized_allocation[ch] = optimized
+            
+            if current > 0:
+                allocation_changes[ch] = {
+                    "current": current,
+                    "optimized": optimized,
+                    "change_amount": optimized - current,
+                    "change_percent": ((optimized - current) / current) * 100
+                }
+            else:
+                allocation_changes[ch] = {
+                    "current": current,
+                    "optimized": optimized,
+                    "change_amount": optimized,
+                    "change_percent": 0
+                }
+        
+        # Calculate summary metrics
+        total_current = sum(current_spend.values())
+        total_optimized = sum(optimized_allocation.values())
+        
+        combined_results = {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "mmm_analysis": {
+                "channel_roi": channel_analysis["roi"],
+                "channel_contributions": channel_analysis["contribution_percentage"],
+                "model_parameters": fixed_params
+            },
+            "optimization_results": {
+                "current_allocation": current_spend,
+                "optimized_allocation": optimized_allocation,
+                "allocation_changes": allocation_changes,
+                "total_budget": {
+                    "current": total_current,
+                    "optimized": total_optimized,
+                    "change": total_optimized - total_current
+                },
+                "expected_lift": opt_results.get("lift", 0),
+                "optimization_params": optimization_params
+            },
+            "recommendations": generate_recommendations(allocation_changes)
+        }
+        
+        return combined_results
+        
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+def generate_recommendations(allocation_changes):
+    """Generate human-readable recommendations based on optimization results"""
+    
+    recommendations = []
+    
+    # Sort by absolute change amount
+    sorted_channels = sorted(
+        allocation_changes.items(),
+        key=lambda x: abs(x[1]["change_amount"]),
+        reverse=True
+    )
+    
+    for channel, changes in sorted_channels[:3]:  # Top 3 changes
+        change_pct = changes["change_percent"]
+        change_amt = changes["change_amount"]
+        
+        if change_pct > 50:
+            recommendations.append(
+                f"Significantly increase {channel} budget by ${change_amt:,.0f} "
+                f"({change_pct:+.1f}%) - this channel shows high potential returns"
+            )
+        elif change_pct > 10:
+            recommendations.append(
+                f"Increase {channel} budget by ${change_amt:,.0f} "
+                f"({change_pct:+.1f}%) to improve overall ROI"
+            )
+        elif change_pct < -30:
+            recommendations.append(
+                f"Reduce {channel} budget by ${abs(change_amt):,.0f} "
+                f"({change_pct:.1f}%) - this channel appears oversaturated"
+            )
+        elif change_pct < -10:
+            recommendations.append(
+                f"Consider reducing {channel} budget by ${abs(change_amt):,.0f} "
+                f"({change_pct:.1f}%) to reallocate to higher-performing channels"
+            )
+    
+    return recommendations
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='MMM Analysis and Budget Optimization Service')
+    parser.add_argument('data_file', help='Path to marketing data CSV')
+    parser.add_argument('config_file', help='Path to MMM configuration JSON')
+    parser.add_argument('--budget-multiplier', type=float, default=1.0,
+                        help='Budget multiplier (1.0 = current budget, 1.2 = 20% increase)')
+    parser.add_argument('--min-per-channel', type=float, default=100,
+                        help='Minimum budget per channel')
+    parser.add_argument('--diversity-penalty', type=float, default=0.1,
+                        help='Diversity penalty (0-1, higher = more balanced allocation)')
+    parser.add_argument('--output', '-o', help='Output file for results JSON')
+    
+    args = parser.parse_args()
+    
+    # Prepare optimization parameters
+    opt_params = {
+        "budget_multiplier": args.budget_multiplier,
+        "min_per_channel": args.min_per_channel,
+        "diversity_penalty": args.diversity_penalty
+    }
+    
+    # Run the pipeline
+    results = run_mmm_and_optimize(args.data_file, args.config_file, opt_params)
+    
+    # Output results
+    if args.output:
+        with open(args.output, 'w') as f:
+            json.dump(results, f, indent=2)
+    else:
+        print(json.dumps(results, indent=2))
+    
+    # Exit with appropriate code
+    sys.exit(0 if results.get("success", False) else 1)
+
+Save the file
+Run a test with default parameters: python python_scripts/mmm_optimizer_service.py attached_assets/dankztestdata_v2.csv test_config_quick.json -o service_test_results.json
+If successful, display the recommendations: grep -A10 "recommendations" service_test_results.json
+Test with budget increase scenario: python python_scripts/mmm_optimizer_service.py attached_assets/dankztestdata_v2.csv test_config_quick.json --budget-multiplier 1.3 -o service_test_30pct_increase.json
+Report the outputs from all three commands
+
+DO NOT:
+
+Modify any existing files
+Create additional test files
+Attempt to integrate with Express.js yet
+Run any other commands
+
+STOP after reporting the outputs from steps 3, 4, and 5.

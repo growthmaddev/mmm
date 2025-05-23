@@ -1,0 +1,101 @@
+{
+  "success": true,
+  "timestamp": "2025-05-23T00:41:06.529316",
+  "mmm_analysis": {
+    "channel_roi": {
+      "PPCBrand_Spend": 0.00014739150573310996,
+      "PPCNonBrand_Spend": 5.734295929349186e-05,
+      "PPCShopping_Spend": 0.0001370447681250673,
+      "FBReach_Spend": 0.00011075954173532878
+    },
+    "channel_contributions": {
+      "PPCBrand_Spend": 18.076261126602464,
+      "PPCNonBrand_Spend": 25.578942644069098,
+      "PPCShopping_Spend": 26.460041519568954,
+      "FBReach_Spend": 29.884754709759502
+    },
+    "model_parameters": {
+      "alpha": {
+        "PPCBrand_Spend": 0.65,
+        "PPCNonBrand_Spend": 0.55,
+        "PPCShopping_Spend": 0.75,
+        "FBReach_Spend": 0.85
+      },
+      "L": {
+        "PPCBrand_Spend": 1.0,
+        "PPCNonBrand_Spend": 1.0,
+        "PPCShopping_Spend": 1.0,
+        "FBReach_Spend": 1.0
+      },
+      "k": {
+        "PPCBrand_Spend": 5e-05,
+        "PPCNonBrand_Spend": 8e-05,
+        "PPCShopping_Spend": 3e-05,
+        "FBReach_Spend": 2e-05
+      },
+      "x0": {
+        "PPCBrand_Spend": 50000.0,
+        "PPCNonBrand_Spend": 30000.0,
+        "PPCShopping_Spend": 70000.0,
+        "FBReach_Spend": 100000.0
+      },
+      "l_max": 14
+    }
+  },
+  "optimization_results": {
+    "current_allocation": {
+      "PPCBrand_Spend": 49749.11,
+      "PPCNonBrand_Spend": 180947.11,
+      "PPCShopping_Spend": 78320.81999999999,
+      "FBReach_Spend": 109450.48999999999
+    },
+    "optimized_allocation": {
+      "PPCBrand_Spend": 117100.0,
+      "PPCNonBrand_Spend": 79100.0,
+      "PPCShopping_Spend": 157100.0,
+      "FBReach_Spend": 190100.0
+    },
+    "allocation_changes": {
+      "PPCBrand_Spend": {
+        "current": 49749.11,
+        "optimized": 117100.0,
+        "change_amount": 67350.89,
+        "change_percent": 135.3810952597946
+      },
+      "PPCNonBrand_Spend": {
+        "current": 180947.11,
+        "optimized": 79100.0,
+        "change_amount": -101847.10999999999,
+        "change_percent": -56.28556874989603
+      },
+      "PPCShopping_Spend": {
+        "current": 78320.81999999999,
+        "optimized": 157100.0,
+        "change_amount": 78779.18000000001,
+        "change_percent": 100.58523391353667
+      },
+      "FBReach_Spend": {
+        "current": 109450.48999999999,
+        "optimized": 190100.0,
+        "change_amount": 80649.51000000001,
+        "change_percent": 73.68583731329117
+      }
+    },
+    "total_budget": {
+      "current": 418467.52999999997,
+      "optimized": 543400.0,
+      "change": 124932.47000000003
+    },
+    "expected_lift": 47.53,
+    "optimization_params": {
+      "budget_multiplier": 1.3,
+      "min_per_channel": 100,
+      "diversity_penalty": 0.1
+    }
+  },
+  "recommendations": [
+    "Reduce PPCNonBrand_Spend budget by $101,847 (-56.3%) - this channel appears oversaturated",
+    "Significantly increase FBReach_Spend budget by $80,650 (+73.7%) - this channel shows high potential returns",
+    "Significantly increase PPCShopping_Spend budget by $78,779 (+100.6%) - this channel shows high potential returns"
+  ]
+}
