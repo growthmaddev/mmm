@@ -583,7 +583,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
   }
   
   // Make sure we have results to transform
-  if (!ourResults.summary?.channel_analysis) {
+  if (!ourResults.summary?.analytics?.sales_decomposition) {
     console.warn('Invalid results format from fixed parameter MMM');
     return {
       success: false,
@@ -591,31 +591,30 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
 
-  // Debug the channel_analysis structure we're using
-  console.log('Channel analysis data:', JSON.stringify(ourResults.summary.channel_analysis, null, 2));
+  // Debug the sales_decomposition structure we're using
+  console.log('Sales decomposition data:', JSON.stringify(ourResults.summary.analytics.sales_decomposition, null, 2));
   
   // Extract metrics from the results
   const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
   console.log('Model accuracy (R-squared):', modelAccuracy);
   
-  // Estimate totalSales from the channel spend and ROI
+  // Get sales data directly from the analytics section
   let totalSales = 0;
   let totalSpend = 0;
   
-  if (ourResults.summary.channel_analysis?.spend) {
+  if (ourResults.summary.analytics?.sales_decomposition?.total_sales) {
+    totalSales = ourResults.summary.analytics.sales_decomposition.total_sales;
+    console.log('Using total sales from analytics:', totalSales);
+  } else if (ourResults.summary.channel_analysis?.spend) {
+    // Fallback: calculate from spend
     Object.values(ourResults.summary.channel_analysis.spend).forEach((spend: any) => {
       totalSpend += Number(spend || 0);
     });
     console.log('Total spend calculated:', totalSpend);
     
-    // Get actual sales from summary if available, otherwise estimate
-    if (ourResults.summary && ourResults.summary.total_sales) {
-      totalSales = ourResults.summary.total_sales;
-      console.log('Using actual total sales from summary:', totalSales);
-    } else {
-      totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
-      console.log('Estimated total sales (3x spend):', totalSales);
-    }
+    // Estimate if needed
+    totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
+    console.log('Estimated total sales (3x spend):', totalSales);
   } else {
     totalSales = 1000000; // Fallback value if no spend data
     console.log('Using fallback total sales value:', totalSales);
