@@ -63,7 +63,7 @@ async function simulateModelTraining(modelId: number) {
 /**
  * Updates progress incrementally from start to end percent
  */
-async function updateProgress(modelId: number, status: string, startPercent: number, endPercent: number, intervalSeconds: number) {
+async function updateProgress(modelId: number, status: modelTrainingStatusEnum, startPercent: number, endPercent: number, intervalSeconds: number) {
   const steps = (endPercent - startPercent) / 5; // Update in 5% increments
   
   for (let i = 1; i <= steps; i++) {

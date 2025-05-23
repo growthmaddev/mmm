@@ -1,247 +1,561 @@
 #!/usr/bin/env python
 """
-Production service that combines MMM analysis with budget optimization
-Designed to be called from the Express.js backend
+MMM Optimizer Service
+
+This script provides a standalone service that connects our fixed parameter MMM solution
+with the budget optimizer. It loads fixed parameters from a model, transforms them into
+the right format for the optimizer, and returns the optimized budget allocation.
 """
 
+import os
 import sys
 import json
-import argparse
-from datetime import datetime
+import pandas as pd
+import numpy as np
+from typing import Dict, Any, List, Optional, Union
+import time
 
-# Import our modules
-from fit_mmm_fixed_params import create_mmm_with_fixed_params
-from optimize_budget_marginal import optimize_budget
+# Apply the same global TensorVariable patch as in fit_mmm_fixed_params.py
+print("Applying global TensorVariable patch...", file=sys.stderr)
 
-def run_mmm_and_optimize(data_file, config_file, optimization_params):
+import pytensor.tensor as pt
+
+# Store original methods
+_original_getattr = pt.TensorVariable.__getattribute__
+_original_setattr = pt.TensorVariable.__setattr__
+
+def _patched_getattr(self, name):
+    if name == 'dims':
+        try:
+            return _original_getattr(self, name)
+        except AttributeError:
+            if hasattr(self, '_pymc_dims'):
+                return self._pymc_dims
+            return ()
+    return _original_getattr(self, name)
+
+def _patched_setattr(self, name, value):
+    if name == 'dims':
+        _original_setattr(self, '_pymc_dims', value)
+    else:
+        _original_setattr(self, name, value)
+
+# Apply patches
+pt.TensorVariable.__getattribute__ = _patched_getattr
+pt.TensorVariable.__setattr__ = _patched_setattr
+
+print("Global patch applied successfully!", file=sys.stderr)
+
+# Function to implement logistic saturation
+def logistic_saturation(x: float, L: float = 1.0, k: float = 0.0005, x0: float = 50000.0) -> float:
     """
-    Run complete MMM analysis and budget optimization pipeline
+    Logistic saturation function with better numerical stability.
     
     Args:
-        data_file: Path to CSV data file
-        config_file: Path to MMM configuration JSON
-        optimization_params: Dict with budget optimization parameters
+        x: Input value (typically spend amount)
+        L: Maximum value (saturation ceiling)
+        k: Steepness parameter (growth rate)
+        x0: Midpoint parameter (inflection point)
     
     Returns:
-        Combined results dictionary
+        Saturated value between 0 and L
     """
+    # Handle potential overflow in exp(-k * (x - x0))
+    if k * (x - x0) > 100:
+        return L  # Saturated at max value
+    elif k * (x - x0) < -100:
+        return 0  # Effectively zero
+    else:
+        return L / (1 + np.exp(-k * (x - x0)))
+
+# Function to calculate channel response (fixed version)
+def get_channel_response(
+    spend: float,
+    beta: float,
+    saturation_params: Dict[str, float],
+    adstock_params: Optional[Dict[str, float]] = None,
+    adstock_type: str = "GeometricAdstock",
+    saturation_type: str = "LogisticSaturation",
+    scaling_factor: float = 5000.0  # Apply scaling to make contributions meaningful
+) -> float:
+    """
+    Calculate the expected response for a channel at a given spend level.
     
-    try:
-        # Step 1: Run MMM Analysis
-        print("Running MMM analysis...", file=sys.stderr)
-        mmm_results = create_mmm_with_fixed_params(config_file, data_file)
+    Args:
+        spend: Spend amount
+        beta: Channel coefficient (effectiveness multiplier)
+        saturation_params: Dictionary of saturation parameters
+        adstock_params: Dictionary of adstock parameters (optional, for future use)
+        adstock_type: Type of adstock function to use
+        saturation_type: Type of saturation function to use
+        scaling_factor: Multiplier to scale contributions to meaningful level
         
-        if not mmm_results or "error" in mmm_results:
-            return {
-                "success": False,
-                "error": "MMM analysis failed",
-                "details": mmm_results
-            }
+    Returns:
+        Expected response (e.g., sales contribution)
+    """
+    # For now, we're only supporting LogisticSaturation
+    if saturation_type != "LogisticSaturation":
+        print(f"Warning: Unsupported saturation type {saturation_type}, using LogisticSaturation", file=sys.stderr)
+    
+    # Extract saturation parameters (with defaults if not provided)
+    L = saturation_params.get("L", 1.0)
+    k = saturation_params.get("k", 0.0005)
+    x0 = saturation_params.get("x0", 50000.0)
+    
+    # Apply saturation transformation
+    saturated_spend = logistic_saturation(spend, L, k, x0)
+    
+    # Apply beta coefficient
+    response = beta * saturated_spend
+    
+    # Apply scaling factor
+    response *= scaling_factor
+    
+    return response
+
+# Function to calculate the marginal return for a given channel
+def calculate_marginal_return(
+    beta: float,
+    current_spend: float,
+    saturation_params: Dict[str, float],
+    adstock_params: Optional[Dict[str, float]] = None,
+    increment: float = 1000.0,
+    scaling_factor: float = 5000.0  # Apply same scaling as in get_channel_response
+) -> float:
+    """
+    Calculate the marginal return for additional spend on a channel.
+    
+    Args:
+        beta: Channel coefficient
+        current_spend: Current spend amount
+        saturation_params: Dictionary of saturation parameters
+        adstock_params: Dictionary of adstock parameters (optional)
+        increment: Increment amount for numerical differentiation
+        scaling_factor: Multiplier to scale contributions to meaningful level
         
-        # Extract data from MMM results
-        channels = mmm_results["model_info"]["channels"]
-        fixed_params = mmm_results["fixed_parameters"]
-        channel_analysis = mmm_results["channel_analysis"]
-        current_spend = channel_analysis["spend"]
+    Returns:
+        Marginal return (additional contribution per additional dollar spent)
+    """
+    # Calculate response at current spend
+    current_response = get_channel_response(
+        current_spend,
+        beta,
+        saturation_params,
+        adstock_params,
+        scaling_factor=scaling_factor
+    )
+    
+    # Calculate response at current spend + increment
+    incremented_response = get_channel_response(
+        current_spend + increment,
+        beta,
+        saturation_params,
+        adstock_params,
+        scaling_factor=scaling_factor
+    )
+    
+    # Calculate marginal return
+    marginal_return = (incremented_response - current_response) / increment
+    
+    return marginal_return
+
+# Main budget optimization function
+def optimize_budget(
+    channel_params: Dict[str, Dict[str, Any]],
+    current_allocation: Dict[str, float],
+    desired_budget: float,
+    baseline_sales: float = 100000.0,
+    increment: float = 1000.0,
+    min_channel_budget: float = 1000.0,
+    max_iterations: int = 1000,
+    scaling_factor: float = 5000.0
+) -> Dict[str, Any]:
+    """
+    Optimize budget allocation based on channel parameters.
+    
+    Args:
+        channel_params: Dictionary of channel parameters
+        current_allocation: Dictionary of current budget allocation
+        desired_budget: Total budget to allocate
+        baseline_sales: Baseline sales (intercept)
+        increment: Increment amount for each iteration
+        min_channel_budget: Minimum budget for each channel
+        max_iterations: Maximum number of iterations
+        scaling_factor: Multiplier for channel contributions
         
-        # Step 2: Prepare optimizer configuration
-        print("Preparing budget optimization...", file=sys.stderr)
+    Returns:
+        Dictionary with optimized allocation and results
+    """
+    print(f"Starting budget optimization with {len(channel_params)} channels", file=sys.stderr)
+    print(f"Current allocation: {current_allocation}", file=sys.stderr)
+    print(f"Desired budget: {desired_budget}", file=sys.stderr)
+    
+    # Initialize optimized allocation with minimum budgets
+    optimized_allocation = {channel: min_channel_budget for channel in channel_params}
+    
+    # Calculate remaining budget
+    allocated_budget = sum(optimized_allocation.values())
+    remaining_budget = desired_budget - allocated_budget
+    
+    # Iteratively allocate budget based on marginal returns
+    iterations = 0
+    while remaining_budget >= increment and iterations < max_iterations:
+        iterations += 1
         
-        # Get optimization parameters
-        budget_multiplier = optimization_params.get("budget_multiplier", 1.0)
-        min_per_channel = optimization_params.get("min_per_channel", 100)
-        diversity_penalty = optimization_params.get("diversity_penalty", 0.1)
+        # Calculate marginal returns for each channel
+        marginal_returns = {}
+        for channel, params in channel_params.items():
+            # Extract parameters
+            beta = params.get("beta_coefficient", 1.0)
+            
+            # Get saturation parameters
+            saturation_params = params.get("saturation_parameters", {
+                "L": 1.0,
+                "k": 0.0005,
+                "x0": 50000.0
+            })
+            
+            # Get adstock parameters
+            adstock_params = params.get("adstock_parameters", {
+                "alpha": 0.6,
+                "l_max": 8
+            })
+            
+            # Calculate marginal return
+            marginal_returns[channel] = calculate_marginal_return(
+                beta=beta,
+                current_spend=optimized_allocation[channel],
+                saturation_params=saturation_params,
+                adstock_params=adstock_params,
+                increment=increment,
+                scaling_factor=scaling_factor
+            )
         
-        total_budget = sum(current_spend.values()) * budget_multiplier
+        # Find channel with highest marginal return
+        best_channel = max(marginal_returns, key=marginal_returns.get)
         
-        # Prepare channel parameters for optimizer
-        channel_params = {}
-        for ch in channels:
-            # Map MMM parameters to optimizer-expected format
-            channel_params[ch] = {
-                "beta_coefficient": fixed_params.get("alpha", {}).get(ch, 0.2),
-                "saturation_parameters": {
-                    "L": fixed_params.get("L", {}).get(ch, 1.0),
-                    "k": fixed_params.get("k", {}).get(ch, 0.0001),
-                    "x0": fixed_params.get("x0", {}).get(ch, 50000.0)
-                }
-            }
+        # Allocate increment to best channel
+        optimized_allocation[best_channel] += increment
+        remaining_budget -= increment
         
-        # Create current allocation dictionary
-        current_allocation = {ch: current_spend[ch] for ch in channels}
+        # Every 100 iterations, log progress
+        if iterations % 100 == 0:
+            print(f"Iteration {iterations}: {remaining_budget:.2f} remaining", file=sys.stderr)
+    
+    print(f"Budget optimization completed in {iterations} iterations", file=sys.stderr)
+    
+    # Calculate expected outcome for optimized allocation
+    optimized_outcome = calculate_expected_outcome(
+        channel_params, optimized_allocation, baseline_sales, scaling_factor
+    )
+    
+    # Calculate expected outcome for current allocation
+    current_outcome = calculate_expected_outcome(
+        channel_params, current_allocation, baseline_sales, scaling_factor
+    )
+    
+    # Calculate channel breakdown
+    channel_breakdown = []
+    for channel in channel_params:
+        current = current_allocation.get(channel, 0)
+        optimized = optimized_allocation.get(channel, 0)
         
-        # Step 3: Run optimization
-        print("Running budget optimization...", file=sys.stderr)
-        opt_results = optimize_budget(
-            channel_params=channel_params,
-            desired_budget=total_budget,
-            current_allocation=current_allocation,
-            min_channel_budget=min_per_channel,
-            debug=True,
-            enable_dynamic_diversity=(diversity_penalty > 0)
+        # Calculate percent change
+        if current > 0:
+            percent_change = ((optimized - current) / current) * 100
+        else:
+            percent_change = 100 if optimized > 0 else 0
+        
+        # Calculate ROI and contribution
+        roi = calculate_channel_roi(
+            channel_params[channel], 
+            optimized, 
+            scaling_factor
         )
         
-        # Step 4: Combine results
-        optimized_allocation = {}
-        allocation_changes = {}
+        contribution = get_channel_response(
+            optimized,
+            channel_params[channel].get("beta_coefficient", 1.0),
+            channel_params[channel].get("saturation_parameters", {"L": 1.0, "k": 0.0005, "x0": 50000.0}),
+            channel_params[channel].get("adstock_parameters", {"alpha": 0.6, "l_max": 8}),
+            scaling_factor=scaling_factor
+        )
         
-        # Extract optimized allocation from results
-        if "optimized_allocation" in opt_results:
-            optimized_spend = opt_results["optimized_allocation"]
-        else:
-            # Fallback if the key name is different
-            # Search for a dictionary in the results that contains all channels
-            for key, value in opt_results.items():
-                if isinstance(value, dict) and all(ch in value for ch in channels):
-                    optimized_spend = value
-                    break
-            else:
-                # If not found, use a copy of the current allocation
-                optimized_spend = dict(current_allocation)
+        channel_breakdown.append({
+            "channel": channel,
+            "current_spend": current,
+            "optimized_spend": optimized,
+            "percent_change": percent_change,
+            "roi": roi,
+            "contribution": contribution
+        })
+    
+    # Calculate expected lift
+    if current_outcome > 0:
+        expected_lift = ((optimized_outcome - current_outcome) / current_outcome) * 100
+    else:
+        expected_lift = 100 if optimized_outcome > 0 else 0
+    
+    return {
+        "optimized_allocation": optimized_allocation,
+        "current_allocation": current_allocation,
+        "expected_outcome": optimized_outcome,
+        "current_outcome": current_outcome,
+        "expected_lift": expected_lift,
+        "channel_breakdown": channel_breakdown,
+        "target_variable": "Sales",
+        "baseline_sales": baseline_sales,
+        "iterations": iterations
+    }
+
+# Helper function to calculate expected outcome
+def calculate_expected_outcome(
+    channel_params: Dict[str, Dict[str, Any]],
+    allocation: Dict[str, float],
+    baseline_sales: float,
+    scaling_factor: float
+) -> float:
+    """
+    Calculate expected outcome for a given allocation.
+    
+    Args:
+        channel_params: Dictionary of channel parameters
+        allocation: Dictionary of budget allocation
+        baseline_sales: Baseline sales (intercept)
+        scaling_factor: Multiplier for channel contributions
         
-        for ch in channels:
-            current = current_spend[ch]
-            optimized = optimized_spend.get(ch, current)
-            optimized_allocation[ch] = optimized
+    Returns:
+        Expected outcome
+    """
+    outcome = baseline_sales
+    
+    for channel, params in channel_params.items():
+        spend = allocation.get(channel, 0)
+        if spend > 0:
+            # Extract parameters
+            beta = params.get("beta_coefficient", 1.0)
             
-            if current > 0:
-                allocation_changes[ch] = {
-                    "current": current,
-                    "optimized": optimized,
-                    "change_amount": optimized - current,
-                    "change_percent": ((optimized - current) / current) * 100
-                }
-            else:
-                allocation_changes[ch] = {
-                    "current": current,
-                    "optimized": optimized,
-                    "change_amount": optimized,
-                    "change_percent": 0
-                }
+            # Get saturation parameters
+            saturation_params = params.get("saturation_parameters", {
+                "L": 1.0,
+                "k": 0.0005,
+                "x0": 50000.0
+            })
+            
+            # Get adstock parameters
+            adstock_params = params.get("adstock_parameters", {
+                "alpha": 0.6,
+                "l_max": 8
+            })
+            
+            # Calculate contribution
+            contribution = get_channel_response(
+                spend, beta, saturation_params, adstock_params, scaling_factor=scaling_factor
+            )
+            
+            outcome += contribution
+    
+    return outcome
+
+# Helper function to calculate channel ROI
+def calculate_channel_roi(
+    channel_params: Dict[str, Any],
+    spend: float,
+    scaling_factor: float
+) -> float:
+    """
+    Calculate ROI for a channel.
+    
+    Args:
+        channel_params: Channel parameters
+        spend: Spend amount
+        scaling_factor: Multiplier for channel contributions
         
-        # Calculate summary metrics
-        total_current = sum(current_spend.values())
-        total_optimized = sum(optimized_allocation.values())
+    Returns:
+        ROI (return on investment)
+    """
+    if spend <= 0:
+        return 0
+    
+    # Extract parameters
+    beta = channel_params.get("beta_coefficient", 1.0)
+    
+    # Get saturation parameters
+    saturation_params = channel_params.get("saturation_parameters", {
+        "L": 1.0,
+        "k": 0.0005,
+        "x0": 50000.0
+    })
+    
+    # Get adstock parameters
+    adstock_params = channel_params.get("adstock_parameters", {
+        "alpha": 0.6,
+        "l_max": 8
+    })
+    
+    # Calculate contribution
+    contribution = get_channel_response(
+        spend, beta, saturation_params, adstock_params, scaling_factor=scaling_factor
+    )
+    
+    # Calculate ROI
+    roi = contribution / spend
+    
+    return roi
+
+# Main function to run the service
+def main(config_file: str) -> Dict[str, Any]:
+    """
+    Main function to run the MMM optimizer service.
+    
+    Args:
+        config_file: Path to the configuration file
         
-        # Extract lift from results
-        if "percentage_lift" in opt_results:
-            expected_lift = opt_results["percentage_lift"]
-        elif "expected_lift" in opt_results:
-            expected_lift = opt_results["expected_lift"]
+    Returns:
+        Dictionary with optimization results
+    """
+    print(f"Loading configuration from {config_file}", file=sys.stderr)
+    
+    # Load configuration
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    
+    # Extract parameters
+    model_id = config.get("model_id")
+    project_id = config.get("project_id")
+    channel_params = config.get("channel_params", {})
+    data_file = config.get("data_file")
+    current_budget = config.get("current_budget", 0)
+    desired_budget = config.get("desired_budget", 0)
+    current_allocation = config.get("current_allocation", {})
+    baseline_sales = config.get("baseline_sales", 100000.0)
+    
+    print(f"Model ID: {model_id}", file=sys.stderr)
+    print(f"Project ID: {project_id}", file=sys.stderr)
+    print(f"Data file: {data_file}", file=sys.stderr)
+    print(f"Current budget: {current_budget}", file=sys.stderr)
+    print(f"Desired budget: {desired_budget}", file=sys.stderr)
+    print(f"Baseline sales: {baseline_sales}", file=sys.stderr)
+    
+    # Transform channel parameters if needed
+    # For this example, we'll take alpha, L, k, and x0 from the channel_params
+    # and convert them to the format needed by our optimization function
+    transformed_params = {}
+    
+    # Handle different parameter formats
+    for k, v in channel_params.items():
+        # Check what kind of parameters we have
+        if k in ['alpha', 'L', 'k', 'x0']:
+            # We have flattened parameters by name
+            # Convert to channel-specific format
+            for channel in current_allocation:
+                if channel not in transformed_params:
+                    transformed_params[channel] = {
+                        "beta_coefficient": 1.0,
+                        "saturation_parameters": {},
+                        "adstock_parameters": {}
+                    }
+                
+                if k == 'alpha':
+                    transformed_params[channel]["adstock_parameters"]["alpha"] = v.get(channel, 0.6)
+                elif k in ['L', 'k', 'x0']:
+                    transformed_params[channel]["saturation_parameters"][k] = v.get(channel, 
+                        1.0 if k == 'L' else 0.0005 if k == 'k' else 50000.0)
+                
         else:
-            # Calculate estimated lift based on optimized vs current outcome
-            if "current_outcome" in opt_results and "expected_outcome" in opt_results:
-                current_outcome = opt_results["current_outcome"]
-                expected_outcome = opt_results["expected_outcome"]
-                if current_outcome > 0:
-                    expected_lift = (expected_outcome - current_outcome) / current_outcome
-                else:
-                    expected_lift = 0
-            else:
-                expected_lift = 0
-        
-        combined_results = {
-            "success": True,
-            "timestamp": datetime.now().isoformat(),
-            "mmm_analysis": {
-                "channel_roi": channel_analysis["roi"],
-                "channel_contributions": channel_analysis["contribution_percentage"],
-                "model_parameters": fixed_params
-            },
-            "optimization_results": {
-                "current_allocation": current_spend,
-                "optimized_allocation": optimized_allocation,
-                "allocation_changes": allocation_changes,
-                "total_budget": {
-                    "current": total_current,
-                    "optimized": total_optimized,
-                    "change": total_optimized - total_current
+            # Assuming this is a channel name
+            channel = k
+            if channel not in transformed_params:
+                transformed_params[channel] = {
+                    "beta_coefficient": 1.0,
+                    "saturation_parameters": {
+                        "L": 1.0,
+                        "k": 0.0005,
+                        "x0": 50000.0
+                    },
+                    "adstock_parameters": {
+                        "alpha": 0.6,
+                        "l_max": 8
+                    }
+                }
+            
+            # Extract parameters from the channel object
+            params = v
+            
+            if isinstance(params, dict):
+                # Beta coefficient
+                if "beta" in params:
+                    transformed_params[channel]["beta_coefficient"] = params["beta"]
+                
+                # Saturation parameters
+                if "L" in params:
+                    transformed_params[channel]["saturation_parameters"]["L"] = params["L"]
+                if "k" in params:
+                    transformed_params[channel]["saturation_parameters"]["k"] = params["k"]
+                if "x0" in params:
+                    transformed_params[channel]["saturation_parameters"]["x0"] = params["x0"]
+                
+                # Adstock parameters
+                if "alpha" in params:
+                    transformed_params[channel]["adstock_parameters"]["alpha"] = params["alpha"]
+                if "l_max" in params:
+                    transformed_params[channel]["adstock_parameters"]["l_max"] = params["l_max"]
+    
+    # If we still don't have parameters for all channels, create defaults
+    for channel in current_allocation:
+        if channel not in transformed_params:
+            # Create default parameters
+            transformed_params[channel] = {
+                "beta_coefficient": 1.0,
+                "saturation_parameters": {
+                    "L": 1.0,
+                    "k": 0.0005,
+                    "x0": 50000.0
                 },
-                "expected_lift": expected_lift,
-                "optimization_params": optimization_params
-            },
-            "recommendations": generate_recommendations(allocation_changes)
-        }
+                "adstock_parameters": {
+                    "alpha": 0.6,
+                    "l_max": 8
+                }
+            }
+    
+    print(f"Transformed parameters for {len(transformed_params)} channels", file=sys.stderr)
+    
+    # Run budget optimization
+    try:
+        start_time = time.time()
+        result = optimize_budget(
+            channel_params=transformed_params,
+            current_allocation=current_allocation,
+            desired_budget=desired_budget,
+            baseline_sales=baseline_sales
+        )
+        end_time = time.time()
         
-        return combined_results
+        # Add some metadata
+        result["optimization_time"] = end_time - start_time
+        result["model_id"] = model_id
+        result["project_id"] = project_id
+        result["success"] = True
+        
+        print(f"Optimization completed in {end_time - start_time:.2f} seconds", file=sys.stderr)
+        return result
         
     except Exception as e:
-        import traceback
+        print(f"Error optimizing budget: {str(e)}", file=sys.stderr)
         return {
             "success": False,
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "model_id": model_id,
+            "project_id": project_id
         }
 
-def generate_recommendations(allocation_changes):
-    """Generate human-readable recommendations based on optimization results"""
-    
-    recommendations = []
-    
-    # Sort by absolute change amount
-    sorted_channels = sorted(
-        allocation_changes.items(),
-        key=lambda x: abs(x[1]["change_amount"]),
-        reverse=True
-    )
-    
-    for channel, changes in sorted_channels[:3]:  # Top 3 changes
-        change_pct = changes["change_percent"]
-        change_amt = changes["change_amount"]
-        
-        if change_pct > 50:
-            recommendations.append(
-                f"Significantly increase {channel} budget by ${change_amt:,.0f} "
-                f"({change_pct:+.1f}%) - this channel shows high potential returns"
-            )
-        elif change_pct > 10:
-            recommendations.append(
-                f"Increase {channel} budget by ${change_amt:,.0f} "
-                f"({change_pct:+.1f}%) to improve overall ROI"
-            )
-        elif change_pct < -30:
-            recommendations.append(
-                f"Reduce {channel} budget by ${abs(change_amt):,.0f} "
-                f"({change_pct:.1f}%) - this channel appears oversaturated"
-            )
-        elif change_pct < -10:
-            recommendations.append(
-                f"Consider reducing {channel} budget by ${abs(change_amt):,.0f} "
-                f"({change_pct:.1f}%) to reallocate to higher-performing channels"
-            )
-    
-    return recommendations
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='MMM Analysis and Budget Optimization Service')
-    parser.add_argument('data_file', help='Path to marketing data CSV')
-    parser.add_argument('config_file', help='Path to MMM configuration JSON')
-    parser.add_argument('--budget-multiplier', type=float, default=1.0,
-                        help='Budget multiplier (1.0 = current budget, 1.2 = 20% increase)')
-    parser.add_argument('--min-per-channel', type=float, default=100,
-                        help='Minimum budget per channel')
-    parser.add_argument('--diversity-penalty', type=float, default=0.1,
-                        help='Diversity penalty (0-1, higher = more balanced allocation)')
-    parser.add_argument('--output', '-o', help='Output file for results JSON')
+    if len(sys.argv) < 2:
+        print("Usage: python mmm_optimizer_service.py <config_file>", file=sys.stderr)
+        sys.exit(1)
     
-    args = parser.parse_args()
+    config_file = sys.argv[1]
+    result = main(config_file)
     
-    # Prepare optimization parameters
-    opt_params = {
-        "budget_multiplier": args.budget_multiplier,
-        "min_per_channel": args.min_per_channel,
-        "diversity_penalty": args.diversity_penalty
-    }
-    
-    # Run the pipeline
-    results = run_mmm_and_optimize(args.data_file, args.config_file, opt_params)
-    
-    # Output results
-    if args.output:
-        with open(args.output, 'w') as f:
-            json.dump(results, f, indent=2)
-    else:
-        print(json.dumps(results, indent=2))
-    
-    # Exit with appropriate code
-    sys.exit(0 if results.get("success", False) else 1)
+    # Print result as JSON for the Node.js server to parse
+    print(json.dumps(result, indent=2))

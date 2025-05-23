@@ -1,165 +1,233 @@
 import { Request, Response } from 'express';
+import { storage } from '../storage';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
-import { z } from 'zod';
+import { AuthRequest } from '../middleware/auth';
 
-// Request validation schema
-const MMMOptimizerRequestSchema = z.object({
-  // Support both direct file paths and project/model context
-  dataFile: z.string(),
-  configFile: z.string(),
-  budgetMultiplier: z.number().min(0.5).max(3.0).default(1.0),
-  minPerChannel: z.number().min(0).default(100),
-  diversityPenalty: z.number().min(0).max(1).default(0.1),
-  // Optional project context
-  projectId: z.string().optional(),
-  modelId: z.string().optional(),
-  // Optional current allocation
-  current_allocation: z.record(z.string(), z.number()).optional()
-});
+/**
+ * MMMOptimizerController - Uses our fixed parameter MMM implementation for budget optimization
+ * This controller integrates with fit_mmm_fixed_params.py and our enhanced optimizer
+ */
 
-export async function runMMMOptimizer(req: Request, res: Response) {
+interface OptimizationRequest {
+  modelId: number;
+  currentBudget: number;
+  desiredBudget: number;
+  currentAllocation: Record<string, number>;
+}
+
+/**
+ * Run the MMM Optimizer with our fixed parameter solution
+ * This connects the UI to our enhanced MMM implementation
+ */
+export const runMMMOptimizer = async (req: AuthRequest, res: Response) => {
   try {
-    // Validate request
-    const params = MMMOptimizerRequestSchema.parse(req.body);
+    const { modelId, currentBudget, desiredBudget, currentAllocation } = req.body as OptimizationRequest;
     
-    // Create temporary output file
-    const timestamp = Date.now();
-    const outputFile = path.join('results', `mmm_optimizer_${timestamp}.json`);
-    
-    // Resolve data and config paths based on project/model context if provided
-    let dataFilePath = params.dataFile;
-    let configFilePath = params.configFile;
-    
-    // If project ID and model ID are provided, try to resolve paths from project structure
-    if (params.projectId && params.modelId) {
-      try {
-        // Check if project data file exists
-        const projectDataPath = path.join('uploads', `project_${params.projectId}`, 'data.csv');
-        await fs.access(projectDataPath);
-        dataFilePath = projectDataPath;
-        
-        // Check if model config exists
-        const modelConfigPath = path.join('results', 'models', `model_${params.modelId}_config.json`);
-        await fs.access(modelConfigPath);
-        configFilePath = modelConfigPath;
-        
-        console.log(`Using project-specific paths: data=${dataFilePath}, config=${configFilePath}`);
-      } catch (error) {
-        console.warn('Failed to locate project-specific files, using provided paths:', error);
-      }
-    }
-    
-    // Create a temporary file for current allocation if provided
-    let currentAllocationFile = '';
-    if (params.current_allocation) {
-      currentAllocationFile = path.join('results', `current_allocation_${timestamp}.json`);
-      await fs.writeFile(currentAllocationFile, JSON.stringify(params.current_allocation));
-    }
-    
-    // Prepare Python script arguments
-    const pythonScript = path.join('python_scripts', 'mmm_optimizer_service.py');
-    const args = [
-      pythonScript,
-      dataFilePath,
-      configFilePath,
-      '--budget-multiplier', params.budgetMultiplier.toString(),
-      '--min-per-channel', params.minPerChannel.toString(),
-      '--diversity-penalty', params.diversityPenalty.toString(),
-      '--output', outputFile
-    ];
-    
-    // Add current allocation parameter if provided
-    if (currentAllocationFile) {
-      args.push('--current-allocation', currentAllocationFile);
-    }
-    
-    console.log('Running MMM Optimizer with args:', args);
-    
-    // Execute Python script
-    const pythonProcess = spawn('python', args);
-    
-    let stderr = '';
-    
-    pythonProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-      console.log('Python stderr:', data.toString());
-    });
-    
-    pythonProcess.on('close', async (code) => {
-      // Setup cleanup function for temporary files
-      const cleanupFiles = async () => {
-        // Clean up output file
-        if (outputFile) {
-          await fs.unlink(outputFile).catch(() => {});
-        }
-        
-        // Clean up current allocation file if it was created
-        if (currentAllocationFile) {
-          await fs.unlink(currentAllocationFile).catch(() => {});
-        }
-      };
-      
-      if (code === 0) {
-        try {
-          // Read results
-          const results = JSON.parse(await fs.readFile(outputFile, 'utf-8'));
-          
-          // Clean up temporary files
-          await cleanupFiles();
-          
-          res.json({
-            success: true,
-            results: results
-          });
-        } catch (error) {
-          console.error('Error reading results:', error);
-          
-          // Clean up temporary files even on error
-          await cleanupFiles();
-          
-          res.status(500).json({
-            success: false,
-            error: 'Failed to read optimization results'
-          });
-        }
-      } else {
-        console.error('Python script failed:', stderr);
-        
-        // Clean up temporary files on error
-        await cleanupFiles();
-        
-        res.status(500).json({
-          success: false,
-          error: 'Optimization failed',
-          details: stderr
-        });
-      }
-    });
-    
-    pythonProcess.on('error', (error) => {
-      console.error('Failed to start Python process:', error);
-      res.status(500).json({
+    if (!modelId || !currentBudget || !desiredBudget || !currentAllocation) {
+      return res.status(400).json({
         success: false,
-        error: 'Failed to start optimization process'
+        message: 'Missing required parameters'
+      });
+    }
+    
+    console.log(`Running MMM Optimizer for model ${modelId}`);
+    console.log(`Current budget: ${currentBudget}, Desired budget: ${desiredBudget}`);
+    console.log(`Current allocation:`, currentAllocation);
+    
+    // Get the model details
+    const model = await storage.getModel(modelId);
+    if (!model) {
+      return res.status(404).json({
+        success: false,
+        message: 'Model not found'
+      });
+    }
+    
+    // Verify model is trained and ready
+    if (model.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'You need a completed model before you can optimize budgets'
+      });
+    }
+    
+    // Get the project and data sources
+    const project = await storage.getProject(model.projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+    
+    // Get the data sources
+    const dataSources = await storage.getDataSourcesByProject(model.projectId);
+    if (!dataSources || dataSources.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No data sources found for this project'
+      });
+    }
+    
+    // Use the first data source
+    const dataSource = dataSources[0];
+    
+    // Get the model configuration
+    let modelConfig = {};
+    let modelResults = {};
+    
+    // If model.results is a string, parse it; otherwise, use it directly
+    if (typeof model.results === 'string') {
+      try {
+        modelResults = JSON.parse(model.results);
+      } catch (e) {
+        console.error('Error parsing model results:', e);
+      }
+    } else {
+      modelResults = model.results || {};
+    }
+    
+    // Extract fixed parameters from our model results
+    let fixedParameters: Record<string, any> = {};
+    if (modelResults.fixed_parameters) {
+      fixedParameters = modelResults.fixed_parameters;
+    } else if (modelResults.model_params) {
+      fixedParameters = modelResults.model_params;
+    }
+    
+    // Create the configuration for the MMM optimizer
+    const optimizerConfig = {
+      model_id: modelId,
+      project_id: model.projectId,
+      channel_params: fixedParameters,
+      data_file: dataSource.fileUrl,
+      current_budget: currentBudget,
+      desired_budget: desiredBudget,
+      current_allocation: currentAllocation,
+      // Add baseline sales from model results if available
+      baseline_sales: modelResults.summary?.actual_model_intercept || 
+                     modelResults.model_results?.intercept || 
+                     100000 // Fallback value
+    };
+    
+    // Create a temporary config file
+    const tempConfigFile = path.join(process.cwd(), `temp_optimizer_config_${modelId}.json`);
+    await fs.writeFile(tempConfigFile, JSON.stringify(optimizerConfig, null, 2));
+    
+    // Path to our enhanced optimizer script
+    const optimizerScript = path.join(process.cwd(), 'python_scripts', 'mmm_optimizer_service.py');
+    
+    return new Promise<void>((resolve, reject) => {
+      // Run the optimizer script
+      const pythonProcess = spawn('python3', [optimizerScript, tempConfigFile]);
+      
+      let stdoutChunks: Buffer[] = [];
+      let stderrChunks: Buffer[] = [];
+      
+      pythonProcess.stdout.on('data', (data) => {
+        stdoutChunks.push(Buffer.from(data));
+      });
+      
+      pythonProcess.stderr.on('data', (data) => {
+        stderrChunks.push(Buffer.from(data));
+        console.error('Python stderr:', data.toString());
+      });
+      
+      pythonProcess.on('close', async (code) => {
+        try {
+          // Clean up the temp file
+          await fs.unlink(tempConfigFile).catch(err => 
+            console.warn(`Failed to delete temp file ${tempConfigFile}:`, err)
+          );
+          
+          if (code !== 0) {
+            const stderr = Buffer.concat(stderrChunks).toString();
+            console.error(`MMM optimizer exited with code ${code}`);
+            console.error('Python stderr:', stderr);
+            
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to run MMM optimizer',
+              error: stderr
+            });
+          }
+          
+          // Parse the optimizer output
+          const stdout = Buffer.concat(stdoutChunks).toString();
+          let result;
+          
+          try {
+            result = JSON.parse(stdout);
+          } catch (error) {
+            console.error('Error parsing optimizer output:', error);
+            console.error('Raw output:', stdout);
+            
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to parse optimizer output',
+              error: 'Invalid JSON response from optimizer'
+            });
+          }
+          
+          // Return the optimization result
+          return res.json({
+            success: true,
+            message: 'Budget optimization completed successfully',
+            result
+          });
+          
+        } catch (error) {
+          console.error('Error in optimizer process handler:', error);
+          
+          return res.status(500).json({
+            success: false,
+            message: 'An error occurred during optimization',
+            error: error instanceof Error ? error.message : String(error)
+          });
+        } finally {
+          resolve();
+        }
+      });
+      
+      pythonProcess.on('error', (error) => {
+        console.error('Failed to start Python process:', error);
+        
+        reject(error);
+        
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to start optimizer process',
+          error: error.message
+        });
       });
     });
     
   } catch (error) {
-    console.error('MMM Optimizer error:', error);
-    res.status(400).json({
+    console.error('Error in runMMMOptimizer:', error);
+    
+    return res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Invalid request'
+      message: 'An unexpected error occurred',
+      error: error instanceof Error ? error.message : String(error)
     });
   }
-}
+};
 
-// Get optimization status endpoint
-export async function getOptimizationStatus(req: Request, res: Response) {
-  // This could be enhanced to track long-running optimizations
-  res.json({
-    status: 'ready',
-    message: 'MMM Optimizer service is available'
+/**
+ * Get the status of an optimization process
+ */
+export const getOptimizationStatus = async (req: AuthRequest, res: Response) => {
+  // For now, return a simple response as optimizations are synchronous
+  return res.json({
+    status: 'completed',
+    message: 'Optimization is handled synchronously'
   });
-}
+};
+
+// Export the controller
+export const mmmOptimizerController = {
+  runMMMOptimizer,
+  getOptimizationStatus
+};
