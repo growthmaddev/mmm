@@ -1,0 +1,65 @@
+You're absolutely right - we need to integrate our new MMM optimizer service into the existing project workflow rather than having it as a standalone feature. The budget optimizer should work within the context of a specific project and model.
+COMPLETE THE FOLLOWING TASKS IN ORDER:
+
+Open the existing budget optimizer page file. First, let's find it:
+
+bashfind client/src -name "*budget*" -o -name "*optimizer*" | grep -E "(page|component)" | head -10
+
+Once located, open the existing budget optimizer component/page file
+Replace or update the existing budget optimizer implementation to use our new MMM optimizer service by:
+
+Extracting the project ID and model ID from the URL parameters
+Using the model's configuration and data file paths
+Calling our new /api/mmm-optimizer/run endpoint with the correct parameters
+
+
+Specifically modify the component to:
+
+typescript// Add these imports at the top
+import { useParams, useSearchParams } from 'wouter';
+import { useQuery, useMutation } from '@tanstack/react-query';
+
+// Inside the component, get the project and model IDs
+const { projectId } = useParams();
+const [searchParams] = useSearchParams();
+const modelId = searchParams.get('model');
+
+// Update the optimization mutation to use project/model specific data
+const optimizeMutation = useMutation({
+  mutationFn: async (budgetSettings: any) => {
+    const response = await fetch('/api/mmm-optimizer/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        modelId,
+        dataFile: `uploads/project_${projectId}/data.csv`, // Use project-specific data
+        configFile: `results/models/model_${modelId}_config.json`, // Use model-specific config
+        budgetMultiplier: budgetSettings.budgetMultiplier,
+        minPerChannel: budgetSettings.minPerChannel,
+        diversityPenalty: budgetSettings.diversityPenalty
+      })
+    });
+    
+    if (!response.ok) throw new Error('Optimization failed');
+    return response.json();
+  }
+});
+
+Update the backend mmmOptimizerController.ts to handle project/model specific paths by adding logic to:
+
+Load the model configuration from the database or file system
+Use the project's uploaded data file
+Map the trained model parameters to our optimizer format
+
+
+Report what files you found and what changes you're making
+
+DO NOT:
+
+Create new standalone pages
+Modify the navigation structure
+Change the existing workflow
+Create duplicate functionality
+
+STOP after identifying the existing budget optimizer file and proposing the integration approach.

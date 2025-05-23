@@ -103,20 +103,29 @@ export default function BudgetOptimizer() {
     }
   }, [selectedModel]);
   
-  // Run budget optimization
+  // Run budget optimization using our enhanced MMM optimizer service
   const optimizeBudgetMutation = useMutation({
     mutationFn: async (data: any) => {
       console.log("Sending optimization request with data:", data);
       
       try {
-        // Direct fetch approach for better debugging
-        const url = `/api/models/${selectedModelId}/optimize-budget`;
+        // Use our new MMM optimizer API endpoint with project and model context
+        const url = `/api/mmm-optimizer/run`;
         const options = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(data),
+          body: JSON.stringify({
+            projectId: id,
+            modelId: selectedModelId,
+            dataFile: `uploads/project_${id}/data.csv`, // Use project-specific data
+            configFile: `results/models/model_${selectedModelId}_config.json`, // Use model-specific config
+            budgetMultiplier: data.desired_budget / data.current_budget,
+            minPerChannel: 100, // Set minimum spend per channel
+            diversityPenalty: 0.1, // Set diversity penalty factor
+            current_allocation: data.current_allocation
+          }),
           credentials: 'include'
         };
         
@@ -132,49 +141,36 @@ export default function BudgetOptimizer() {
         const contentType = fetchResponse.headers.get('content-type');
         console.log("Response content type:", contentType);
         
-        // First try to get the text response for debugging
-        const rawText = await fetchResponse.text();
-        console.log("Raw response text:", rawText && rawText.substring(0, 200) + '...');
+        // Get JSON response
+        const responseData = await fetchResponse.json();
+        console.log("Parsed JSON data:", responseData);
         
-        // Try to parse it as JSON
-        let jsonData;
-        try {
-          if (!rawText || rawText.trim() === '') {
-            console.warn("Empty response received");
-            jsonData = {};
-          } else if (rawText.startsWith('<!DOCTYPE html>') || rawText.startsWith('<html>')) {
-            console.error("Received HTML instead of JSON");
-            // Create fallback data for demo purposes
-            jsonData = {
-              optimized_allocation: {
-                "PPCBrand": 10000,
-                "PPCNonBrand": 35000,
-                "PPCShopping": 15000,
-                "PPCLocal": 16000,
-                "PPCPMax": 4000,
-                "FBReach": 22000,
-                "FBDPA": 21000,
-                "OfflineMedia": 93000
-              },
-              expected_outcome: 320000,
-              expected_lift: 12.5,
-              current_outcome: 280000,
-              channel_breakdown: [
-                { channel: "PPCBrand", current_spend: 8697, optimized_spend: 10000, percent_change: 15, roi: 3.5, contribution: 35000 },
-                { channel: "PPCNonBrand", current_spend: 33283, optimized_spend: 35000, percent_change: 5.2, roi: 2.8, contribution: 98000 }
-              ],
-              target_variable: "Sales"
-            };
-          } else {
-            jsonData = JSON.parse(rawText);
-          }
-          console.log("Parsed JSON data:", jsonData);
-        } catch (e) {
-          console.error("Failed to parse JSON:", e);
-          throw new Error("Invalid JSON response");
+        if (!responseData.success) {
+          throw new Error(responseData.error || "Optimization failed");
         }
         
-        return jsonData;
+        // Map the response from MMM optimizer to the expected format for the UI
+        const results = responseData.results;
+        
+        // Format the response for the UI
+        return {
+          optimized_allocation: results.optimization_results.optimized_allocation,
+          expected_outcome: results.optimization_results.expected_outcome,
+          expected_lift: results.optimization_results.expected_lift,
+          current_outcome: results.optimization_results.current_outcome,
+          channel_breakdown: Object.entries(results.optimization_results.allocation_changes).map(
+            ([channel, changes]: [string, any]) => ({
+              channel,
+              current_spend: changes.current,
+              optimized_spend: changes.optimized,
+              percent_change: changes.change_percent,
+              roi: results.mmm_analysis.channel_roi[channel] || 0,
+              contribution: results.mmm_analysis.channel_contributions[channel] || 0
+            })
+          ),
+          target_variable: "Sales", // Default to Sales as target variable
+          recommendations: results.recommendations
+        };
       } catch (error) {
         console.error("Error during optimization request:", error);
         throw error;
