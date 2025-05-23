@@ -36,11 +36,8 @@ export default function ModelSetup() {
     x0: number
   } | number>>({});
   
-  const [controlVariables, setControlVariables] = useState({
-    Temperature: true,
-    Holiday: true,
-    Promotion: true
-  });
+  // Initialize with empty object, we'll populate dynamically from data source
+  const [controlVariables, setControlVariables] = useState<Record<string, boolean>>({});
   const [useAI, setUseAI] = useState(true);
   
   // Fetch project details
@@ -70,6 +67,19 @@ export default function ModelSetup() {
       // Set target variable from data source
       if (dataSource.metricColumns && dataSource.metricColumns.length > 0) {
         setTargetVariable(dataSource.metricColumns[0]);
+      }
+      
+      // Initialize control variables from control columns (dynamically)
+      if (dataSource.controlColumns && Object.keys(dataSource.controlColumns).length > 0) {
+        const controlNames = Object.keys(dataSource.controlColumns);
+        const newControlVariables: Record<string, boolean> = {};
+        
+        // Set all control variables to enabled by default
+        controlNames.forEach(control => {
+          newControlVariables[control] = true;
+        });
+        
+        setControlVariables(newControlVariables);
       }
       
       // Initialize adstock and saturation settings from channel columns
