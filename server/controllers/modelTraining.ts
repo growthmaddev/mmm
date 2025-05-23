@@ -624,32 +624,51 @@ function transformMMMResults(ourResults: any, modelId: number) {
   console.log('  Total spend:', totalSpend);
   console.log('  Total sales:', totalSales);
   
-  // Calculate base sales (could be from intercept or a percentage)
-  const baseSales = ourResults.summary?.baseline_sales || 
-                   ourResults.model_results?.intercept || 
-                   totalSales * 0.3; // 30% baseline
-  console.log('Base sales:', baseSales);
-  
-  const incrementalSales = totalSales - baseSales;
-  console.log('Incremental sales:', incrementalSales);
-  
-  console.log('  Base sales:', baseSales);
-  console.log('  Incremental sales:', incrementalSales);
-  
-  // Calculate channel contributions in absolute values and percentages
+  // Get sales values directly from analytics if available
+  let baseSales = 0;
+  let incrementalSales = 0;
+  let basePercent = 0;
   const channelContributions: Record<string, number> = {};
   const percentChannelContributions: Record<string, number> = {};
   
-  if (ourResults.summary.channel_analysis?.contribution_percentage) {
-    Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
-      const contribution = incrementalSales * (Number(percentage) / 100);
-      channelContributions[channel] = contribution;
-      percentChannelContributions[channel] = Number(percentage);
-    });
+  if (ourResults.summary.analytics?.sales_decomposition) {
+    // Use actual values from analytics
+    baseSales = ourResults.summary.analytics.sales_decomposition.base_sales || 0;
+    incrementalSales = ourResults.summary.analytics.sales_decomposition.incremental_sales || 0;
+    basePercent = ourResults.summary.analytics.sales_decomposition.percent_decomposition?.base || 0;
     
-    console.log('  Channel contributions:', channelContributions);
-    console.log('  Contribution percentages:', percentChannelContributions);
+    // Convert marketing percent breakdown to channel contributions
+    // The Python model outputs percent_decomposition with base, marketing, control
+    // The frontend expects base and channels
+    if (ourResults.summary.channel_analysis?.contribution_percentage) {
+      Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
+        const contribution = incrementalSales * (Number(percentage) / 100);
+        channelContributions[channel] = contribution;
+        percentChannelContributions[channel] = Number(percentage);
+      });
+    }
+  } else {
+    // Fallback to old method if analytics not available
+    baseSales = ourResults.summary?.baseline_sales || 
+                ourResults.model_results?.intercept || 
+                totalSales * 0.3; // 30% baseline
+    incrementalSales = totalSales - baseSales;
+    basePercent = (baseSales / totalSales) * 100;
+    
+    // Calculate channel contributions using old method
+    if (ourResults.summary.channel_analysis?.contribution_percentage) {
+      Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
+        const contribution = incrementalSales * (Number(percentage) / 100);
+        channelContributions[channel] = contribution;
+        percentChannelContributions[channel] = Number(percentage);
+      });
+    }
   }
+  
+  console.log('  Base sales:', baseSales);
+  console.log('  Incremental sales:', incrementalSales);
+  console.log('  Channel contributions:', channelContributions);
+  console.log('  Contribution percentages:', percentChannelContributions);
   
   // Generate recommendations based on ROI and contribution
   const recommendations = generateRecommendations(ourResults.summary.channel_analysis);
@@ -693,7 +712,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
         base_sales: baseSales,
         incremental_sales: incrementalSales,
         percent_decomposition: {
-          base: (baseSales / totalSales) * 100,
+          base: basePercent,
           channels: percentChannelContributions
         }
       },
