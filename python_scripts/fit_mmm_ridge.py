@@ -331,20 +331,34 @@ def main():
     
     # Train model
     try:
+        # Print debug information
+        print(f"Starting model training with data file: {args.data_file}")
+        print(f"Config file: {args.config_file}")
+        print(f"Results will be saved to: {args.results_file}")
+        
+        # Ensure the results directory exists
+        results_dir = os.path.dirname(args.results_file)
+        if results_dir:  # Only create directory if there's a path
+            print(f"Creating results directory: {results_dir}")
+            os.makedirs(results_dir, exist_ok=True)
+            
+        # Train the model
         results = train_mmm_ridge(config, args.data_file)
         
-        # Create directories for results file if they don't exist
-        os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
-        
         # Save results
+        print(f"Writing results to: {args.results_file}")
         with open(args.results_file, 'w') as f:
             json.dump(results, f, indent=2)
             
         print("Model training completed successfully!")
         print(f"Results saved to: {args.results_file}")
+        sys.exit(0)  # Explicitly exit with success code
         
     except Exception as e:
-        print(f"Error in model training: {str(e)}")
+        print(f"Error in model training: {str(e)}", file=sys.stderr)
+        # Print full stack trace for debugging
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
