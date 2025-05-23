@@ -63,57 +63,109 @@ def preprocess_data(df, config):
         y: Target variable
         feature_names: Names of the features
     """
-    # Extract target variable
+    # Debug print columns
+    print(f"DataFrame columns: {list(df.columns)}", file=sys.stderr)
+    print(f"DataFrame shape: {df.shape}", file=sys.stderr)
+    print(f"Config keys: {list(config.keys())}", file=sys.stderr)
+    
+    # Extract target variable - handle both server and direct formats
     target_col = config.get('targetColumn', 'Sales')
+    if target_col not in df.columns:
+        print(f"Warning: Target column '{target_col}' not found. Using 'Sales'", file=sys.stderr)
+        target_col = 'Sales'
+    
     y = df[target_col].values
     
     # Initialize feature matrix
-    channels = config.get('channelColumns', {})
-    control_vars = config.get('controlVariables', {})
-    
     X_list = []
     feature_names = []
     
-    # Process channel variables
-    for key, channel_name in channels.items():
-        if channel_name in df.columns:
-            # Get channel data and convert to numpy array
+    # Handle two possible config formats
+    if 'channels' in config:
+        # New server format with channel details nested inside 'channels' key
+        channels_config = config['channels']
+        print(f"Using nested channels format with {len(channels_config)} channels", file=sys.stderr)
+        
+        for channel_name, channel_params in channels_config.items():
+            # Check if channel exists in data
+            if channel_name not in df.columns:
+                print(f"Warning: Channel '{channel_name}' not found in data", file=sys.stderr)
+                continue
+                
+            # Get channel data
             channel_data = df[channel_name].values
             
             # Get transformation parameters
-            adstock_param = config.get('adstockSettings', {}).get(key, 2)
-            sat_params = config.get('saturationSettings', {}).get(key, {
-                'L': 1.0, 
-                'k': 0.0001, 
-                'x0': 50000
-            })
-            
-            # Convert to proper alpha value (0-1)
-            alpha = 1 - (1/adstock_param) if adstock_param > 1 else 0.5
-            l_max = min(8, len(df))  # Cap lag at 8 or data length
+            alpha = channel_params.get('alpha', 0.5)
+            l_max = channel_params.get('l_max', 8)
+            L = channel_params.get('L', 1.0)
+            k = channel_params.get('k', 0.0001)
+            x0 = channel_params.get('x0', 50000)
             
             # Apply transformations
             adstocked = geometric_adstock(channel_data, alpha, l_max)
-            transformed = logistic_saturation(
-                adstocked, 
-                sat_params.get('L', 1.0),
-                sat_params.get('k', 0.0001),
-                sat_params.get('x0', 50000)
-            )
+            transformed = logistic_saturation(adstocked, L, k, x0)
             
             # Add to feature matrix
             X_list.append(transformed)
-            feature_names.append(key)
+            feature_names.append(channel_name)
+    else:
+        # Original format with separate channelColumns, adstockSettings, etc.
+        channels = config.get('channelColumns', {})
+        control_vars = config.get('controlVariables', {})
+        
+        print(f"Using original format with {len(channels)} channels", file=sys.stderr)
+        
+        # Process channel variables
+        for key, channel_name in channels.items():
+            if channel_name in df.columns:
+                # Get channel data and convert to numpy array
+                channel_data = df[channel_name].values
+                
+                # Get transformation parameters
+                adstock_param = config.get('adstockSettings', {}).get(key, 2)
+                sat_params = config.get('saturationSettings', {}).get(key, {
+                    'L': 1.0, 
+                    'k': 0.0001, 
+                    'x0': 50000
+                })
+                
+                # Convert to proper alpha value (0-1)
+                alpha = 1 - (1/adstock_param) if adstock_param > 1 else 0.5
+                l_max = min(8, len(df))  # Cap lag at 8 or data length
+                
+                # Apply transformations
+                adstocked = geometric_adstock(channel_data, alpha, l_max)
+                transformed = logistic_saturation(
+                    adstocked, 
+                    sat_params.get('L', 1.0),
+                    sat_params.get('k', 0.0001),
+                    sat_params.get('x0', 50000)
+                )
+                
+                # Add to feature matrix
+                X_list.append(transformed)
+                feature_names.append(key)
+        
+        # Add control variables
+        for col, include in control_vars.items():
+            if include and col in df.columns:
+                control_data = df[col].values
+                X_list.append(control_data)
+                feature_names.append(col)
     
-    # Add control variables
-    for col, include in control_vars.items():
-        if include and col in df.columns:
-            control_data = df[col].values
-            X_list.append(control_data)
-            feature_names.append(col)
+    # Check if we have any features to process
+    if not X_list:
+        print("ERROR: No valid channels found in data! Check channel names and configuration.", file=sys.stderr)
+        # Add a dummy feature to prevent crash
+        X_list.append(np.zeros(len(df)))
+        feature_names.append('dummy')
     
     # Convert to numpy array
     X = np.column_stack(X_list)
+    
+    print(f"Processed {len(feature_names)} features: {feature_names}", file=sys.stderr)
+    print(f"Feature matrix shape: {X.shape}", file=sys.stderr)
     
     return X, y, feature_names
 
