@@ -1,0 +1,23 @@
+{
+  "channels": {
+    "ch1": {
+      "alpha": 0.5,
+      "L": 1.0,
+      "k": 0.0005,
+      "x0": 10000,
+      "l_max": 2
+    }
+  },
+  "data": {
+    "date_column": "date",
+    "response_column": "y",
+    "control_columns": [
+      "ctrl"
+    ]
+  },
+  "model": {
+    "iterations": 10,
+    "tuning": 5,
+    "chains": 1
+  }
+}

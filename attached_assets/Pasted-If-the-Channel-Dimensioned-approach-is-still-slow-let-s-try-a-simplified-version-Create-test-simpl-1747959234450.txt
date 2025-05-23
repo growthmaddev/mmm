@@ -1,0 +1,65 @@
+If the Channel-Dimensioned approach is still slow, let's try a simplified version. Create test_simple_fixed_priors.py:
+python#!/usr/bin/env python
+"""Test with simplified fixed priors to isolate the issue"""
+
+import numpy as np
+import pandas as pd
+import pymc as pm
+from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
+
+# Minimal data
+df = pd.DataFrame({
+    'date': pd.date_range('2023-01-01', periods=15),
+    'ch1': [100, 200, 150, 180, 220, 190, 210, 170, 160, 200, 180, 190, 200, 210, 220],
+    'y': [1000, 1200, 1100, 1300, 1400, 1250, 1350, 1150, 1200, 1300, 1280, 1320, 1380, 1400, 1420],
+    'ctrl': [1.0] * 15
+})
+
+print("Testing with simplified approach...")
+
+# Create model with fixed priors directly
+with pm.Model() as model:
+    # Create simple fixed priors (no channel dimensions)
+    alpha_prior = pm.Beta("alpha", alpha=50, beta=50)  # Centers around 0.5
+    
+    # Apply monkey-patch
+    if not hasattr(alpha_prior, 'dims'):
+        alpha_prior.dims = ("channel",)  # Fake dims
+    
+    # Create transforms with fixed priors
+    adstock = GeometricAdstock(
+        l_max=2,
+        priors={"alpha": alpha_prior}
+    )
+    
+    saturation = LogisticSaturation(
+        priors={
+            "L": pm.HalfNormal("L", sigma=2),
+            "k": pm.HalfNormal("k", sigma=0.01),
+            "x0": pm.HalfNormal("x0", sigma=500)
+        }
+    )
+    
+    # Initialize MMM
+    mmm = MMM(
+        date_column='date',
+        channel_columns=['ch1'],
+        control_columns=['ctrl'],
+        adstock=adstock,
+        saturation=saturation
+    )
+    
+    # Fit
+    X = df[['date', 'ch1', 'ctrl']]
+    y = df['y']
+    
+    trace = mmm.fit(X=X, y=y, draws=10, tune=10, chains=1)
+    print("✓ Success with simplified priors!")
+These tests will help us:
+
+Confirm proper parameter values prevent the division error
+Test if the Channel-Dimensioned approach is more efficient
+Identify where the performance bottleneck is
+Try a simplified approach if needed
+
+Please run these tests in order and report which approach works best and fastest.
