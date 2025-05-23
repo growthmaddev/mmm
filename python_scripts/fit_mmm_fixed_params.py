@@ -245,6 +245,22 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
                 "roi": channel_roi,
                 "contribution_percentage": contribution_percentage
             },
+            # Add config specifically formatted for UI components
+            "config": {
+                "adstock_settings": {ch: float(alpha_values[i]) for i, ch in enumerate(channels)},
+                "saturation_settings": {
+                    ch: {
+                        "L": float(L_values[i]),
+                        "k": float(k_values[i]),
+                        "x0": float(x0_values[i])
+                    } 
+                    for i, ch in enumerate(channels)
+                }
+            },
+            "model_quality": {
+                "r_squared": score,
+                "mape": mape
+            },
             "status": "Model built and analyzed successfully with fixed parameters"
         }
         

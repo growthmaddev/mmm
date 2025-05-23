@@ -752,6 +752,9 @@ function transformMMMResults(ourResults: any, modelId: number) {
     model_id: modelId,
     model_accuracy: modelAccuracy * 100,
     
+    // Add the configuration data for Media Mix Curves and other components
+    config: config,
+    
     // Add top-level metrics used by the UI
     top_channel: getTopChannel(ourResults.channel_analysis?.contribution_percentage),
     top_channel_roi: formatRoi(getTopRoi(ourResults.channel_analysis?.roi)),
