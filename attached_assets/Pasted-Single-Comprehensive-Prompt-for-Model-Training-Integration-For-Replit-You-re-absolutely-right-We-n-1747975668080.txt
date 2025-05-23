@@ -1,0 +1,73 @@
+Single Comprehensive Prompt for Model Training Integration
+For Replit: You're absolutely right! We need to integrate our working MMM fixed parameter solution into the actual model training workflow, not just the budget optimizer. The core model training process needs to use our implementation.
+COMPLETE THE FOLLOWING TASKS IN ORDER:
+
+Find the existing model training endpoint/controller:
+
+bashgrep -r "train.*model\|fit.*model\|runModel" server/controllers/ --include="*.ts" --include="*.js" | head -20
+
+Find the Python script currently being called for model training:
+
+bashgrep -r "train_mmm\|fit_mmm\|run_model" server/ --include="*.ts" --include="*.js" | grep -v node_modules | head -20
+
+Open the model training controller file (likely something like modelController.ts or analysisController.ts)
+Update the controller to use our working fit_mmm_fixed_params.py implementation instead of the broken PyMC-Marketing approach. The key changes needed:
+
+typescript// Replace the existing Python script call with:
+const pythonScript = path.join('python_scripts', 'fit_mmm_fixed_params.py');
+
+// Transform the UI model configuration to our format
+const modelConfig = {
+  channels: channelConfig, // From UI model setup
+  data: {
+    date_column: dateColumn,
+    response_column: targetColumn,
+    control_columns: controlColumns
+  },
+  model: {
+    iterations: 100, // For fixed params, this doesn't matter much
+    tuning: 50,
+    chains: 1
+  }
+};
+
+// Save config and run our implementation
+const configPath = path.join('temp', `config_${modelId}.json`);
+await fs.writeFile(configPath, JSON.stringify(modelConfig));
+
+const args = [
+  pythonScript,
+  configPath,
+  dataFilePath,
+  '-o', resultsPath
+];
+
+Create a results transformer to convert our output format to what the UI expects:
+
+typescript// Transform our results to match UI expectations
+function transformMMMResults(ourResults: any) {
+  return {
+    model_id: modelId,
+    metrics: {
+      r_squared: ourResults.model_quality?.r_squared || 0.034, // Calculate from predictions
+      mape: ourResults.model_quality?.mape || 0
+    },
+    channel_contributions: ourResults.channel_analysis?.contribution_percentage,
+    channel_roi: ourResults.channel_analysis?.roi,
+    channel_spend: ourResults.channel_analysis?.spend,
+    parameters: ourResults.fixed_parameters,
+    sales_decomposition: calculateSalesDecomposition(ourResults),
+    recommendations: generateRecommendations(ourResults)
+  };
+}
+
+Report which files you found and what specific changes are needed
+
+DO NOT:
+
+Create new workflows
+Modify the UI components yet
+Change the database schema
+Delete existing functionality
+
+STOP after identifying the model training controller and proposing the specific integration changes needed.
