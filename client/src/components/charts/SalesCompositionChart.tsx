@@ -138,9 +138,9 @@ const SalesCompositionChart: React.FC<SalesCompositionChartProps> = ({
       return (
         <div className="bg-white p-2 border rounded shadow-sm text-sm">
           <p className="font-medium">{data.name}</p>
-          <p>{(value * 100).toFixed(1)}% of total sales</p>
+          <p>{value.toFixed(1)}% of total sales</p>
           {totalSales && (
-            <p>{formatCurrency(totalSales * value)}</p>
+            <p>{formatCurrency(totalSales * (value/100))}</p>
           )}
         </div>
       );
