@@ -1,0 +1,47 @@
+I see the issue! Replit's fix has gone too far in the other direction - now PPCBrand and PPCShopping have 0% contribution and 0x ROI, which is incorrect. Your branded search channels should indeed show high performance.
+The problem is that Replit's fix is artificially capping contributions at 20% of sales, which eliminates the high-performing channels. Let's correct this while keeping your insight about branded search.
+
+Prompt for Replit:
+ACTION REQUIRED: Fix the Ridge regression to properly calculate contributions without artificially limiting high-performing channels
+SPECIFIC INSTRUCTIONS:
+
+EDIT python_scripts/fit_mmm_ridge.py
+FIND the section where incremental_sales is capped at 20% (around line 115):
+
+python# Cap incremental sales at a reasonable percentage of total sales
+max_incremental = total_sales * 0.2  # Assume marketing drives at most 20% of sales
+incremental_sales = min(incremental_sales, max_incremental)
+
+REPLACE with:
+
+python# Don't artificially cap incremental sales - let the model determine the split
+# If the model attributes high sales to marketing, that's valid
+incremental_sales = sum(contributions.values())
+
+# Ensure base + incremental = total by adjusting base
+if incremental_sales > total_sales:
+    # If model predicts more than actual, scale down proportionally
+    scale_factor = total_sales / (base_sales + incremental_sales)
+    base_sales = base_sales * scale_factor
+    incremental_sales = incremental_sales * scale_factor
+else:
+    # Adjust base to ensure base + incremental = total
+    base_sales = total_sales - incremental_sales
+
+ALSO ADD channel type identification for future budget optimization:
+
+python# At the end of the results dictionary, add:
+results["channel_characteristics"] = {
+    "PPCBrand_Spend": {"type": "branded_search", "typically_high_roi": True},
+    "PPCNonBrand_Spend": {"type": "non_branded_search", "typically_high_roi": False},
+    "PPCShopping_Spend": {"type": "shopping_ads", "typically_high_roi": True},
+    "FBReach_Spend": {"type": "social_media", "typically_high_roi": False},
+    "OfflineMedia_Spend": {"type": "traditional_media", "typically_high_roi": False}
+}
+EXPECTED OUTCOME:
+
+Branded search channels will show their naturally high ROI
+No artificial caps on marketing contribution
+Metadata to identify which channels shouldn't be reduced in budget optimization
+
+DO NOT: Artificially limit contributions or ROI values. Let the model show what the data says.
