@@ -1,31 +1,17 @@
 {
   "channels": {
-    "PPCBrand_Spend": {
+    "OfflineMedia_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
       "x0": 60000,
       "l_max": 8
     },
-    "PPCNonBrand_Spend": {
+    "FBDPA_Spend": {
       "alpha": 0.6,
       "L": 1,
-      "k": 0.00005,
-      "x0": 60000,
-      "l_max": 8
-    },
-    "PPCShopping_Spend": {
-      "alpha": 0.6,
-      "L": 1,
-      "k": 0.00005,
-      "x0": 60000,
-      "l_max": 8
-    },
-    "PPCLocal_Spend": {
-      "alpha": 0.6,
-      "L": 1,
-      "k": 0.00005,
-      "x0": 60000,
+      "k": 0.0001,
+      "x0": 50000,
       "l_max": 8
     },
     "PPCPMax_Spend": {
@@ -42,14 +28,28 @@
       "x0": 50000,
       "l_max": 8
     },
-    "FBDPA_Spend": {
+    "PPCLocal_Spend": {
       "alpha": 0.6,
       "L": 1,
-      "k": 0.0001,
-      "x0": 50000,
+      "k": 0.00005,
+      "x0": 60000,
       "l_max": 8
     },
-    "OfflineMedia_Spend": {
+    "PPCShopping_Spend": {
+      "alpha": 0.6,
+      "L": 1,
+      "k": 0.00005,
+      "x0": 60000,
+      "l_max": 8
+    },
+    "PPCNonBrand_Spend": {
+      "alpha": 0.6,
+      "L": 1,
+      "k": 0.00005,
+      "x0": 60000,
+      "l_max": 8
+    },
+    "PPCBrand_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,

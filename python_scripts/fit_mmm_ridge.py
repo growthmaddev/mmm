@@ -30,6 +30,9 @@ def geometric_adstock(x, alpha, l_max):
     Returns:
         Transformed time series with adstock effect
     """
+    # Ensure x is a numpy array
+    x = np.asarray(x, dtype=float)
+    
     y = np.zeros_like(x)
     for l in range(min(len(x), l_max)):
         y[l:] += alpha**l * x[:(len(x)-l)]
@@ -48,6 +51,9 @@ def logistic_saturation(x, L, k, x0):
     Returns:
         Transformed time series with saturation effect
     """
+    # Ensure x is a numpy array
+    x = np.asarray(x, dtype=float)
+    
     return L / (1 + np.exp(-k * (x - x0)))
 
 def preprocess_data(df, config):
