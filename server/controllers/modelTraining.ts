@@ -571,6 +571,10 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
  * This function handles both Ridge regression and fixed parameter MMM formats
  */
 function transformMMMResults(ourResults: any, modelId: number) {
+  console.log('=== DIAGNOSTIC: Raw ourResults from Python ===');
+  console.log(JSON.stringify(ourResults, null, 2));
+  console.log('=== END DIAGNOSTIC ===');
+  
   // Debug log the raw results from Python
   console.log('Raw results from Python:', JSON.stringify(ourResults, null, 2));
 
@@ -760,6 +764,16 @@ function transformMMMResults(ourResults: any, modelId: number) {
     sales_decomp_total: transformedResults.analytics?.sales_decomposition?.total_sales,
     base_percent: transformedResults.analytics?.sales_decomposition?.percent_decomposition?.base
   });
+
+  console.log('=== DIAGNOSTIC: Transformed result being returned ===');
+  console.log(JSON.stringify({
+    model_accuracy: modelAccuracy * 100,
+    hasAnalytics: !!transformedResults.analytics,
+    salesDecomposition: transformedResults.analytics?.sales_decomposition,
+    channelEffectiveness: Object.keys(transformedResults.analytics?.channel_effectiveness_detail || {}),
+    fixedParameters: !!transformedResults.fixed_parameters
+  }, null, 2));
+  console.log('=== END DIAGNOSTIC ===');
 
   return transformedResults;
 }
