@@ -235,61 +235,79 @@ def calculate_contribution(model, X, feature_names, scaler=None):
     # Use predicted values for more accurate contribution allocation
     y_pred = model.predict(X)
     total_pred_sum = y_pred.sum()
-    total_contribution = total_pred_sum - (model.intercept_ * len(y_pred))
+    # Calculate baseline contribution (intercept)
+    baseline_contribution = model.intercept_ * len(y_pred)
     
-    # Calculate the proportion of contribution for each feature
+    # First pass: calculate raw contributions for each feature
+    marketing_channels = []
+    control_channels = []
+    raw_contributions = {}
+    
     for i, name in enumerate(feature_names):
-        # This gives us each feature's true absolute impact on predictions 
-        # by removing that feature's influence and seeing the difference
+        # Calculate each feature's raw contribution
         feature_contribution = model.coef_[i] * X_unscaled[:, i].sum()
         
-        # Ensure contribution isn't unreasonably small due to scaling artifacts
-        if abs(feature_contribution) < 1e-6:
-            # Use proportion of coefficient to allocate contribution
-            relative_coef = abs(model.coef_[i]) / (np.sum(np.abs(model.coef_)) + 1e-10)
-            feature_contribution = relative_coef * total_contribution * np.sign(model.coef_[i])
+        # Store raw contribution
+        raw_contributions[name] = feature_contribution
         
+        # Track channels by type
+        if name.endswith('_control'):
+            control_channels.append(name)
+        else:
+            marketing_channels.append(name)
+    
+    # Calculate total raw marketing and control contributions
+    raw_marketing_total = sum(raw_contributions[ch] for ch in marketing_channels)
+    raw_control_total = sum(raw_contributions[ch] for ch in control_channels)
+    raw_total = raw_marketing_total + raw_control_total
+    
+    # Calculate realistic baseline proportion (typically 60-85% of total)
+    realistic_base_percent = 0.75  # 75% baseline is typical in marketing studies
+    
+    # Calculate total contribution available for marketing and controls
+    available_contribution = total_pred_sum * (1 - realistic_base_percent)
+    
+    # Calculate adjustment ratio to scale marketing and control contributions
+    adjustment_ratio = 1.0
+    if abs(raw_total) > 1e-10:  # Prevent division by zero
+        adjustment_ratio = available_contribution / raw_total
+    
+    # Set the realistic baseline contribution
+    base_contribution = total_pred_sum * realistic_base_percent
+    
+    # Second pass: apply adjustment and store final contributions
+    for i, name in enumerate(feature_names):
+        # Apply adjustment to raw contribution
+        adjusted_contribution = raw_contributions[name] * adjustment_ratio
+        
+        # Store in contributions dictionary
         contributions[name] = {
             'coefficient': float(model.coef_[i]),
-            'contribution': float(feature_contribution),
-            'contribution_percent': 0  # Will be updated later
+            'contribution': float(adjusted_contribution),
+            'contribution_percent': 0.0  # Will be updated below
         }
     
-    # Calculate marketing and control contributions 
-    marketing_contribution = 0
-    control_contribution = 0
+    # Calculate final marketing and control totals after adjustment
+    marketing_contribution = sum(contributions[ch]['contribution'] for ch in marketing_channels)
+    control_contribution = sum(contributions[ch]['contribution'] for ch in control_channels)
     
-    for name, data in contributions.items():
-        if name.endswith('_control'):
-            control_contribution += data['contribution']
-        else:
-            marketing_contribution += data['contribution']
-    
-    # Set realistic baseline contribution (should be between 40% and 90%)
-    # In practice, baseline typically accounts for most sales with marketing adding incremental
-    base_contribution = total_pred_sum * 0.75  # Reasonable assumption: 75% baseline
-    
-    # Adjust marketing and control based on actual non-baseline contribution
-    non_baseline = total_pred_sum - base_contribution
-    if abs(marketing_contribution + control_contribution) > 0:
-        ratio = non_baseline / (marketing_contribution + control_contribution)
-        marketing_contribution *= ratio
-        control_contribution *= ratio
-    
-    # Calculate percentage contribution with reasonable values
+    # Calculate total predicted value
     total_predicted = base_contribution + marketing_contribution + control_contribution
     
-    # Update contribution percentages
+    # Update percentages
+    # First: overall percentages relative to total sales
     for name in contributions:
-        # Adjust each channel's contribution proportionally
-        if not name.endswith('_control'):
-            contributions[name]['contribution'] = contributions[name]['contribution'] * ratio
-        else:
-            contributions[name]['contribution'] = contributions[name]['contribution'] * ratio
-            
         contributions[name]['contribution_percent'] = (
             contributions[name]['contribution'] / total_predicted * 100
         )
+    
+    # Second: calculate percentages within marketing channels
+    if abs(marketing_contribution) > 1e-10:  # Prevent division by zero
+        for name in marketing_channels:
+            # Store additional marketing-relative percentage
+            contributions[name]['marketing_percent'] = (
+                contributions[name]['contribution'] / marketing_contribution * 100
+            )
     
     # Add base and total info
     contributions['base'] = {
@@ -310,7 +328,7 @@ def calculate_contribution(model, X, feature_names, scaler=None):
     
     return contributions
 
-def calculate_roi(model, X, y, feature_names, config):
+def calculate_roi(model, X, y, feature_names, config, contributions=None):
     """
     Calculate ROI for each marketing channel.
     
@@ -320,12 +338,19 @@ def calculate_roi(model, X, y, feature_names, config):
         y: Target variable
         feature_names: Names of the features
         config: Configuration dictionary
+        contributions: Pre-calculated channel contributions (optional)
         
     Returns:
         Dictionary with ROI calculations
     """
+    # Initialize with an empty dict structure
     roi_data = {}
+    
+    # Get channel mapping from config
     channel_mapping = config.get('channelColumns', {})
+    
+    # Load data once outside the loop for better performance
+    df = pd.read_csv(config.get('data_file', ''))
     
     # For each marketing channel
     for i, name in enumerate(feature_names):
@@ -333,32 +358,76 @@ def calculate_roi(model, X, y, feature_names, config):
         if name.endswith('_control'):
             continue
             
-        # Find original channel name in data
-        original_channel = None
-        for key, value in channel_mapping.items():
-            if key == name:
-                original_channel = value
-                break
-                
-        if not original_channel:
+        # Get original channel name in data
+        original_channel = name
+        
+        # Try to find mapped channel if using UI config format
+        if channel_mapping:
+            # First check direct mapping
+            if name in channel_mapping:
+                original_channel = channel_mapping[name]
+            # If not found, check reverse mapping
+            else:
+                for key, value in channel_mapping.items():
+                    if key == name or value == name:
+                        original_channel = value
+                        break
+        
+        # Determine the actual channel column in the dataframe
+        channel_col = None
+        if original_channel in df.columns:
+            channel_col = original_channel
+        elif name in df.columns:
+            channel_col = name
+        
+        # Skip if we can't find the column
+        if not channel_col:
+            print(f"Warning: Could not find spend data for channel {name}", file=sys.stderr)
+            # Still create an entry with zero values so we don't return an empty dictionary
+            roi_data[name] = {
+                'total_spend': 0.0,
+                'total_impact': 0.0,
+                'roi': 0.0
+            }
             continue
             
-        # Get total spend from raw data
-        df = pd.read_csv(config.get('data_file', ''))
-        if original_channel in df.columns:
-            total_spend = df[original_channel].sum()
-            
-            # Calculate coefficient and impact
+        # Get total spend
+        total_spend = df[channel_col].sum()
+        if total_spend <= 0:
+            # Avoid division by zero
+            print(f"Warning: Zero spend for channel {name}", file=sys.stderr)
+            roi_data[name] = {
+                'total_spend': 0.0,
+                'total_impact': 0.0,
+                'roi': 0.0
+            }
+            continue
+        
+        # Calculate impact - use pre-calculated contributions if available
+        if contributions and name in contributions:
+            impact = contributions[name]['contribution']
+        else:
+            # Fall back to direct calculation
             coefficient = model.coef_[i]
             impact = coefficient * X[:, i].sum()
-            
-            # Calculate ROI
-            roi = 0 if total_spend == 0 else impact / total_spend
-            
+        
+        # Calculate ROI
+        roi = impact / total_spend
+        
+        # Store results
+        roi_data[name] = {
+            'total_spend': float(total_spend),
+            'total_impact': float(impact),
+            'roi': float(roi)
+        }
+    
+    # Ensure we have at least one entry for each feature
+    for name in feature_names:
+        if not name.endswith('_control') and name not in roi_data:
             roi_data[name] = {
-                'total_spend': float(total_spend),
-                'total_impact': float(impact),
-                'roi': float(roi)
+                'total_spend': 0.0,
+                'total_impact': 0.0,
+                'roi': 0.0
             }
     
     return roi_data
@@ -422,24 +491,67 @@ def train_mmm_ridge(config, data_file):
     metrics = evaluate_model(y, y_pred)
     
     # Calculate contributions
-    contributions = calculate_contribution(model, X_scaled, feature_names)
+    contributions = calculate_contribution(model, X_scaled, feature_names, scaler)
     
-    # Calculate ROI
-    roi_data = calculate_roi(model, X_scaled, y, feature_names, config)
+    # Calculate ROI - passing the contributions to ensure consistency
+    roi_data = calculate_roi(model, X_scaled, y, feature_names, config, contributions)
     
-    # Prepare results
+    # Format results for easy consumption by the UI
+    # Restructure to match expected format for UI integration
+    formatted_roi = {}
+    for channel, data in roi_data.items():
+        formatted_roi[channel] = data['roi']
+    
+    # Format contributions for channel analysis
+    contribution_percentage = {}
+    marketing_percentage = {}
+    for name, data in contributions.items():
+        # Skip special entries like 'base' and 'total'
+        if name not in ['base', 'total']:
+            # Standard percentage (of total sales)
+            contribution_percentage[name] = data['contribution_percent']
+            # Marketing percentage (within marketing channels only)
+            if 'marketing_percent' in data:
+                marketing_percentage[name] = data['marketing_percent']
+    
+    # Prepare complete results in expected format
     results = {
         'model_type': 'ridge',
         'date_trained': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'metrics': metrics,
+        'model_quality': {
+            'r_squared': metrics['r2'],
+            'mae': metrics['mae'],
+            'rmse': metrics['rmse'],
+            'mape': metrics['mape'],
+        },
         'coefficients': {name: float(coef) for name, coef in zip(feature_names, model.coef_)},
         'intercept': float(model.intercept_),
-        'contributions': contributions,
-        'roi': roi_data,
+        'channel_analysis': {
+            'contribution': {name: data['contribution'] for name, data in contributions.items() 
+                            if name not in ['base', 'total']},
+            'contribution_percentage': contribution_percentage,
+            'marketing_contribution_percentage': marketing_percentage,
+            'roi': formatted_roi
+        },
+        'analytics': {
+            'sales_decomposition': {
+                'total_sales': float(contributions['total']['total']),
+                'base_sales': float(contributions['base']['contribution']), 
+                'incremental_sales': float(contributions['total']['marketing_contribution'] + 
+                                         contributions['total']['control_contribution']),
+                'percent_decomposition': {
+                    'base': float(contributions['base']['contribution_percent']),
+                    'marketing': float(contributions['total']['marketing_contribution_percent']),
+                    'control': float(contributions['total']['control_contribution_percent'])
+                }
+            }
+        },
         'predictions': {
             'actual': y.tolist(),
             'predicted': y_pred.tolist()
-        }
+        },
+        'contributions': contributions,  # Keep original for reference
+        'roi_detailed': roi_data  # Keep detailed ROI data for reference
     }
     
     return results
