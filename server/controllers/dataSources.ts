@@ -34,10 +34,12 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
       console.log("File content preview:", fileContent.substring(0, 200));
       
       // Use proper CSV parser instead of manual splitting
+      // Enhanced for MMM requirements with better handling of European date formats (DD/MM/YYYY)
       const parser = csvParse({ 
         delimiter: ',',
         columns: true,
-        skip_empty_lines: true 
+        skip_empty_lines: true,
+        trim: true // Trim whitespace from values for better parsing
       });
       
       // Parse the CSV content
@@ -79,13 +81,35 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
         // Determine column type
         let type = 'string';
         
-        if (header.toLowerCase().includes('date')) {
+        // Enhanced date detection for MMM models - handling DD/MM/YYYY format
+        if (header.toLowerCase().includes('date') ||
+            examples.some(ex => {
+              const dateStr = String(ex).trim();
+              // Check for DD/MM/YYYY pattern which is common in marketing data
+              if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+                console.log(`Detected DD/MM/YYYY date format in column: ${header}`);
+                return true;
+              }
+              // Check for standard ISO format
+              if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                return true;
+              }
+              // Fallback to standard date parsing
+              return !isNaN(Date.parse(dateStr));
+            })) {
           type = 'date';
+          console.log(`Detected date column: ${header} - Example: ${examples[0]}`);
         } else if (
           examples.length > 0 && 
-          examples.every(ex => !isNaN(Number(ex.replace(/,/g, ''))))
+          examples.every(ex => {
+            // Enhanced number detection handling comma-separated numbers
+            // (Common in marketing spend data like: "2,685.09")
+            const numStr = String(ex).replace(/,/g, '').trim();
+            return !isNaN(Number(numStr)) && numStr.length > 0;
+          })
         ) {
           type = 'number';
+          console.log(`Detected numeric column: ${header} - Example: ${examples[0]}`);
         }
         
         columns.push({
@@ -258,13 +282,32 @@ const extractColumnsFromCsv = async (filePath: string): Promise<any[]> => {
           const examples = sampleData.map(record => record[name]);
           let type = 'string';
           
-          // Try to determine if it's a date
-          if (examples.some(ex => !isNaN(Date.parse(String(ex))))) {
+          // Enhanced date detection for MMM - specifically handling DD/MM/YYYY format
+          if (name.toLowerCase().includes('date') || 
+              examples.some(ex => {
+                // Try to detect common date formats including DD/MM/YYYY
+                const dateStr = String(ex).trim();
+                // Check for DD/MM/YYYY pattern
+                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+                  return true;
+                }
+                // Check for standard ISO format
+                if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                  return true;
+                }
+                // Fallback to Date.parse
+                return !isNaN(Date.parse(dateStr));
+              })) {
             type = 'date';
+            console.log(`Detected date column: ${name} - Example: ${examples[0]}`);
           }
-          // Try to determine if it's a number
-          else if (examples.every(ex => !isNaN(Number(ex)))) {
+          // Enhanced number detection for MMM - handling comma-separated numbers
+          else if (examples.every(ex => {
+            const numStr = String(ex).replace(/,/g, '').trim();
+            return !isNaN(Number(numStr)) && numStr.length > 0;
+          })) {
             type = 'number';
+            console.log(`Detected numeric column: ${name} - Example: ${examples[0]}`);
           }
           
           columns.push({
