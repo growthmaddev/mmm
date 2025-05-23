@@ -737,7 +737,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
             channel, 
             { 
               contribution: Number(contribution), 
-              roi: Number(ourResults.summary.channel_analysis?.roi?.[channel] || 0)
+              roi: Number(ourResults.channel_analysis?.roi?.[channel] || 0)
             }
           ]
         )
