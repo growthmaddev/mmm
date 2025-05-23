@@ -1,0 +1,40 @@
+EXPLANATION FOR YOU:
+Perfect diagnostic data! I can now see all the issues:
+
+Model accuracy: The Python returns r_squared: 0.5812 (58.12%) but the transformation is somehow defaulting to 0.034 (3.4%)
+Spend data: Python has it in roi_detailed section but it's not being mapped to channel_effectiveness_detail
+Media Mix Curves: Looking for model.config which doesn't exist - the saturation params aren't being passed through
+Budget optimizer: Likely needs the config data that's missing
+
+
+PROMPT FOR REPLIT AGENT:
+Now I can see the exact issues. Let's fix the transformMMMResults function to properly map all the data.
+OPEN FILE: server/controllers/modelTraining.ts
+FIND THE SECTION starting with function transformMMMResults(ourResults: any, modelId: number) (around line 440)
+LOOK FOR THIS LINE (should be near the beginning):
+typescriptconst modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
+CHANGE IT TO:
+typescriptconst modelAccuracy = ourResults.summary?.model_quality?.r_squared || ourResults.model_quality?.r_squared || 0.034;
+THEN FIND THE SECTION where channel_effectiveness_detail is created (look for channel_effectiveness_detail: Object.fromEntries)
+REPLACE THAT ENTIRE SECTION with:
+typescriptchannel_effectiveness_detail: Object.fromEntries(
+  Object.entries(ourResults.summary?.channel_analysis?.roi || ourResults.channel_analysis?.roi || {}).map(
+    ([channel, roi]) => {
+      // Get spend from roi_detailed if available
+      const roiDetailed = ourResults.roi_detailed?.[channel] || ourResults.summary?.roi_detailed?.[channel];
+      const spend = roiDetailed?.total_spend || 0;
+      
+      return [
+        channel,
+        {
+          roi: Number(roi),
+          spend: spend,
+          actual_spend: spend, // Add both for compatibility
+          contribution: channelContributions[channel] || 0,
+          contribution_percent: percentChannelContributions[channel] || 0
+        }
+      ];
+    }
+  )
+),
+STOP after making these two changes. Do not make any other modifications yet.

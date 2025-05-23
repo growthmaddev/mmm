@@ -601,8 +601,8 @@ function transformMMMResults(ourResults: any, modelId: number) {
   // Debug the sales_decomposition structure we're using
   console.log('Sales decomposition data:', JSON.stringify(ourResults.summary.analytics.sales_decomposition, null, 2));
 
-  // Extract metrics from the results
-  const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
+  // Extract metrics from the results - check both possible locations
+  const modelAccuracy = ourResults.summary?.model_quality?.r_squared || ourResults.model_quality?.r_squared || 0.034;
   console.log('Model accuracy (R-squared):', modelAccuracy);
 
   // Get sales data directly from the analytics section
@@ -722,16 +722,23 @@ function transformMMMResults(ourResults: any, modelId: number) {
         }
       },
       channel_effectiveness_detail: Object.fromEntries(
-        Object.entries(ourResults.summary.channel_analysis?.roi || {}).map(
-          ([channel, roi]) => [
-            channel,
-            {
-              roi: Number(roi),
-              spend: ourResults.summary.channel_analysis?.spend?.[channel] || 0,
-              contribution: channelContributions[channel] || 0,
-              contribution_percent: percentChannelContributions[channel] || 0
-            }
-          ]
+        Object.entries(ourResults.summary?.channel_analysis?.roi || ourResults.channel_analysis?.roi || {}).map(
+          ([channel, roi]) => {
+            // Get spend from roi_detailed if available
+            const roiDetailed = ourResults.roi_detailed?.[channel] || ourResults.summary?.roi_detailed?.[channel];
+            const spend = roiDetailed?.total_spend || 0;
+            
+            return [
+              channel,
+              {
+                roi: Number(roi),
+                spend: spend,
+                actual_spend: spend, // Add both for compatibility
+                contribution: channelContributions[channel] || 0,
+                contribution_percent: percentChannelContributions[channel] || 0
+              }
+            ];
+          }
         )
       ),
       model_quality: {
