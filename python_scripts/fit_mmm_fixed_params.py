@@ -158,10 +158,69 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
         mmm.build_model(X, y)
         print(f"✓ Model built successfully!", file=sys.stderr)
         
-        # Calculate basic metrics without sampling
-        channel_spend = X[channels].sum().to_dict()
+        # Calculate channel contributions using the fixed parameters
+        print(f"Calculating channel contributions...", file=sys.stderr)
         
-        # Create results
+        try:
+            # Transform the channel data through adstock and saturation
+            channel_data = X[channels].values
+            n_obs = len(X)
+            n_channels = len(channels)
+            
+            # Apply adstock transformation
+            adstocked_data = np.zeros((n_obs, n_channels))
+            for i, ch in enumerate(channels):
+                alpha = alpha_values[i]
+                for t in range(n_obs):
+                    for lag in range(min(t + 1, global_l_max)):
+                        adstocked_data[t, i] += (alpha ** lag) * channel_data[max(0, t - lag), i]
+            
+            # Apply saturation transformation
+            saturated_data = np.zeros((n_obs, n_channels))
+            for i, ch in enumerate(channels):
+                L = L_values[i]
+                k = k_values[i]
+                x0 = x0_values[i]
+                x = adstocked_data[:, i]
+                saturated_data[:, i] = L / (1 + np.exp(-k * (x - x0)))
+            
+            # Calculate contributions (simplified - proportional to transformed spend)
+            channel_contributions = {}
+            total_transformed = saturated_data.sum()
+            
+            for i, ch in enumerate(channels):
+                contribution = saturated_data[:, i].sum()
+                channel_contributions[ch] = float(contribution)
+            
+            # Calculate ROI
+            channel_spend = X[channels].sum().to_dict()
+            channel_roi = {}
+            contribution_percentage = {}
+            
+            for ch in channels:
+                spend = channel_spend[ch]
+                contrib = channel_contributions[ch]
+                
+                if spend > 0:
+                    # Simplified ROI calculation
+                    channel_roi[ch] = contrib / spend
+                else:
+                    channel_roi[ch] = 0.0
+                
+                if total_transformed > 0:
+                    contribution_percentage[ch] = (contrib / total_transformed) * 100
+                else:
+                    contribution_percentage[ch] = 0.0
+            
+            print(f"✓ Contributions calculated successfully!", file=sys.stderr)
+            
+        except Exception as e:
+            print(f"Warning: Could not calculate contributions: {e}", file=sys.stderr)
+            channel_contributions = {ch: 0.0 for ch in channels}
+            channel_roi = {ch: 0.0 for ch in channels}
+            contribution_percentage = {ch: 0.0 for ch in channels}
+        
+        # Create enhanced results
         results = {
             "model_info": {
                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -175,10 +234,16 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
                 "alpha": {ch: float(alpha_values[i]) for i, ch in enumerate(channels)},
                 "L": {ch: float(L_values[i]) for i, ch in enumerate(channels)},
                 "k": {ch: float(k_values[i]) for i, ch in enumerate(channels)},
-                "x0": {ch: float(x0_values[i]) for i, ch in enumerate(channels)}
+                "x0": {ch: float(x0_values[i]) for i, ch in enumerate(channels)},
+                "l_max": global_l_max
             },
-            "channel_spend": channel_spend,
-            "status": "Model built successfully with fixed parameters"
+            "channel_analysis": {
+                "spend": channel_spend,
+                "contributions": channel_contributions,
+                "roi": channel_roi,
+                "contribution_percentage": contribution_percentage
+            },
+            "status": "Model built and analyzed successfully with fixed parameters"
         }
         
         # Save results

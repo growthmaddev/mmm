@@ -1,0 +1,69 @@
+{
+  "model_info": {
+    "date": "2025-05-23 00:32:52",
+    "config_file": "test_config_quick.json",
+    "data_file": "attached_assets/dankztestdata_v2.csv",
+    "data_points": 90,
+    "channels": [
+      "PPCBrand_Spend",
+      "PPCNonBrand_Spend",
+      "PPCShopping_Spend",
+      "FBReach_Spend"
+    ],
+    "approach": "fixed_parameters"
+  },
+  "fixed_parameters": {
+    "alpha": {
+      "PPCBrand_Spend": 0.65,
+      "PPCNonBrand_Spend": 0.55,
+      "PPCShopping_Spend": 0.75,
+      "FBReach_Spend": 0.85
+    },
+    "L": {
+      "PPCBrand_Spend": 1.0,
+      "PPCNonBrand_Spend": 1.0,
+      "PPCShopping_Spend": 1.0,
+      "FBReach_Spend": 1.0
+    },
+    "k": {
+      "PPCBrand_Spend": 5e-05,
+      "PPCNonBrand_Spend": 8e-05,
+      "PPCShopping_Spend": 3e-05,
+      "FBReach_Spend": 2e-05
+    },
+    "x0": {
+      "PPCBrand_Spend": 50000.0,
+      "PPCNonBrand_Spend": 30000.0,
+      "PPCShopping_Spend": 70000.0,
+      "FBReach_Spend": 100000.0
+    },
+    "l_max": 14
+  },
+  "channel_analysis": {
+    "spend": {
+      "PPCBrand_Spend": 49749.11,
+      "PPCNonBrand_Spend": 180947.11,
+      "PPCShopping_Spend": 78320.81999999999,
+      "FBReach_Spend": 109450.48999999999
+    },
+    "contributions": {
+      "PPCBrand_Spend": 7.332596231782118,
+      "PPCNonBrand_Spend": 10.376042763004993,
+      "PPCShopping_Spend": 10.733458616265134,
+      "FBReach_Spend": 12.122686115107184
+    },
+    "roi": {
+      "PPCBrand_Spend": 0.00014739150573310996,
+      "PPCNonBrand_Spend": 5.734295929349186e-05,
+      "PPCShopping_Spend": 0.0001370447681250673,
+      "FBReach_Spend": 0.00011075954173532878
+    },
+    "contribution_percentage": {
+      "PPCBrand_Spend": 18.076261126602464,
+      "PPCNonBrand_Spend": 25.578942644069098,
+      "PPCShopping_Spend": 26.460041519568954,
+      "FBReach_Spend": 29.884754709759502
+    }
+  },
+  "status": "Model built and analyzed successfully with fixed parameters"
+}
