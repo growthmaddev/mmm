@@ -1,0 +1,40 @@
+{
+  "channels": {
+    "PPCBrand_Spend": {
+      "current_spend": 49749.11,
+      "alpha": 0.65,
+      "L": 1.0,
+      "k": 5e-05,
+      "x0": 50000.0,
+      "l_max": 14
+    },
+    "PPCNonBrand_Spend": {
+      "current_spend": 180947.11,
+      "alpha": 0.55,
+      "L": 1.0,
+      "k": 8e-05,
+      "x0": 30000.0,
+      "l_max": 14
+    },
+    "PPCShopping_Spend": {
+      "current_spend": 78320.81999999999,
+      "alpha": 0.75,
+      "L": 1.0,
+      "k": 3e-05,
+      "x0": 70000.0,
+      "l_max": 14
+    },
+    "FBReach_Spend": {
+      "current_spend": 109450.48999999999,
+      "alpha": 0.85,
+      "L": 1.0,
+      "k": 2e-05,
+      "x0": 100000.0,
+      "l_max": 14
+    }
+  },
+  "budget": {
+    "total": 502161.03599999996,
+    "min_per_channel": 100
+  }
+}
