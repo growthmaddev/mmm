@@ -8,6 +8,7 @@ import HomePage from "./pages/home";
 import LoginPage from "./pages/auth/login";
 import RegisterPage from "./pages/auth/register";
 import Dashboard from "./pages/dashboard";
+import OptimizationPage from "./pages/dashboard/OptimizationPage";
 import Projects from "./pages/projects";
 import CreateProject from "./pages/projects/create";
 import ProjectDetails from "./pages/projects/[id]/index";
@@ -30,6 +31,7 @@ function App() {
           
           {/* Dashboard routes */}
           <Route path="/dashboard" component={Dashboard} />
+          <Route path="/dashboard/optimization" component={OptimizationPage} />
           
           {/* Projects routes */}
           <Route path="/projects" component={Projects} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { apiRequest } from "@/lib/queryClient";
-import { CalendarDays, BarChart3, PieChart, AlertTriangle, TrendingUp } from "lucide-react";
+import { CalendarDays, BarChart3, PieChart, AlertTriangle, TrendingUp, DollarSign } from "lucide-react";
 
 export default function Dashboard() {
   const [location, navigate] = useLocation();
