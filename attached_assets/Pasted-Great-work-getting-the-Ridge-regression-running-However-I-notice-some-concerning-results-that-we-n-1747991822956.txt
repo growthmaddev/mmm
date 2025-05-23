@@ -1,0 +1,90 @@
+Great work getting the Ridge regression running! However, I notice some concerning results that we need to address:
+Issues with Current Results:
+
+R-squared of 7.7% - Very low, meaning the model explains only 7.7% of sales variance
+Extremely high ROI values (406x for PPCBrand) - Unrealistically high
+100% baseline sales - The model thinks all sales are organic, not from marketing
+
+These contradictory results suggest the model needs refinement. Let me help fix this.
+
+Prompt for Replit:
+ACTION REQUIRED: Update the Ridge regression MMM to fix the baseline calculation and improve model performance
+SPECIFIC INSTRUCTIONS:
+
+EDIT python_scripts/fit_mmm_ridge.py
+FIND the baseline calculation section (around line 95-120)
+REPLACE the entire contribution and baseline calculation section with:
+
+python    # Calculate predictions and metrics
+    y_pred = model.predict(X_scaled)
+    r2 = r2_score(y, y_pred)
+    
+    # Calculate ACTUAL contributions using the model
+    # First, get the baseline (intercept only prediction)
+    baseline_pred = np.full(len(y), model.intercept_)
+    
+    # Calculate channel contributions
+    feature_names = list(X_transformed.columns)
+    contributions = {}
+    channel_contributions_raw = {}
+    
+    for i, feature in enumerate(feature_names):
+        if feature in channels:
+            # Channel contribution = coefficient * transformed values
+            channel_effect = model.coef_[i] * X_scaled[:, i]
+            channel_contributions_raw[feature] = np.sum(channel_effect)
+            # Store positive contribution
+            contributions[feature] = abs(channel_contributions_raw[feature])
+    
+    # Calculate sales decomposition properly
+    total_sales = float(np.sum(y))
+    base_sales = float(np.sum(baseline_pred))
+    
+    # Incremental sales = sum of all positive channel effects
+    incremental_sales = sum(contributions.values())
+    
+    # Normalize contributions to match incremental sales
+    total_contribution = sum(contributions.values())
+    if total_contribution > 0:
+        contribution_percentage = {
+            ch: (contrib / total_contribution * 100) 
+            for ch, contrib in contributions.items()
+        }
+    else:
+        contribution_percentage = {ch: 0.0 for ch in channels}
+    
+    # Calculate actual spend
+    channel_spend = {}
+    for ch in channels:
+        channel_spend[ch] = float(np.sum(np.array(df[ch].values, dtype=float)))
+    
+    # Calculate ROI based on actual sales impact
+    channel_roi = {}
+    for ch in channels:
+        if channel_spend[ch] > 0 and ch in contributions:
+            # ROI = (sales driven by channel) / (spend on channel)
+            sales_from_channel = (contributions[ch] / total_contribution) * incremental_sales if total_contribution > 0 else 0
+            channel_roi[ch] = sales_from_channel / channel_spend[ch]
+        else:
+            channel_roi[ch] = 0.0
+
+ALSO UPDATE the sales decomposition section to properly calculate percentages:
+
+python    # Calculate proper percentages
+    if total_sales > 0:
+        actual_base_percent = (base_sales / total_sales) * 100
+        actual_incremental_percent = (incremental_sales / total_sales) * 100
+        
+        # Normalize to ensure they sum to 100%
+        total_pct = actual_base_percent + actual_incremental_percent
+        if total_pct > 0:
+            base_percent = (actual_base_percent / total_pct) * 100
+            channel_percent_total = (actual_incremental_percent / total_pct) * 100
+        else:
+            base_percent = 100.0
+            channel_percent_total = 0.0
+    else:
+        base_percent = 100.0
+        channel_percent_total = 0.0
+EXPECTED OUTCOME: This will fix the baseline calculation and provide more realistic ROI values based on actual model predictions.
+DO NOT: Change any other parts of the code. Focus only on fixing the contribution and baseline calculations.
