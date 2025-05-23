@@ -81,20 +81,31 @@ export const getDataSource = async (req: AuthRequest, res: Response) => {
         // Determine column type
         let type = 'string';
         
+        console.log(`\n=== COLUMN DETECTION for ${header} ===`);
+        console.log('Header name:', header);
+        
         // First, check for marketing spend/cost columns by name pattern
         const isMarketingSpendColumn = header.toLowerCase().includes('spend') || 
                                        header.toLowerCase().includes('cost');
+        console.log('Is marketing spend column?', isMarketingSpendColumn);
+        console.log('Examples:', examples);
         
-        // Enhanced number detection - prioritize numeric check for marketing spend columns
-        if (isMarketingSpendColumn || 
-            (examples.length > 0 && 
+        // FORCE numeric type for marketing spend columns, regardless of content
+        if (isMarketingSpendColumn) {
+          type = 'number';
+          console.log(`FORCED numeric column for marketing spend: ${header}`);
+        }
+        // Enhanced number detection - check if all examples are valid numbers
+        else if (examples.length > 0 && 
             examples.every(ex => {
               // Enhanced number detection handling comma-separated numbers
               // (Common in marketing spend data like: "2,685.09")
               const numStr = String(ex).replace(/,/g, '').trim();
-              return !isNaN(Number(numStr)) && numStr.length > 0;
+              const isValidNumber = !isNaN(Number(numStr)) && numStr.length > 0;
+              console.log(`  - Example "${ex}" -> cleaned "${numStr}" is valid number:`, isValidNumber);
+              return isValidNumber;
             }))
-        ) {
+        {
           type = 'number';
           console.log(`Detected numeric column: ${header} - Example: ${examples[0]}`);
         }
