@@ -567,12 +567,13 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
 };
 
 /**
- * Transform our fixed parameter MMM results to match UI expectations
+ * Transform our MMM results to match UI expectations
+ * This function handles both Ridge regression and fixed parameter MMM formats
  */
 function transformMMMResults(ourResults: any, modelId: number) {
   // Debug log the raw results from Python
   console.log('Raw results from Python:', JSON.stringify(ourResults, null, 2));
-  
+
   // Check for results in different possible structures
   if (!ourResults) {
     console.warn('No results provided to transformer');
@@ -581,7 +582,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
       error: 'No model results available'
     };
   }
-  
+
   // Make sure we have results to transform
   if (!ourResults.summary?.analytics?.sales_decomposition) {
     console.warn('Invalid results format from fixed parameter MMM');
@@ -593,15 +594,15 @@ function transformMMMResults(ourResults: any, modelId: number) {
 
   // Debug the sales_decomposition structure we're using
   console.log('Sales decomposition data:', JSON.stringify(ourResults.summary.analytics.sales_decomposition, null, 2));
-  
+
   // Extract metrics from the results
   const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
   console.log('Model accuracy (R-squared):', modelAccuracy);
-  
+
   // Get sales data directly from the analytics section
   let totalSales = 0;
   let totalSpend = 0;
-  
+
   if (ourResults.summary.analytics?.sales_decomposition?.total_sales) {
     totalSales = ourResults.summary.analytics.sales_decomposition.total_sales;
     console.log('Using total sales from analytics:', totalSales);
@@ -611,7 +612,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
       totalSpend += Number(spend || 0);
     });
     console.log('Total spend calculated:', totalSpend);
-    
+
     // Estimate if needed
     totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
     console.log('Estimated total sales (3x spend):', totalSales);
@@ -619,27 +620,25 @@ function transformMMMResults(ourResults: any, modelId: number) {
     totalSales = 1000000; // Fallback value if no spend data
     console.log('Using fallback total sales value:', totalSales);
   }
-  
+
   console.log('DEBUG transformMMMResults:');
   console.log('  Total spend:', totalSpend);
   console.log('  Total sales:', totalSales);
-  
+
   // Get sales values directly from analytics if available
   let baseSales = 0;
   let incrementalSales = 0;
   let basePercent = 0;
   const channelContributions: Record<string, number> = {};
   const percentChannelContributions: Record<string, number> = {};
-  
+
   if (ourResults.summary.analytics?.sales_decomposition) {
     // Use actual values from analytics
     baseSales = ourResults.summary.analytics.sales_decomposition.base_sales || 0;
     incrementalSales = ourResults.summary.analytics.sales_decomposition.incremental_sales || 0;
     basePercent = ourResults.summary.analytics.sales_decomposition.percent_decomposition?.base || 0;
-    
+
     // Convert marketing percent breakdown to channel contributions
-    // The Python model outputs percent_decomposition with base, marketing, control
-    // The frontend expects base and channels
     if (ourResults.summary.channel_analysis?.contribution_percentage) {
       Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
         const contribution = incrementalSales * (Number(percentage) / 100);
@@ -654,7 +653,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
                 totalSales * 0.3; // 30% baseline
     incrementalSales = totalSales - baseSales;
     basePercent = (baseSales / totalSales) * 100;
-    
+
     // Calculate channel contributions using old method
     if (ourResults.summary.channel_analysis?.contribution_percentage) {
       Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
@@ -664,17 +663,17 @@ function transformMMMResults(ourResults: any, modelId: number) {
       });
     }
   }
-  
+
   console.log('  Base sales:', baseSales);
   console.log('  Incremental sales:', incrementalSales);
   console.log('  Channel contributions:', channelContributions);
   console.log('  Contribution percentages:', percentChannelContributions);
-  
+
   // Generate recommendations based on ROI and contribution
   const recommendations = generateRecommendations(ourResults.summary.channel_analysis);
-  
-  // Create a format compatible with the UI expectations
-  return {
+
+  // Create the final transformed result
+  const transformedResults = {
     success: true,
     model_id: modelId,
     model_accuracy: modelAccuracy * 100, // Convert from decimal to percentage
@@ -685,16 +684,16 @@ function transformMMMResults(ourResults: any, modelId: number) {
     decrease_channel: getDecreaseRecommendation(ourResults.summary.channel_analysis),
     decrease_roi: formatRoi(getDecreaseRoi(ourResults.summary.channel_analysis)),
     optimize_channel: getOptimizeRecommendation(ourResults.summary.channel_analysis),
-    
+
     // Standard summary object for backward compatibility
     summary: {
       channels: Object.fromEntries(
-        Object.entries(ourResults.summary.channel_analysis.contribution_percentage || {}).map(
+        Object.entries(ourResults.summary.channel_analysis?.contribution_percentage || {}).map(
           ([channel, contribution]) => [
             channel, 
             { 
               contribution: Number(contribution), 
-              roi: Number(ourResults.summary.channel_analysis.roi?.[channel] || 0)
+              roi: Number(ourResults.summary.channel_analysis?.roi?.[channel] || 0)
             }
           ]
         )
@@ -704,7 +703,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
         rmse: ourResults.model_quality?.rmse || 0
       }
     },
-    
+
     // Enhanced analytics format that the UI expects
     analytics: {
       sales_decomposition: {
@@ -734,79 +733,16 @@ function transformMMMResults(ourResults: any, modelId: number) {
         mape: ourResults.model_quality?.mape || 0
       }
     },
-    
+
     // Store original parameters for reference
     fixed_parameters: ourResults.fixed_parameters,
     model_results: ourResults.model_results,
     recommendations: recommendations,
-    
+
     // Create config information for UI components
     config: ourResults.config || {}
   };
 
-  // We've already returned our results above, so this code is no longer needed
-  // Removing the duplicated return statement
-    
-    // Summary structure that other parts of the UI expect
-    summary: {
-      channels: Object.fromEntries(
-        Object.entries(ourResults.summary.channel_analysis?.contribution_percentage || {}).map(
-          ([channel, contribution]) => [
-            channel, 
-            { 
-              contribution: Number(contribution), 
-              roi: Number(ourResults.summary.channel_analysis?.roi?.[channel] || 0)
-            }
-          ]
-        )
-      ),
-      fit_metrics: {
-        r_squared: modelAccuracy,
-        rmse: ourResults.model_quality?.rmse || 0
-      }
-    },
-    
-    // Analytics structure with detailed sales decomposition
-    analytics: {
-      sales_decomposition: {
-        total_sales: totalSales,
-        base_sales: baseSales,
-        incremental_sales: incrementalSales,
-        percent_decomposition: {
-          base: (baseSales / totalSales) * 100,
-          channels: percentChannelContributions
-        }
-      },
-      channel_effectiveness_detail: Object.fromEntries(
-        Object.entries(ourResults.channel_analysis?.roi || {}).map(
-          ([channel, roi]) => [
-            channel,
-            {
-              roi: Number(roi),
-              spend: ourResults.channel_analysis?.spend?.[channel] || 0,
-              contribution: channelContributions[channel] || 0,
-              contribution_percent: percentChannelContributions[channel] || 0
-            }
-          ]
-        )
-      ),
-      model_quality: {
-        r_squared: modelAccuracy,
-        mape: ourResults.model_quality?.mape || 0
-      }
-    },
-    
-    // Configuration data for Media Mix Curves
-    config: config,
-    
-    // Recommendations for UI
-    recommendations: recommendations,
-    
-    // Add the fixed parameters and model results for reference
-    fixed_parameters: ourResults.fixed_parameters || ourResults.summary?.fixed_parameters,
-    model_results: ourResults.model_results
-  };
-  
   console.log('Transformed results structure:', JSON.stringify({
     model_id: transformedResults.model_id,
     analytics: {
@@ -816,8 +752,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
       channel_count: Object.keys(transformedResults.analytics.channel_effectiveness_detail).length
     }
   }, null, 2));
-  
-  // Debug: Log what we're returning to ensure all required fields are present
+
   console.log('Transformer returning:', {
     has_analytics: !!transformedResults.analytics,
     has_config: !!transformedResults.config,
