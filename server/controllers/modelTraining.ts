@@ -636,21 +636,21 @@ function transformMMMResults(ourResults: any, modelId: number) {
     // For Ridge regression, extract the actual contribution values
     if (isRidgeRegression) {
       // Get channel contributions (exclude base and total)
-      Object.entries(ourResults.channel_analysis?.contribution || {}).forEach(([channel, value]: [string, any]) => {
+      Object.entries(ourResults.summary?.channel_analysis?.contribution || {}).forEach(([channel, value]: [string, any]) => {
         if (channel !== 'base' && channel !== 'total') {
           channelContributions[channel] = Number(value);
         }
       });
       
       // Get contribution percentages
-      Object.entries(ourResults.channel_analysis?.contribution_percentage || {}).forEach(([channel, value]: [string, any]) => {
+      Object.entries(ourResults.summary?.channel_analysis?.contribution_percentage || {}).forEach(([channel, value]: [string, any]) => {
         if (channel !== 'base' && channel !== 'total') {
           percentChannelContributions[channel] = Number(value);
         }
       });
       
       // Get ROI values
-      Object.entries(ourResults.channel_analysis?.roi || {}).forEach(([channel, value]: [string, any]) => {
+      Object.entries(ourResults.summary?.channel_analysis?.roi || {}).forEach(([channel, value]: [string, any]) => {
         channelROIs[channel] = Number(value);
       });
       
@@ -664,17 +664,17 @@ function transformMMMResults(ourResults: any, modelId: number) {
       }
     }
     // For other formats
-    else if (ourResults.channel_analysis) {
+    else if (ourResults.summary?.channel_analysis) {
       // Extract data from channel_analysis
-      Object.entries(ourResults.channel_analysis.contribution_percentage || {}).forEach(([channel, value]: [string, any]) => {
+      Object.entries(ourResults.summary.channel_analysis.contribution_percentage || {}).forEach(([channel, value]: [string, any]) => {
         percentChannelContributions[channel] = Number(value);
       });
       
-      Object.entries(ourResults.channel_analysis.roi || {}).forEach(([channel, value]: [string, any]) => {
+      Object.entries(ourResults.summary.channel_analysis.roi || {}).forEach(([channel, value]: [string, any]) => {
         channelROIs[channel] = Number(value);
       });
       
-      Object.entries(ourResults.channel_analysis.spend || {}).forEach(([channel, value]: [string, any]) => {
+      Object.entries(ourResults.summary.channel_analysis.spend || {}).forEach(([channel, value]: [string, any]) => {
         channelSpends[channel] = Number(value);
       });
     }
@@ -794,12 +794,12 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
 }
-        Object.entries(ourResults.channel_analysis?.roi || {}).map(
+        Object.entries(ourResults.summary?.channel_analysis?.roi || {}).map(
           ([channel, roi]) => [
             channel,
             {
               roi: Number(roi),
-              spend: ourResults.channel_analysis?.spend?.[channel] || 0,
+              spend: ourResults.summary?.channel_analysis?.spend?.[channel] || 0,
               contribution: channelContributions[channel] || 0,
               contribution_percent: percentChannelContributions[channel] || 0
             }
