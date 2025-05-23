@@ -794,34 +794,6 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
 }
-        Object.entries(ourResults.summary?.channel_analysis?.roi || {}).map(
-          ([channel, roi]) => [
-            channel,
-            {
-              roi: Number(roi),
-              spend: ourResults.summary?.channel_analysis?.spend?.[channel] || 0,
-              contribution: channelContributions[channel] || 0,
-              contribution_percent: percentChannelContributions[channel] || 0
-            }
-          ]
-        )
-      ),
-      model_quality: {
-        r_squared: modelAccuracy,
-        mape: ourResults.model_quality?.mape || 0
-      }
-    },
-    
-    // Configuration data for Media Mix Curves
-    config: config,
-    
-    // Recommendations for UI
-    recommendations: recommendations,
-    
-    // Add the fixed parameters and model results for reference
-    fixed_parameters: ourResults.fixed_parameters || ourResults.summary?.fixed_parameters,
-    model_results: ourResults.model_results
-  };
   
   console.log('Transformed results structure:', JSON.stringify({
     model_id: transformedResults.model_id,
