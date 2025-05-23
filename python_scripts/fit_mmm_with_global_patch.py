@@ -60,7 +60,9 @@ def load_data(data_file, date_column="date"):
     
     # Parse dates with dayfirst=True for DD/MM/YYYY format
     if date_column in df.columns:
-        df[date_column] = pd.to_datetime(df[date_column], dayfirst=True)
+        df[date_column] = pd.to_datetime(df[date_column], dayfirst=True, format='mixed')
+        print(f"Parsed dates with dayfirst=True: {df[date_column].dtype}", file=sys.stderr)
+        print(f"Date range: {df[date_column].min()} to {df[date_column].max()}", file=sys.stderr)
     
     return df
 
@@ -105,16 +107,28 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None, results_
     print(f"Creating PyMC model...", file=sys.stderr)
     
     with pm.Model(coords={"channel": channels}) as model:
-        # Create channel-dimensioned priors using Beta for alpha
-        kappa = 10000  # Concentration parameter
-        clipped_alpha = np.clip(alpha_values, 1e-4, 1.0 - 1e-4)
-        alpha_param = clipped_alpha * kappa
-        beta_param = (1.0 - clipped_alpha) * kappa
+        # Create channel-dimensioned priors with simplified approach
+        # Use very small sigma values to make priors effectively fixed
         
-        alpha_rv = pm.Beta("alpha", alpha=alpha_param, beta=beta_param, dims="channel")
-        L_rv = pm.Normal("L", mu=L_values, sigma=1e-4, dims="channel")
-        k_rv = pm.Normal("k", mu=k_values, sigma=np.abs(k_values * 0.001), dims="channel")
-        x0_rv = pm.Normal("x0", mu=x0_values, sigma=np.abs(x0_values * 0.001), dims="channel")
+        # For alpha, use Beta with appropriate bounds (0-1)
+        # Use strong concentration to make it effectively fixed
+        alpha_clip = np.clip(alpha_values, 0.01, 0.99)  # Ensure within valid range
+        alpha_rv = pm.Beta("alpha", 
+                          alpha=alpha_clip * 1000 + 1,  # Strong prior toward specified value 
+                          beta=(1-alpha_clip) * 1000 + 1,  # Ensure valid Beta parameters
+                          dims="channel")
+        
+        # Use very narrow distributions centered on our desired values
+        # For strictly positive parameters, use distributions with appropriate support
+        
+        # For L, use a narrow HalfNormal centered at desired values
+        L_rv = pm.HalfNormal("L", sigma=0.01, dims="channel", initval=L_values)
+        
+        # For k, use a narrow HalfNormal 
+        k_rv = pm.HalfNormal("k", sigma=0.0001, dims="channel", initval=k_values)
+        
+        # For x0, use a narrow HalfNormal
+        x0_rv = pm.HalfNormal("x0", sigma=10.0, dims="channel", initval=x0_values)
         
         # Create transforms
         adstock = GeometricAdstock(l_max=global_l_max, priors={"alpha": alpha_rv})
@@ -134,6 +148,19 @@ def create_and_fit_mmm_model(config_file, data_file=None, data_df=None, results_
             control_columns=existing_controls,
             date_column=date_column
         )
+        
+        # Add our own monkey patch for date handling
+        original_preprocess = mmm._generate_and_preprocess_model_data
+        
+        def patched_preprocess(X, y=None):
+            # Convert date column to datetime with dayfirst=True if it's not already datetime
+            if date_column in X.columns and not pd.api.types.is_datetime64_any_dtype(X[date_column]):
+                X = X.copy()
+                X[date_column] = pd.to_datetime(X[date_column], dayfirst=True, format='mixed')
+                print(f"Patched date handling: converted {date_column} to datetime", file=sys.stderr)
+            return original_preprocess(X, y)
+            
+        mmm._generate_and_preprocess_model_data = patched_preprocess
         
         t1 = time.time()
         print(f"Model creation took {t1-t0:.2f} seconds", file=sys.stderr)
