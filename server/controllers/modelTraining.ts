@@ -451,6 +451,8 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
                   results: transformedResults
                 });
                 
+                console.log(`=== DIAGNOSTIC: Model ${modelId} saved with results ===`);
+                console.log(`Results keys: ${Object.keys(transformedResults || {}).join(', ')}`);
                 console.log(`Model ${modelId} marked as completed with transformed results`);
                 resolve();
                 return;
