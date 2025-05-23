@@ -285,5 +285,26 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"ERROR: Failed to read config file: {e}", file=sys.stderr)
     
+    # Get results from the MMM model
     results = create_mmm_with_fixed_params(args.config_file, args.data_file, args.results_file)
-    print(json.dumps(results, indent=2))
+    
+    # Ensure results have the expected format the server is looking for
+    formatted_results = {
+        "success": True,
+        "channel_analysis": {
+            channel: {
+                "contribution_percentage": results.get("channel_contributions", {}).get(channel, 0),
+                "roi": results.get("channel_roi", {}).get(channel, 0),
+                "spend": results.get("channel_spend", {}).get(channel, 0)
+            } for channel in results.get("channel_contributions", {})
+        },
+        "model_quality": {
+            "r_squared": results.get("r_squared", 0),
+            "mape": results.get("mape", 0)
+        },
+        "summary": results,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # Print the formatted results to stdout for the server to capture
+    print(json.dumps(formatted_results, default=str))

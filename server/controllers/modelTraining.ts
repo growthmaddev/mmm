@@ -375,6 +375,10 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
         const stderr = Buffer.concat(stderrChunks).toString();
         const stdout = Buffer.concat(stdoutChunks).toString();
         
+        console.log('Python process completed with code:', code);
+        console.log('Full stdout length:', stdout.length);
+        console.log('stderr length:', stderr.length);
+        
         if (code !== 0) {
           console.error(`Python MMM training process exited with code ${code}`);
           console.error('Python stderr output:', stderr);
@@ -426,6 +430,49 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
           reject(new Error(`Model training failed: ${errorMessage}`));
         } else {
           console.log(`Python MMM training process completed successfully for model ${modelId}`);
+          
+          // Try to parse any JSON results from the complete stdout
+          try {
+            // First look for complete JSON objects in the output
+            const jsonLines = stdout.split('\n').filter(line => line.trim().startsWith('{') && line.trim().endsWith('}'));
+            
+            if (jsonLines.length > 0) {
+              // Take the last complete JSON object (most likely to be the final results)
+              const resultData = JSON.parse(jsonLines[jsonLines.length - 1]);
+              
+              if (resultData.success) {
+                console.log('Found valid JSON results in stdout');
+                await storage.updateModel(modelId, {
+                  status: 'completed',
+                  progress: 100,
+                  results: resultData
+                });
+                
+                console.log(`Model ${modelId} marked as completed with results from stdout`);
+                resolve();
+                return;
+              }
+            } else {
+              // Try parsing the entire stdout as one JSON object
+              try {
+                const resultData = JSON.parse(stdout.trim());
+                if (resultData.success) {
+                  await storage.updateModel(modelId, {
+                    status: 'completed',
+                    progress: 100,
+                    results: resultData
+                  });
+                  console.log(`Model ${modelId} marked as completed with full stdout results`);
+                  resolve();
+                  return;
+                }
+              } catch (e) {
+                console.log('Full stdout is not valid JSON');
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing stdout for JSON results:', e);
+          }
           
           // Double-check if the model was marked as completed during the process
           const model = await storage.getModel(modelId);
