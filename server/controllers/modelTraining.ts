@@ -582,18 +582,21 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
   
-  // Handle the case where results might be nested in ourResults.results
-  if (ourResults.results && !ourResults.channel_analysis) {
-    console.log('Found nested results structure, using ourResults.results');
-    ourResults = ourResults.results;
+  // Simple approach: Use summary.channel_analysis if it exists
+  if (ourResults.summary?.channel_analysis) {
+    console.log('Found channel_analysis in summary, using it directly');
   }
-  
-  // Handle the case where results are in roi_detailed (from the budget optimizer)
-  if (ourResults.roi_detailed && !ourResults.channel_analysis) {
-    console.log('Found roi_detailed structure, extracting channel analysis');
+  // If not, check if we need to extract from roi_detailed
+  else if (ourResults.roi_detailed) {
+    console.log('Using roi_detailed to create channel_analysis');
     
-    // Construct channel_analysis from roi_detailed
-    const channelAnalysis = {
+    // Create the nested structure if it doesn't exist
+    if (!ourResults.summary) {
+      ourResults.summary = {};
+    }
+    
+    // Initialize channel_analysis in the summary
+    ourResults.summary.channel_analysis = {
       roi: {},
       spend: {},
       contribution_percentage: {}
@@ -601,133 +604,47 @@ function transformMMMResults(ourResults: any, modelId: number) {
     
     // Extract ROI, spend, and contribution data from roi_detailed
     Object.entries(ourResults.roi_detailed).forEach(([channel, details]: [string, any]) => {
-      channelAnalysis.roi[channel] = details.roi || 0;
-      channelAnalysis.spend[channel] = details.total_spend || 0;
-      
-      // Calculate contribution percentage from impact
-      if (details.total_impact && ourResults.contribution?.total?.total) {
-        const totalContribution = ourResults.contribution.total.total;
-        channelAnalysis.contribution_percentage[channel] = (details.total_impact / totalContribution) * 100;
+      if (typeof details === 'object' && details !== null) {
+        // Convert the prefix_Spend format to just the prefix for consistency
+        const channelName = channel.replace('_Spend', '');
+        
+        ourResults.summary.channel_analysis.roi[channelName] = details.roi || 0;
+        ourResults.summary.channel_analysis.spend[channelName] = details.total_spend || 0;
+        
+        // Calculate contribution percentage from impact
+        if (details.total_impact && ourResults.contribution?.total?.total) {
+          ourResults.summary.channel_analysis.contribution_percentage[channelName] = 
+            (details.total_impact / ourResults.contribution.total.total) * 100;
+        } else {
+          // Fallback to a reasonable estimate
+          ourResults.summary.channel_analysis.contribution_percentage[channelName] = 
+            details.roi ? details.roi * 10 : 0;
+        }
       }
     });
-    
-    ourResults.channel_analysis = channelAnalysis;
   }
-  
-  // Check for summary data with ROI information from Ridge regression results
-  if (!ourResults.channel_analysis && ourResults.summary?.channels) {
-    console.log('Found summary.channels structure, using this for channel analysis');
-    
-    // Construct channel_analysis from summary.channels
-    const channelAnalysis = {
-      roi: {},
-      spend: {},
-      contribution_percentage: {}
+  // If neither exists, we can't process the results
+  else if (!ourResults.summary?.channel_analysis) {
+    console.warn('Missing required channel_analysis in summary');
+    return {
+      success: false,
+      error: 'Invalid results format: missing channel analysis data in summary'
     };
-    
-    // Extract ROI and contribution data from summary.channels
-    Object.entries(ourResults.summary.channels).forEach(([channel, details]: [string, any]) => {
-      channelAnalysis.roi[channel] = details.roi || 0;
-      channelAnalysis.contribution_percentage[channel] = details.contribution || 0;
-      
-      // If we have spend data in the channel details, use it
-      if (details.spend !== undefined) {
-        channelAnalysis.spend[channel] = details.spend;
-      }
-    });
-    
-    ourResults.channel_analysis = channelAnalysis;
-  }
-  
-  // Still no channel_analysis? Check if we have a model_results structure
-  if (!ourResults.channel_analysis && ourResults.model_results) {
-    console.log('No channel_analysis found, but model_results is available. Creating channel_analysis.');
-    
-    // Attempt to create channel_analysis from model_results
-    ourResults.channel_analysis = {
-      roi: {},
-      spend: {},
-      contribution_percentage: {}
-    };
-    
-    // Try to extract channels from coefficients in model_results
-    if (ourResults.model_results.coefficients) {
-      Object.entries(ourResults.model_results.coefficients).forEach(([channel, coef]: [string, any]) => {
-        // Skip non-channel coefficients (like intercept)
-        if (channel !== 'intercept' && channel !== 'base') {
-          // Use actual model coefficients to calculate ROI values
-          ourResults.channel_analysis.roi[channel] = coef > 0 ? 1.0 + (coef * 0.5) : 0.5; // Rough ROI estimate
-          ourResults.channel_analysis.contribution_percentage[channel] = coef > 0 ? (coef / 10) * 100 : 0; // Rough contribution
-        }
-      });
-    }
-  }
-  
-  // If we still don't have channel_analysis, create a basic structure to avoid errors
-  if (!ourResults.channel_analysis) {
-    console.warn('Could not find or create channel_analysis in model results');
-    
-    // Check directly for 'row_detailed' from the Ridge Regression model results
-    if (ourResults.roi_detailed) {
-      console.log('Found roi_detailed structure in root results');
-      const channelAnalysis = {
-        roi: {},
-        spend: {},
-        contribution_percentage: {}
-      };
-      
-      Object.entries(ourResults.roi_detailed).forEach(([channel, details]: [string, any]) => {
-        if (typeof details === 'object' && details !== null) {
-          channelAnalysis.roi[channel] = details.roi || 0;
-          channelAnalysis.spend[channel] = details.total_spend || 0;
-          
-          // Calculate contribution percentage if we have the total
-          if (ourResults.contribution?.total?.total && details.total_impact) {
-            channelAnalysis.contribution_percentage[channel] = 
-              (details.total_impact / ourResults.contribution.total.total) * 100;
-          } else {
-            // Fallback to using relative proportions based on ROI
-            channelAnalysis.contribution_percentage[channel] = details.roi ? details.roi * 10 : 0;
-          }
-        }
-      });
-      
-      if (Object.keys(channelAnalysis.roi).length > 0) {
-        console.log('Created channel_analysis from roi_detailed:', channelAnalysis);
-        ourResults.channel_analysis = channelAnalysis;
-      }
-    } else {
-      // If we still don't have channel data, return an error
-      return {
-        success: false,
-        error: 'Invalid results format: missing channel analysis data'
-      };
-    }
   }
 
-  // Debug the channel_analysis structure
-  console.log('Channel analysis data:', JSON.stringify(ourResults.channel_analysis, null, 2));
+  // Debug the channel_analysis structure we're using
+  console.log('Channel analysis data:', JSON.stringify(ourResults.summary.channel_analysis, null, 2));
   
   // Extract metrics from the results
   const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
   console.log('Model accuracy (R-squared):', modelAccuracy);
   
-  // Check if we have a summary with richer data
-  if (ourResults.summary && ourResults.summary.channel_analysis) {
-    console.log('Found detailed channel analysis in summary');
-    // Use the more detailed data from the summary if available
-    ourResults.channel_analysis = ourResults.summary.channel_analysis;
-    
-    // Debug what we found
-    console.log('Channel analysis in summary:', JSON.stringify(ourResults.channel_analysis, null, 2));
-  }
-  
   // Estimate totalSales from the channel spend and ROI
   let totalSales = 0;
   let totalSpend = 0;
   
-  if (ourResults.channel_analysis?.spend) {
-    Object.values(ourResults.channel_analysis.spend).forEach((spend: any) => {
+  if (ourResults.summary.channel_analysis?.spend) {
+    Object.values(ourResults.summary.channel_analysis.spend).forEach((spend: any) => {
       totalSpend += Number(spend || 0);
     });
     console.log('Total spend calculated:', totalSpend);
@@ -765,8 +682,8 @@ function transformMMMResults(ourResults: any, modelId: number) {
   const channelContributions: Record<string, number> = {};
   const percentChannelContributions: Record<string, number> = {};
   
-  if (ourResults.channel_analysis?.contribution_percentage) {
-    Object.entries(ourResults.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
+  if (ourResults.summary.channel_analysis?.contribution_percentage) {
+    Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
       const contribution = incrementalSales * (Number(percentage) / 100);
       channelContributions[channel] = contribution;
       percentChannelContributions[channel] = Number(percentage);
@@ -777,30 +694,30 @@ function transformMMMResults(ourResults: any, modelId: number) {
   }
   
   // Generate recommendations based on ROI and contribution
-  const recommendations = generateRecommendations(ourResults.channel_analysis);
+  const recommendations = generateRecommendations(ourResults.summary.channel_analysis);
   
   // Create a format compatible with the UI expectations
   return {
     success: true,
     model_id: modelId,
     model_accuracy: modelAccuracy * 100, // Convert from decimal to percentage
-    top_channel: getTopChannel(ourResults.channel_analysis?.contribution_percentage),
-    top_channel_roi: formatRoi(getTopRoi(ourResults.channel_analysis?.roi)),
-    increase_channel: getIncreaseRecommendation(ourResults.channel_analysis),
-    increase_percent: getIncreasePercent(ourResults.channel_analysis),
-    decrease_channel: getDecreaseRecommendation(ourResults.channel_analysis),
-    decrease_roi: formatRoi(getDecreaseRoi(ourResults.channel_analysis)),
-    optimize_channel: getOptimizeRecommendation(ourResults.channel_analysis),
+    top_channel: getTopChannel(ourResults.summary.channel_analysis?.contribution_percentage),
+    top_channel_roi: formatRoi(getTopRoi(ourResults.summary.channel_analysis?.roi)),
+    increase_channel: getIncreaseRecommendation(ourResults.summary.channel_analysis),
+    increase_percent: getIncreasePercent(ourResults.summary.channel_analysis),
+    decrease_channel: getDecreaseRecommendation(ourResults.summary.channel_analysis),
+    decrease_roi: formatRoi(getDecreaseRoi(ourResults.summary.channel_analysis)),
+    optimize_channel: getOptimizeRecommendation(ourResults.summary.channel_analysis),
     
     // Standard summary object for backward compatibility
     summary: {
       channels: Object.fromEntries(
-        Object.entries(ourResults.channel_analysis.contribution_percentage || {}).map(
+        Object.entries(ourResults.summary.channel_analysis.contribution_percentage || {}).map(
           ([channel, contribution]) => [
             channel, 
             { 
               contribution: Number(contribution), 
-              roi: Number(ourResults.channel_analysis.roi?.[channel] || 0)
+              roi: Number(ourResults.summary.channel_analysis.roi?.[channel] || 0)
             }
           ]
         )
@@ -823,12 +740,12 @@ function transformMMMResults(ourResults: any, modelId: number) {
         }
       },
       channel_effectiveness_detail: Object.fromEntries(
-        Object.entries(ourResults.channel_analysis?.roi || {}).map(
+        Object.entries(ourResults.summary.channel_analysis?.roi || {}).map(
           ([channel, roi]) => [
             channel,
             {
               roi: Number(roi),
-              spend: ourResults.channel_analysis?.spend?.[channel] || 0,
+              spend: ourResults.summary.channel_analysis?.spend?.[channel] || 0,
               contribution: channelContributions[channel] || 0,
               contribution_percent: percentChannelContributions[channel] || 0
             }
@@ -849,52 +766,9 @@ function transformMMMResults(ourResults: any, modelId: number) {
     // Create config information for UI components
     config: ourResults.config || {}
   };
-  
-  // Use the config from the Ridge regression if available, otherwise build from fixed_parameters
-  let config = ourResults.config || {};
 
-  // If config doesn't have the expected structure, try to build it from fixed_parameters (backward compatibility)
-  if (!config.channels && ourResults.summary?.fixed_parameters) {
-    const fixed = ourResults.summary.fixed_parameters;
-    config = {
-      channels: {}
-    };
-    
-    // Build channels config from fixed parameters
-    if (fixed.L && fixed.k && fixed.x0) {
-      Object.keys(fixed.L).forEach(channel => {
-        config.channels[channel] = {
-          L: fixed.L[channel],
-          k: fixed.k[channel],
-          x0: fixed.x0[channel],
-          alpha: fixed.alpha?.[channel] || 0.7,
-          l_max: fixed.l_max || 8
-        };
-      });
-    }
-  }
-
-  // Log what config we're passing for debugging
-  console.log('Config being passed to UI:', JSON.stringify(config, null, 2));
-  
-  // The complete object that we want to return with the structure expected by the UI
-  const transformedResults = {
-    success: true,
-    model_id: modelId,
-    model_accuracy: modelAccuracy * 100,
-    
-    // Add the configuration data for Media Mix Curves and other components
-    // This now has the Ridge regression config with saturation parameters
-    config: config,
-    
-    // Add top-level metrics used by the UI
-    top_channel: getTopChannel(ourResults.channel_analysis?.contribution_percentage),
-    top_channel_roi: formatRoi(getTopRoi(ourResults.channel_analysis?.roi)),
-    increase_channel: getIncreaseRecommendation(ourResults.channel_analysis),
-    increase_percent: getIncreasePercent(ourResults.channel_analysis),
-    decrease_channel: getDecreaseRecommendation(ourResults.channel_analysis),
-    decrease_roi: formatRoi(getDecreaseRoi(ourResults.channel_analysis)),
-    optimize_channel: getOptimizeRecommendation(ourResults.channel_analysis),
+  // We've already returned our results above, so this code is no longer needed
+  // Removing the duplicated return statement
     
     // Summary structure that other parts of the UI expect
     summary: {
