@@ -213,12 +213,12 @@ def create_mmm_with_fixed_params(config_file, data_file, results_file=None):
                 
                 if spend > 0:
                     # Scale the ROI to meaningful multipliers (e.g., 2.5x means $2.50 return per $1 spent)
-                    # Our transformed contributions are very small, so scale up by a factor of 10000
-                    # This gives more realistic ROI values while preserving the relative proportions
-                    channel_roi[ch] = (contrib / spend) * 10000
+                    # Our transformed contributions are unitless saturation values summed across weeks,
+                    # so we need a large scaling factor (1M) to convert to realistic ROI multipliers
+                    channel_roi[ch] = (contrib / spend) * 1000000
                     
                     # Debug: Check ROI calculation
-                    print(f"  ROI calculation: {contrib} / {spend} * 10000 = {channel_roi[ch]}")
+                    print(f"  ROI calculation: {contrib} / {spend} * 1000000 = {channel_roi[ch]}")
                 else:
                     channel_roi[ch] = 0.0
                 
