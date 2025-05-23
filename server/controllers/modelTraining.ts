@@ -442,13 +442,15 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
               
               if (resultData.success) {
                 console.log('Found valid JSON results in stdout');
+                // Transform the raw results using our transformer function
+                const transformedResults = transformMMMResults(resultData, modelId);
                 await storage.updateModel(modelId, {
                   status: 'completed',
                   progress: 100,
-                  results: resultData
+                  results: transformedResults
                 });
                 
-                console.log(`Model ${modelId} marked as completed with results from stdout`);
+                console.log(`Model ${modelId} marked as completed with transformed results`);
                 resolve();
                 return;
               }
@@ -457,12 +459,14 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
               try {
                 const resultData = JSON.parse(stdout.trim());
                 if (resultData.success) {
+                  // Also transform results here in the fallback case
+                  const transformedResults = transformMMMResults(resultData, modelId);
                   await storage.updateModel(modelId, {
                     status: 'completed',
                     progress: 100,
-                    results: resultData
+                    results: transformedResults
                   });
-                  console.log(`Model ${modelId} marked as completed with full stdout results`);
+                  console.log(`Model ${modelId} marked as completed with transformed results (fallback)`);
                   resolve();
                   return;
                 }
