@@ -1,0 +1,74 @@
+Good debugging work by Replit! I can see the issue now - there's a format mismatch between what the server sends and what the Ridge regression expects.
+The server sends:
+json{
+  "dateColumn": "Date",
+  "targetColumn": "Sales", 
+  "channelColumns": {...},
+  "controlVariables": {...}
+}
+But the Ridge script expects:
+json{
+  "channels": {...},
+  "data": {
+    "response_column": "Sales",
+    "control_columns": [...]
+  }
+}
+
+Prompt for Replit:
+ACTION REQUIRED: Complete the fix to handle the server's config format in the Ridge regression script
+SPECIFIC INSTRUCTIONS:
+
+FIND in python_scripts/fit_mmm_ridge.py where channels are processed (around line 80-100)
+REPLACE the channel processing logic to handle both formats:
+
+python# Get channels - handle both server format and test format
+channels = []
+if 'channelColumns' in config:
+    # Server format: channelColumns is a dict
+    channels = list(config['channelColumns'].keys())
+    print(f"Using server format - found channels: {channels}", file=sys.stderr)
+elif 'channels' in config:
+    # Test format: channels is a dict with parameters
+    channels = list(config['channels'].keys())
+    print(f"Using test format - found channels: {channels}", file=sys.stderr)
+else:
+    print("ERROR: No channels found in config!", file=sys.stderr)
+    raise ValueError("No channels found in configuration")
+
+UPDATE the parameter extraction to handle server format (around line 90-100):
+
+python# Get parameters for each channel
+for channel in channels:
+    if channel not in df.columns:
+        print(f"Warning: Channel {channel} not in dataframe, skipping", file=sys.stderr)
+        continue
+        
+    # Get parameters - check both formats
+    if 'channelColumns' in config:
+        # Server sends parameters differently
+        params = config.get('saturationSettings', {}).get(channel, {})
+        alpha = config.get('adstockSettings', {}).get(channel, 0.7)
+        if isinstance(alpha, dict):
+            alpha = alpha.get('alpha', 0.7)
+    else:
+        # Test format
+        params = config['channels'][channel]
+        alpha = params.get('alpha', 0.7)
+    
+    L = params.get('L', 1.0)
+    k = params.get('k', 0.001)
+    x0 = params.get('x0', df[channel].mean())
+    l_max = params.get('l_max', 8)
+
+UPDATE control variable handling:
+
+python# Get control columns - handle both formats
+control_columns = []
+if 'controlVariables' in config:
+    # Server format: dict of {column: true/false}
+    control_columns = [col for col, enabled in config['controlVariables'].items() if enabled]
+else:
+    # Test format
+    control_columns = config.get('data', {}).get('control_columns', [])
+EXPECTED: The script will now properly handle the config format sent by the server.

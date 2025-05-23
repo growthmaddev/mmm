@@ -80,79 +80,92 @@ def preprocess_data(df, config):
     X_list = []
     feature_names = []
     
-    # Handle two possible config formats
-    if 'channels' in config:
-        # New server format with channel details nested inside 'channels' key
-        channels_config = config['channels']
-        print(f"Using nested channels format with {len(channels_config)} channels", file=sys.stderr)
-        
-        for channel_name, channel_params in channels_config.items():
-            # Check if channel exists in data
-            if channel_name not in df.columns:
-                print(f"Warning: Channel '{channel_name}' not found in data", file=sys.stderr)
-                continue
-                
-            # Get channel data
-            channel_data = df[channel_name].values
-            
-            # Get transformation parameters
-            alpha = channel_params.get('alpha', 0.5)
-            l_max = channel_params.get('l_max', 8)
-            L = channel_params.get('L', 1.0)
-            k = channel_params.get('k', 0.0001)
-            x0 = channel_params.get('x0', 50000)
-            
-            # Apply transformations
-            adstocked = geometric_adstock(channel_data, alpha, l_max)
-            transformed = logistic_saturation(adstocked, L, k, x0)
-            
-            # Add to feature matrix
-            X_list.append(transformed)
-            feature_names.append(channel_name)
+    # Get channels - handle both server format and test format
+    channels = []
+    if 'channelColumns' in config:
+        # Server format: channelColumns is a dict
+        channels = list(config['channelColumns'].keys())
+        print(f"Using server format - found channels: {channels}", file=sys.stderr)
+    elif 'channels' in config:
+        # Test format: channels is a dict with parameters
+        channels = list(config['channels'].keys())
+        print(f"Using test format - found channels: {channels}", file=sys.stderr)
     else:
-        # Original format with separate channelColumns, adstockSettings, etc.
-        channels = config.get('channelColumns', {})
-        control_vars = config.get('controlVariables', {})
+        print("ERROR: No channels found in config!", file=sys.stderr)
+        raise ValueError("No channels found in configuration")
+    
+    # Process channels
+    for channel in channels:
+        if channel not in df.columns:
+            # Check if this is a mapping that needs translation
+            channel_col = None
+            if 'channelColumns' in config:
+                channel_col = config['channelColumns'].get(channel)
+            
+            if channel_col and channel_col in df.columns:
+                print(f"Using mapped column {channel_col} for {channel}", file=sys.stderr)
+                channel_data = df[channel_col].values
+            else:
+                print(f"Warning: Channel {channel} not in dataframe, skipping", file=sys.stderr)
+                continue
+        else:
+            channel_data = df[channel].values
+            
+        # Get parameters - check both formats
+        if 'channelColumns' in config:
+            # Server sends parameters differently
+            sat_params = config.get('saturationSettings', {}).get(channel, {})
+            adstock_value = config.get('adstockSettings', {}).get(channel, 3)
+            
+            # Convert adstock value to alpha
+            if isinstance(adstock_value, dict):
+                alpha = adstock_value.get('alpha', 0.7)
+            else:
+                # Convert from half-life to alpha
+                alpha = 1 - (1/adstock_value) if adstock_value > 1 else 0.7
+                
+            L = sat_params.get('L', 1.0)
+            k = sat_params.get('k', 0.001)
+            x0 = sat_params.get('x0', 50000)
+            l_max = min(8, len(df))
+        else:
+            # Test format
+            params = config['channels'][channel]
+            alpha = params.get('alpha', 0.7)
+            L = params.get('L', 1.0)
+            k = params.get('k', 0.001)
+            x0 = params.get('x0', 50000)
+            l_max = params.get('l_max', 8)
         
-        print(f"Using original format with {len(channels)} channels", file=sys.stderr)
+        print(f"Processing channel {channel} with params: alpha={alpha}, L={L}, k={k}, x0={x0}", file=sys.stderr)
         
-        # Process channel variables
-        for key, channel_name in channels.items():
-            if channel_name in df.columns:
-                # Get channel data and convert to numpy array
-                channel_data = df[channel_name].values
-                
-                # Get transformation parameters
-                adstock_param = config.get('adstockSettings', {}).get(key, 2)
-                sat_params = config.get('saturationSettings', {}).get(key, {
-                    'L': 1.0, 
-                    'k': 0.0001, 
-                    'x0': 50000
-                })
-                
-                # Convert to proper alpha value (0-1)
-                alpha = 1 - (1/adstock_param) if adstock_param > 1 else 0.5
-                l_max = min(8, len(df))  # Cap lag at 8 or data length
-                
-                # Apply transformations
-                adstocked = geometric_adstock(channel_data, alpha, l_max)
-                transformed = logistic_saturation(
-                    adstocked, 
-                    sat_params.get('L', 1.0),
-                    sat_params.get('k', 0.0001),
-                    sat_params.get('x0', 50000)
-                )
-                
-                # Add to feature matrix
-                X_list.append(transformed)
-                feature_names.append(key)
+        # Apply transformations
+        adstocked = geometric_adstock(channel_data, alpha, l_max)
+        transformed = logistic_saturation(adstocked, L, k, x0)
         
-        # Add control variables
-        for col, include in control_vars.items():
-            if include and col in df.columns:
-                control_data = df[col].values
-                X_list.append(control_data)
-                feature_names.append(col)
+        # Add to feature matrix
+        X_list.append(transformed)
+        feature_names.append(channel)
+    
+    # Get control columns - handle both formats
+    control_columns = []
+    if 'controlVariables' in config:
+        # Server format: dict of {column: true/false}
+        control_columns = [col for col, enabled in config['controlVariables'].items() if enabled]
+    else:
+        # Test format
+        control_columns = config.get('data', {}).get('control_columns', [])
+        
+    print(f"Control columns: {control_columns}", file=sys.stderr)
+    
+    # Process control variables
+    for col in control_columns:
+        if col in df.columns:
+            control_data = df[col].values
+            X_list.append(control_data)
+            feature_names.append(col)
+        else:
+            print(f"Warning: Control column {col} not found in data", file=sys.stderr)
     
     # Check if we have any features to process
     if not X_list:
