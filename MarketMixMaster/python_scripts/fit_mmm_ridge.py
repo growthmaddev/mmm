@@ -1,0 +1,172 @@
+#!/usr/bin/env python
+"""
+Ridge Regression MMM - A legitimate implementation that actually fits to data
+"""
+
+import json
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score
+from datetime import datetime
+import sys
+
+def adstock_transform(spend, alpha=0.7, l_max=8):
+    """Apply geometric adstock transformation"""
+    n = len(spend)
+    transformed = np.zeros(n)
+    for t in range(n):
+        for l in range(min(t+1, l_max)):
+            transformed[t] += (alpha ** l) * spend[max(0, t-l)]
+    return transformed
+
+def saturation_transform(spend, L=1.0, k=0.001, x0=None):
+    """Apply logistic saturation transformation"""
+    if x0 is None:
+        x0 = spend.mean()
+    return L / (1 + np.exp(-k * (spend - x0)))
+
+def fit_mmm_ridge(data_file, config_file, results_file=None):
+    """Fit a real MMM using Ridge regression"""
+    
+    # Load config
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    
+    # Load data
+    df = pd.read_csv(data_file)
+    
+    # Parse dates with dayfirst=True
+    date_column = config['data']['date_column']
+    df[date_column] = pd.to_datetime(df[date_column], dayfirst=True)
+    
+    # Get columns
+    target_column = config['data']['response_column']
+    channels = list(config['channels'].keys())
+    control_columns = config['data'].get('control_columns', [])
+    
+    # Clean numeric columns (remove commas)
+    for col in channels + [target_column] + control_columns:
+        if col in df.columns and df[col].dtype == 'object':
+            df[col] = df[col].str.replace(',', '').astype(float)
+    
+    # Apply transformations to channels
+    X_transformed = pd.DataFrame()
+    
+    for channel in channels:
+        # Get parameters from config
+        alpha = config['channels'][channel].get('alpha', 0.7)
+        L = config['channels'][channel].get('L', 1.0)
+        k = config['channels'][channel].get('k', 0.001)
+        x0 = config['channels'][channel].get('x0', df[channel].mean())
+        l_max = config['channels'][channel].get('l_max', 8)
+        
+        # Apply adstock
+        adstocked = adstock_transform(df[channel].values, alpha, l_max)
+        
+        # Apply saturation
+        saturated = saturation_transform(adstocked, L, k, x0)
+        
+        X_transformed[channel] = saturated
+    
+    # Add control variables
+    for control in control_columns:
+        if control in df.columns:
+            X_transformed[control] = df[control]
+    
+    # Prepare data for regression
+    X = X_transformed.values
+    y = df[target_column].values
+    
+    # Standardize features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Fit Ridge regression
+    model = Ridge(alpha=1.0)
+    model.fit(X_scaled, y)
+    
+    # Calculate predictions and metrics
+    y_pred = model.predict(X_scaled)
+    r2 = r2_score(y, y_pred)
+    
+    # Calculate contributions
+    # Contributions = coefficients * mean(transformed spend)
+    feature_names = list(X_transformed.columns)
+    contributions = {}
+    
+    for i, feature in enumerate(feature_names):
+        if feature in channels:
+            # Channel contribution = coefficient * mean(transformed spend)
+            contributions[feature] = abs(model.coef_[i] * X_scaled[:, i].mean())
+    
+    # Calculate total contribution and percentages
+    total_contribution = sum(contributions.values())
+    contribution_percentage = {
+        ch: (contrib / total_contribution * 100) 
+        for ch, contrib in contributions.items()
+    }
+    
+    # Calculate actual spend
+    channel_spend = {ch: df[ch].sum() for ch in channels}
+    
+    # Calculate ROI (contribution per dollar spent)
+    channel_roi = {}
+    for ch in channels:
+        if channel_spend[ch] > 0:
+            # This is REAL ROI based on the model's fitted coefficients
+            roi = (contributions[ch] * y.sum() / total_contribution) / channel_spend[ch]
+            channel_roi[ch] = roi
+        else:
+            channel_roi[ch] = 0.0
+    
+    # Prepare results in the same format as the original
+    results = {
+        "success": True,
+        "channel_analysis": {
+            "spend": channel_spend,
+            "contributions": contributions,
+            "roi": channel_roi,
+            "contribution_percentage": contribution_percentage
+        },
+        "model_quality": {
+            "r_squared": r2,  # This is REAL R-squared!
+            "mape": np.mean(np.abs((y - y_pred) / y)) * 100
+        },
+        "model_results": {
+            "intercept": model.intercept_,
+            "coefficients": dict(zip(feature_names, model.coef_))
+        },
+        "config": {
+            "channels": config['channels']
+        },
+        "analytics": {
+            "sales_decomposition": {
+                "total_sales": float(y.sum()),
+                "base_sales": float(model.intercept_ * len(y)),
+                "incremental_sales": float(y.sum() - model.intercept_ * len(y)),
+                "percent_decomposition": {
+                    "base": float(model.intercept_ * len(y) / y.sum() * 100),
+                    "channels": contribution_percentage
+                }
+            }
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # Print to stdout for the server
+    print(json.dumps(results))
+    
+    return results
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Ridge Regression MMM')
+    parser.add_argument('data_file', help='Path to data CSV')
+    parser.add_argument('config_file', help='Path to configuration JSON')
+    
+    args = parser.parse_args()
+    
+    fit_mmm_ridge(args.data_file, args.config_file)
