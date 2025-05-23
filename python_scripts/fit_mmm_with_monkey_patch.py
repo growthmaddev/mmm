@@ -9,6 +9,7 @@ issue and adds functionality to fit the model and generate comprehensive results
 import os
 import sys
 import json
+import time
 import pandas as pd
 import numpy as np
 import pymc as pm
