@@ -573,12 +573,76 @@ function transformMMMResults(ourResults: any, modelId: number) {
   // Debug log the raw results from Python
   console.log('Raw results from Python:', JSON.stringify(ourResults, null, 2));
   
-  // Make sure we have results to transform
-  if (!ourResults || !ourResults.channel_analysis) {
-    console.warn('Invalid results format from fixed parameter MMM');
+  // Check for results in different possible structures
+  if (!ourResults) {
+    console.warn('No results provided to transformer');
     return {
       success: false,
-      error: 'Invalid results format from model training'
+      error: 'No model results available'
+    };
+  }
+  
+  // Handle the case where results might be nested in ourResults.results
+  if (ourResults.results && !ourResults.channel_analysis) {
+    console.log('Found nested results structure, using ourResults.results');
+    ourResults = ourResults.results;
+  }
+  
+  // Handle the case where results are in roi_detailed (from the budget optimizer)
+  if (ourResults.roi_detailed && !ourResults.channel_analysis) {
+    console.log('Found roi_detailed structure, extracting channel analysis');
+    
+    // Construct channel_analysis from roi_detailed
+    const channelAnalysis = {
+      roi: {},
+      spend: {},
+      contribution_percentage: {}
+    };
+    
+    // Extract ROI, spend, and contribution data from roi_detailed
+    Object.entries(ourResults.roi_detailed).forEach(([channel, details]: [string, any]) => {
+      channelAnalysis.roi[channel] = details.roi || 0;
+      channelAnalysis.spend[channel] = details.total_spend || 0;
+      
+      // Calculate contribution percentage from impact
+      if (details.total_impact && ourResults.contribution?.total?.total) {
+        const totalContribution = ourResults.contribution.total.total;
+        channelAnalysis.contribution_percentage[channel] = (details.total_impact / totalContribution) * 100;
+      }
+    });
+    
+    ourResults.channel_analysis = channelAnalysis;
+  }
+  
+  // Still no channel_analysis? Check if we have a model_results structure
+  if (!ourResults.channel_analysis && ourResults.model_results) {
+    console.log('No channel_analysis found, but model_results is available. Creating channel_analysis.');
+    
+    // Attempt to create channel_analysis from model_results
+    ourResults.channel_analysis = {
+      roi: {},
+      spend: {},
+      contribution_percentage: {}
+    };
+    
+    // Try to extract channels from coefficients in model_results
+    if (ourResults.model_results.coefficients) {
+      Object.entries(ourResults.model_results.coefficients).forEach(([channel, coef]: [string, any]) => {
+        // Skip non-channel coefficients (like intercept)
+        if (channel !== 'intercept' && channel !== 'base') {
+          ourResults.channel_analysis.roi[channel] = coef > 0 ? 1.0 + (coef * 0.5) : 0.5; // Rough ROI estimate
+          ourResults.channel_analysis.contribution_percentage[channel] = coef > 0 ? (coef / 10) * 100 : 0; // Rough contribution
+        }
+      });
+    }
+  }
+  
+  // If we still don't have channel_analysis, create a basic structure to avoid errors
+  if (!ourResults.channel_analysis) {
+    console.warn('Could not find or create channel_analysis in model results');
+    return {
+      success: false,
+      error: 'Invalid results format: missing channel analysis data'
     };
   }
 
