@@ -574,67 +574,121 @@ function transformMMMResults(ourResults: any, modelId: number) {
   console.log('Raw results from Python:', JSON.stringify(ourResults, null, 2));
   
   // Make sure we have results to transform
-  if (!ourResults || !ourResults.channel_analysis) {
-    console.warn('Invalid results format from fixed parameter MMM');
+  if (!ourResults) {
+    console.warn('Invalid results format: missing results object');
     return {
       success: false,
       error: 'Invalid results format from model training'
     };
   }
-
-  // Debug the channel_analysis structure
-  console.log('Channel analysis data:', JSON.stringify(ourResults.channel_analysis, null, 2));
   
-  // Extract metrics from the results
-  const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
+  // For Ridge regression results from fit_mmm_ridge.py
+  const isRidgeRegression = ourResults.model_type === 'ridge';
+  
+  // For previous fixed parameter format
+  const isFixedParam = !!ourResults.channel_analysis;
+  
+  // Determine which format we're dealing with
+  if (!isRidgeRegression && !isFixedParam) {
+    console.warn('Invalid results format from MMM: unrecognized format');
+    return {
+      success: false,
+      error: 'Unrecognized results format from model training'
+    };
+  }
+  
+  // Normalize either format to a common structure
+  let channelAnalysis: any = {};
+  let modelQuality: any = {};
+  let salesDecomposition: any = {};
+  
+  // Extract data from Ridge format
+  if (isRidgeRegression) {
+    console.log('Processing Ridge regression format...');
+    
+    // Extract model quality metrics
+    modelQuality = ourResults.model_quality || {};
+    
+    // Extract channel analysis data
+    channelAnalysis = {
+      contribution: ourResults.channel_analysis?.contribution || {}, 
+      contribution_percentage: ourResults.channel_analysis?.contribution_percentage || {},
+      marketing_contribution_percentage: ourResults.channel_analysis?.marketing_contribution_percentage || {},
+      roi: ourResults.channel_analysis?.roi || {}
+    };
+    
+    // Extract sales decomposition
+    salesDecomposition = ourResults.analytics?.sales_decomposition || {};
+    
+    // Debug what we extracted
+    console.log('Model quality:', JSON.stringify(modelQuality, null, 2));
+    console.log('Channel analysis:', JSON.stringify(channelAnalysis, null, 2));
+    console.log('Sales decomposition:', JSON.stringify(salesDecomposition, null, 2));
+  } 
+  // Extract from fixed param format
+  else if (isFixedParam) {
+    console.log('Processing fixed parameter format...');
+    
+    // Extract from the legacy format
+    channelAnalysis = ourResults.channel_analysis;
+    modelQuality = ourResults.model_quality || {};
+    
+    // Check if we have a summary with richer data
+    if (ourResults.summary && ourResults.summary.channel_analysis) {
+      console.log('Found detailed channel analysis in summary');
+      channelAnalysis = ourResults.summary.channel_analysis;
+    }
+  }
+  
+  // Extract metrics from the results (works for both formats)
+  const modelAccuracy = modelQuality.r_squared || 0.034;
   console.log('Model accuracy (R-squared):', modelAccuracy);
   
-  // Check if we have a summary with richer data
-  if (ourResults.summary && ourResults.summary.channel_analysis) {
-    console.log('Found detailed channel analysis in summary');
-    // Use the more detailed data from the summary if available
-    ourResults.channel_analysis = ourResults.summary.channel_analysis;
-    
-    // Debug what we found
-    console.log('Channel analysis in summary:', JSON.stringify(ourResults.channel_analysis, null, 2));
-  }
-  
-  // Estimate totalSales from the channel spend and ROI
+  // Get total sales, base sales, and incremental sales
+  // For Ridge regression, use the values directly from the model
   let totalSales = 0;
-  let totalSpend = 0;
+  let baseSales = 0;
+  let incrementalSales = 0;
   
-  if (ourResults.channel_analysis?.spend) {
-    Object.values(ourResults.channel_analysis.spend).forEach((spend: any) => {
-      totalSpend += Number(spend || 0);
-    });
-    console.log('Total spend calculated:', totalSpend);
+  if (isRidgeRegression && salesDecomposition) {
+    // Use the actual values from the model
+    totalSales = salesDecomposition.total_sales || 0;
+    baseSales = salesDecomposition.base_sales || 0;
+    incrementalSales = salesDecomposition.incremental_sales || 0;
     
-    // Get actual sales from summary if available, otherwise estimate
-    if (ourResults.summary && ourResults.summary.total_sales) {
-      totalSales = ourResults.summary.total_sales;
-      console.log('Using actual total sales from summary:', totalSales);
+    console.log('Using direct values from Ridge regression:');
+  } 
+  // For fixed param, calculate from channel data
+  else {
+    // Calculate from spend data
+    let totalSpend = 0;
+    
+    if (channelAnalysis?.spend) {
+      Object.values(channelAnalysis.spend).forEach((spend: any) => {
+        totalSpend += Number(spend || 0);
+      });
+      console.log('Total spend calculated:', totalSpend);
+      
+      // Get actual sales if available, otherwise estimate
+      if (ourResults.summary && ourResults.summary.total_sales) {
+        totalSales = ourResults.summary.total_sales;
+      } else {
+        totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
+      }
     } else {
-      totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
-      console.log('Estimated total sales (3x spend):', totalSales);
+      totalSales = 1000000; // Fallback value if no spend data
     }
-  } else {
-    totalSales = 1000000; // Fallback value if no spend data
-    console.log('Using fallback total sales value:', totalSales);
+    
+    // Calculate base and incremental sales
+    baseSales = ourResults.summary?.baseline_sales || 
+               ourResults.model_results?.intercept || 
+               totalSales * 0.3; // 30% baseline
+    
+    incrementalSales = totalSales - baseSales;
   }
   
-  console.log('DEBUG transformMMMResults:');
-  console.log('  Total spend:', totalSpend);
+  console.log('Sales breakdown:');
   console.log('  Total sales:', totalSales);
-  
-  // Calculate base sales (could be from intercept or a percentage)
-  const baseSales = ourResults.summary?.baseline_sales || 
-                   ourResults.model_results?.intercept || 
-                   totalSales * 0.3; // 30% baseline
-  console.log('Base sales:', baseSales);
-  
-  const incrementalSales = totalSales - baseSales;
-  console.log('Incremental sales:', incrementalSales);
-  
   console.log('  Base sales:', baseSales);
   console.log('  Incremental sales:', incrementalSales);
   
@@ -642,16 +696,26 @@ function transformMMMResults(ourResults: any, modelId: number) {
   const channelContributions: Record<string, number> = {};
   const percentChannelContributions: Record<string, number> = {};
   
-  if (ourResults.channel_analysis?.contribution_percentage) {
-    Object.entries(ourResults.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
+  // Either use the contribution values directly or calculate them
+  if (isRidgeRegression && channelAnalysis.contribution) {
+    // Use the actual contribution values from the model
+    Object.entries(channelAnalysis.contribution).forEach(([channel, contribution]: [string, any]) => {
+      channelContributions[channel] = Number(contribution);
+      // Get the percentage from the model (already calculated)
+      percentChannelContributions[channel] = Number(channelAnalysis.contribution_percentage?.[channel] || 0);
+    });
+  } 
+  // Calculate from percentage for fixed param format
+  else if (channelAnalysis?.contribution_percentage) {
+    Object.entries(channelAnalysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
       const contribution = incrementalSales * (Number(percentage) / 100);
       channelContributions[channel] = contribution;
       percentChannelContributions[channel] = Number(percentage);
     });
-    
-    console.log('  Channel contributions:', channelContributions);
-    console.log('  Contribution percentages:', percentChannelContributions);
   }
+  
+  console.log('Channel contributions:', JSON.stringify(channelContributions, null, 2));
+  console.log('Contribution percentages:', JSON.stringify(percentChannelContributions, null, 2));
   
   // Generate recommendations based on ROI and contribution
   const recommendations = generateRecommendations(ourResults.channel_analysis);

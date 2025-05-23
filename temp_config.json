@@ -1,55 +1,83 @@
 {
   "channels": {
-    "PPCBrand_Spend": {
+    "tvsponsor_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
       "x0": 60000,
       "l_max": 8
     },
-    "PPCNonBrand_Spend": {
+    "TVCricket_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
       "x0": 60000,
       "l_max": 8
     },
-    "PPCShopping_Spend": {
+    "TVRON_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
       "x0": 60000,
       "l_max": 8
     },
-    "PPCLocal_Spend": {
+    "radio_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
       "x0": 60000,
       "l_max": 8
     },
-    "PPCPMax_Spend": {
+    "npp_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
       "x0": 60000,
       "l_max": 8
     },
-    "FBReach_Spend": {
+    "magazines_Spend": {
+      "alpha": 0.6,
+      "L": 1,
+      "k": 0.00005,
+      "x0": 60000,
+      "l_max": 8
+    },
+    "ooh_Spend": {
+      "alpha": 0.6,
+      "L": 1,
+      "k": 0.00005,
+      "x0": 60000,
+      "l_max": 8
+    },
+    "social_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.0001,
       "x0": 50000,
       "l_max": 8
     },
-    "FBDPA_Spend": {
+    "programmatic_Spend": {
       "alpha": 0.6,
       "L": 1,
-      "k": 0.0001,
-      "x0": 50000,
+      "k": 0.00005,
+      "x0": 60000,
       "l_max": 8
     },
-    "OfflineMedia_Spend": {
+    "displayrest_Spend": {
+      "alpha": 0.6,
+      "L": 1,
+      "k": 0.00005,
+      "x0": 60000,
+      "l_max": 8
+    },
+    "search_Spend": {
+      "alpha": 0.6,
+      "L": 1,
+      "k": 0.0002,
+      "x0": 40000,
+      "l_max": 8
+    },
+    "native_Spend": {
       "alpha": 0.6,
       "L": 1,
       "k": 0.00005,
@@ -58,11 +86,9 @@
     }
   },
   "data": {
-    "date_column": "Date",
+    "date_column": "Time",
     "response_column": "Sales",
-    "control_columns": [
-      "interestrate_control"
-    ]
+    "control_columns": []
   },
   "model": {
     "iterations": 100,
