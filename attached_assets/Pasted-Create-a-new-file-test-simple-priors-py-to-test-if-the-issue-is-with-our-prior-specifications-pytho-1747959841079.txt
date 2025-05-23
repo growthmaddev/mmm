@@ -1,0 +1,60 @@
+Create a new file test_simple_priors.py to test if the issue is with our prior specifications:
+python#!/usr/bin/env python
+"""Test with simplified priors to isolate constraint issues"""
+
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Apply global patch first
+from python_scripts.fit_mmm_with_global_patch import *
+
+# Override the create_and_fit_mmm_model function with simpler priors
+def test_simple_priors():
+    config = load_json_config("test_config_quick.json")
+    df = load_data("attached_assets/dankztestdata_v2.csv", date_column="Date")
+    
+    channels = list(config["channels"].keys())
+    date_column = "Date"
+    target_column = "Sales"
+    control_columns = ["interestrate_control"]
+    
+    print("Testing with simplified priors...")
+    
+    with pm.Model(coords={"channel": channels}) as model:
+        # Use simple Uniform priors for alpha (avoiding Beta constraints)
+        alpha_rv = pm.Uniform("alpha", lower=0.4, upper=0.9, dims="channel")
+        L_rv = pm.HalfNormal("L", sigma=2.0, dims="channel")
+        k_rv = pm.HalfNormal("k", sigma=0.01, dims="channel")
+        x0_rv = pm.HalfNormal("x0", sigma=50000, dims="channel")
+        
+        # Create transforms
+        adstock = GeometricAdstock(l_max=7, priors={"alpha": alpha_rv})
+        saturation = LogisticSaturation(priors={"L": L_rv, "k": k_rv, "x0": x0_rv})
+        
+        # Create MMM
+        mmm = MMM(
+            channel_columns=channels,
+            adstock=adstock,
+            saturation=saturation,
+            control_columns=control_columns,
+            date_column=date_column
+        )
+        
+        # Prepare data
+        X = df[[date_column] + channels + control_columns].copy()
+        y = df[target_column].copy()
+        
+        # Minimal fitting
+        trace = mmm.fit(X=X, y=y, draws=20, tune=20, chains=1, target_accept=0.8)
+        print("✓ Success with simplified priors!")
+        return True
+
+if __name__ == "__main__":
+    try:
+        test_simple_priors()
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        import traceback
+        traceback.print_exc()
+Action needed: Create this file and run it to test if simpler priors work.
