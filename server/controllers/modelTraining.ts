@@ -585,14 +585,13 @@ function transformMMMResults(ourResults: any, modelId: number) {
   console.log('Model accuracy (R-squared):', modelAccuracy);
   
   // Check if we have a summary with richer data
-  if (ourResults.summary && ourResults.summary.channel_contributions) {
-    console.log('Found detailed channel contributions in summary');
+  if (ourResults.summary && ourResults.summary.channel_analysis) {
+    console.log('Found detailed channel analysis in summary');
     // Use the more detailed data from the summary if available
-    ourResults.channel_analysis = {
-      contribution_percentage: ourResults.summary.channel_contributions || {},
-      roi: ourResults.summary.channel_roi || {},
-      spend: ourResults.summary.channel_spend || {}
-    };
+    ourResults.channel_analysis = ourResults.summary.channel_analysis;
+    
+    // Debug what we found
+    console.log('Channel analysis in summary:', JSON.stringify(ourResults.channel_analysis, null, 2));
   }
   
   // Estimate totalSales from the channel spend and ROI
@@ -713,7 +712,37 @@ function transformMMMResults(ourResults: any, modelId: number) {
     config: ourResults.config || {}
   };
   
-  // Debug the transformed results
+  // Prepare the fixed parameters for the config section
+  const config = {
+    adstock_settings: {},
+    saturation_settings: {}
+  };
+  
+  // Add saturation parameters from fixed_parameters if available
+  if (ourResults.summary?.fixed_parameters) {
+    const fixed = ourResults.summary.fixed_parameters;
+    
+    // Add adstock parameters (alpha)
+    if (fixed.alpha) {
+      config.adstock_settings = fixed.alpha;
+    }
+    
+    // Add saturation parameters (L, k, x0)
+    if (fixed.L && fixed.k && fixed.x0) {
+      Object.keys(fixed.L).forEach(channel => {
+        if (!config.saturation_settings[channel]) {
+          config.saturation_settings[channel] = {};
+        }
+        config.saturation_settings[channel] = {
+          L: fixed.L[channel],
+          k: fixed.k[channel],
+          x0: fixed.x0[channel]
+        };
+      });
+    }
+  }
+  
+  // The complete object that we want to return
   const transformedResults = {
     success: true,
     model_id: modelId,
@@ -727,9 +756,22 @@ function transformMMMResults(ourResults: any, modelId: number) {
           base: (baseSales / totalSales) * 100,
           channels: percentChannelContributions
         }
-      }
+      },
+      channel_effectiveness_detail: Object.fromEntries(
+        Object.entries(ourResults.channel_analysis?.roi || {}).map(
+          ([channel, roi]) => [
+            channel,
+            {
+              roi: Number(roi),
+              spend: ourResults.channel_analysis?.spend?.[channel] || 0,
+              contribution: channelContributions[channel] || 0,
+              contribution_percent: percentChannelContributions[channel] || 0
+            }
+          ]
+        )
+      )
     },
-    config: ourResults.config || {}
+    config: config
   };
   
   console.log('Transformed results structure:', JSON.stringify(transformedResults, null, 2));
