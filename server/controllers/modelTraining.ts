@@ -726,35 +726,32 @@ function transformMMMResults(ourResults: any, modelId: number) {
     config: ourResults.config || {}
   };
   
-  // Prepare the fixed parameters for the config section
-  const config = {
-    adstock_settings: {},
-    saturation_settings: {}
-  };
-  
-  // Add saturation parameters from fixed_parameters if available
-  if (ourResults.summary?.fixed_parameters) {
+  // Use the config from the Ridge regression if available, otherwise build from fixed_parameters
+  let config = ourResults.config || {};
+
+  // If config doesn't have the expected structure, try to build it from fixed_parameters (backward compatibility)
+  if (!config.channels && ourResults.summary?.fixed_parameters) {
     const fixed = ourResults.summary.fixed_parameters;
+    config = {
+      channels: {}
+    };
     
-    // Add adstock parameters (alpha)
-    if (fixed.alpha) {
-      config.adstock_settings = fixed.alpha;
-    }
-    
-    // Add saturation parameters (L, k, x0)
+    // Build channels config from fixed parameters
     if (fixed.L && fixed.k && fixed.x0) {
       Object.keys(fixed.L).forEach(channel => {
-        if (!config.saturation_settings[channel]) {
-          config.saturation_settings[channel] = {};
-        }
-        config.saturation_settings[channel] = {
+        config.channels[channel] = {
           L: fixed.L[channel],
           k: fixed.k[channel],
-          x0: fixed.x0[channel]
+          x0: fixed.x0[channel],
+          alpha: fixed.alpha?.[channel] || 0.7,
+          l_max: fixed.l_max || 8
         };
       });
     }
   }
+
+  // Log what config we're passing for debugging
+  console.log('Config being passed to UI:', JSON.stringify(config, null, 2));
   
   // The complete object that we want to return with the structure expected by the UI
   const transformedResults = {
@@ -763,6 +760,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
     model_accuracy: modelAccuracy * 100,
     
     // Add the configuration data for Media Mix Curves and other components
+    // This now has the Ridge regression config with saturation parameters
     config: config,
     
     // Add top-level metrics used by the UI
