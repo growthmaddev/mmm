@@ -742,11 +742,41 @@ function transformMMMResults(ourResults: any, modelId: number) {
     }
   }
   
-  // The complete object that we want to return
+  // The complete object that we want to return with the structure expected by the UI
   const transformedResults = {
     success: true,
     model_id: modelId,
     model_accuracy: modelAccuracy * 100,
+    
+    // Add top-level metrics used by the UI
+    top_channel: getTopChannel(ourResults.channel_analysis?.contribution_percentage),
+    top_channel_roi: formatRoi(getTopRoi(ourResults.channel_analysis?.roi)),
+    increase_channel: getIncreaseRecommendation(ourResults.channel_analysis),
+    increase_percent: getIncreasePercent(ourResults.channel_analysis),
+    decrease_channel: getDecreaseRecommendation(ourResults.channel_analysis),
+    decrease_roi: formatRoi(getDecreaseRoi(ourResults.channel_analysis)),
+    optimize_channel: getOptimizeRecommendation(ourResults.channel_analysis),
+    
+    // Summary structure that other parts of the UI expect
+    summary: {
+      channels: Object.fromEntries(
+        Object.entries(ourResults.channel_analysis?.contribution_percentage || {}).map(
+          ([channel, contribution]) => [
+            channel, 
+            { 
+              contribution: Number(contribution), 
+              roi: Number(ourResults.channel_analysis?.roi?.[channel] || 0)
+            }
+          ]
+        )
+      ),
+      fit_metrics: {
+        r_squared: modelAccuracy,
+        rmse: ourResults.model_quality?.rmse || 0
+      }
+    },
+    
+    // Analytics structure with detailed sales decomposition
     analytics: {
       sales_decomposition: {
         total_sales: totalSales,
@@ -769,12 +799,34 @@ function transformMMMResults(ourResults: any, modelId: number) {
             }
           ]
         )
-      )
+      ),
+      model_quality: {
+        r_squared: modelAccuracy,
+        mape: ourResults.model_quality?.mape || 0
+      }
     },
-    config: config
+    
+    // Configuration data for Media Mix Curves
+    config: config,
+    
+    // Recommendations for UI
+    recommendations: recommendations,
+    
+    // Add the fixed parameters and model results for reference
+    fixed_parameters: ourResults.fixed_parameters || ourResults.summary?.fixed_parameters,
+    model_results: ourResults.model_results
   };
   
-  console.log('Transformed results structure:', JSON.stringify(transformedResults, null, 2));
+  console.log('Transformed results structure:', JSON.stringify({
+    model_id: transformedResults.model_id,
+    analytics: {
+      sales_decomposition: {
+        percent_decomposition: transformedResults.analytics.sales_decomposition.percent_decomposition
+      },
+      channel_count: Object.keys(transformedResults.analytics.channel_effectiveness_detail).length
+    }
+  }, null, 2));
+  
   return transformedResults;
 }
 
