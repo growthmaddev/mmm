@@ -1,0 +1,105 @@
+{
+  "model_info": {
+    "date": "2025-05-23 06:26:35",
+    "config_file": "/home/runner/workspace/temp_config.json",
+    "data_file": "/home/runner/workspace/uploads/ee3f0c4b-bd3f-450a-a571-7555067ce6a9-dankztestdata_v2.csv",
+    "data_points": 90,
+    "channels": [
+      "PPCBrand_Spend",
+      "PPCNonBrand_Spend",
+      "PPCShopping_Spend",
+      "PPCLocal_Spend",
+      "PPCPMax_Spend",
+      "FBReach_Spend",
+      "FBDPA_Spend",
+      "OfflineMedia_Spend"
+    ],
+    "approach": "fixed_parameters"
+  },
+  "fixed_parameters": {
+    "alpha": {
+      "PPCBrand_Spend": 0.6,
+      "PPCNonBrand_Spend": 0.6,
+      "PPCShopping_Spend": 0.6,
+      "PPCLocal_Spend": 0.6,
+      "PPCPMax_Spend": 0.6,
+      "FBReach_Spend": 0.6,
+      "FBDPA_Spend": 0.6,
+      "OfflineMedia_Spend": 0.6
+    },
+    "L": {
+      "PPCBrand_Spend": 1.0,
+      "PPCNonBrand_Spend": 1.0,
+      "PPCShopping_Spend": 1.0,
+      "PPCLocal_Spend": 1.0,
+      "PPCPMax_Spend": 1.0,
+      "FBReach_Spend": 1.0,
+      "FBDPA_Spend": 1.0,
+      "OfflineMedia_Spend": 1.0
+    },
+    "k": {
+      "PPCBrand_Spend": 5e-05,
+      "PPCNonBrand_Spend": 5e-05,
+      "PPCShopping_Spend": 5e-05,
+      "PPCLocal_Spend": 5e-05,
+      "PPCPMax_Spend": 5e-05,
+      "FBReach_Spend": 0.0001,
+      "FBDPA_Spend": 0.0001,
+      "OfflineMedia_Spend": 5e-05
+    },
+    "x0": {
+      "PPCBrand_Spend": 60000.0,
+      "PPCNonBrand_Spend": 60000.0,
+      "PPCShopping_Spend": 60000.0,
+      "PPCLocal_Spend": 60000.0,
+      "PPCPMax_Spend": 60000.0,
+      "FBReach_Spend": 50000.0,
+      "FBDPA_Spend": 50000.0,
+      "OfflineMedia_Spend": 60000.0
+    },
+    "l_max": 8
+  },
+  "channel_analysis": {
+    "spend": {
+      "PPCBrand_Spend": 49749.11,
+      "PPCNonBrand_Spend": 180947.11,
+      "PPCShopping_Spend": 78320.81999999999,
+      "PPCLocal_Spend": 83920.91,
+      "PPCPMax_Spend": 23088.56,
+      "FBReach_Spend": 109450.48999999999,
+      "FBDPA_Spend": 107662.73000000001,
+      "OfflineMedia_Spend": 460885.0
+    },
+    "contributions": {
+      "PPCBrand_Spend": 4.5502273618107205,
+      "PPCNonBrand_Spend": 5.404146936768336,
+      "PPCShopping_Spend": 4.724723771397048,
+      "PPCLocal_Spend": 4.80591082603655,
+      "PPCPMax_Spend": 4.3989321360225855,
+      "FBReach_Spend": 0.8138245592291079,
+      "FBDPA_Spend": 0.8171555103769724,
+      "OfflineMedia_Spend": 8.659281100226972
+    },
+    "roi": {
+      "PPCBrand_Spend": 9.146349275013604e-05,
+      "PPCNonBrand_Spend": 2.9865892507309655e-05,
+      "PPCShopping_Spend": 6.032525925286594e-05,
+      "PPCLocal_Spend": 5.726714386243607e-05,
+      "PPCPMax_Spend": 0.0001905243174984748,
+      "FBReach_Spend": 7.4355497104591125e-06,
+      "FBDPA_Spend": 7.589957178096565e-06,
+      "OfflineMedia_Spend": 1.8788376927491613e-05
+    },
+    "contribution_percentage": {
+      "PPCBrand_Spend": 13.314802010394736,
+      "PPCNonBrand_Spend": 15.813527715572814,
+      "PPCShopping_Spend": 13.825410593312254,
+      "PPCLocal_Spend": 14.062978844825274,
+      "PPCPMax_Spend": 12.872084357779384,
+      "FBReach_Spend": 2.3814003160097665,
+      "FBDPA_Spend": 2.3911472916031937,
+      "OfflineMedia_Spend": 25.3386488705026
+    }
+  },
+  "status": "Model built and analyzed successfully with fixed parameters"
+}
