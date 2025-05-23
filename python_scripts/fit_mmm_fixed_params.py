@@ -258,11 +258,32 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='MMM with fixed parameters')
-    parser.add_argument('config_file', help='Path to configuration JSON')
-    parser.add_argument('data_file', help='Path to data CSV')
-    parser.add_argument('--results-file', '-o', help='Path to save results JSON')
+    parser.add_argument('--data_file', required=True, help='Path to data CSV')
+    parser.add_argument('--config_file', required=True, help='Path to configuration JSON')
+    parser.add_argument('--results_file', help='Path to save results JSON')
     
     args = parser.parse_args()
+    
+    # Debug info
+    print(f"DEBUG: data_file={args.data_file}", file=sys.stderr)
+    print(f"DEBUG: config_file={args.config_file}", file=sys.stderr)
+    print(f"DEBUG: results_file={args.results_file}", file=sys.stderr)
+    
+    # Check if files exist
+    if not os.path.exists(args.data_file):
+        print(f"ERROR: Data file not found: {args.data_file}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.exists(args.config_file):
+        print(f"ERROR: Config file not found: {args.config_file}", file=sys.stderr)
+        sys.exit(1)
+        
+    # Check config file content
+    try:
+        with open(args.config_file, 'r') as f:
+            config_content = f.read()
+            print(f"DEBUG: Config content preview: {config_content[:100]}...", file=sys.stderr)
+    except Exception as e:
+        print(f"ERROR: Failed to read config file: {e}", file=sys.stderr)
     
     results = create_mmm_with_fixed_params(args.config_file, args.data_file, args.results_file)
     print(json.dumps(results, indent=2))

@@ -271,19 +271,49 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
       };
       
       // Properly escape the model configuration as a JSON string
-      const configJson = JSON.stringify(fixedParamConfig);
-      console.log(`Running MMM fixed parameter training with config: ${configJson.substring(0, 100)}...`);
+      const configJson = JSON.stringify(fixedParamConfig, null, 2);
       
       // Create a temp file to pass the config to avoid command line argument issues
       const tempConfigPath = path.join(process.cwd(), 'temp_config.json');
-      fs.writeFileSync(tempConfigPath, configJson, 'utf8');
+      
+      console.log('===== DEBUG MODEL TRAINING =====');
+      console.log('Writing config to:', tempConfigPath);
+      console.log('Config content (preview):', configJson.substring(0, 200), '...');
+      
+      // Ensure directory exists
+      const configDir = path.dirname(tempConfigPath);
+      if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+      }
+      
+      try {
+        fs.writeFileSync(tempConfigPath, configJson, 'utf8');
+        
+        // Verify file was written
+        console.log('File exists:', fs.existsSync(tempConfigPath));
+        console.log('File size:', fs.statSync(tempConfigPath).size, 'bytes');
+        console.log('File sample content:', fs.readFileSync(tempConfigPath, 'utf8').substring(0, 100), '...');
+        
+        console.log('Python script path:', pythonScriptPath);
+        console.log('Python script exists:', fs.existsSync(pythonScriptPath));
+        console.log('Data file path:', dataFilePath);
+        console.log('Data file exists:', fs.existsSync(dataFilePath));
+      } catch (fileError) {
+        console.error('Error writing config file:', fileError);
+      }
       
       // Spawn the Python process with the temp config file path
-      const pythonProcess = spawn('python3', [
+      const pythonCmd = 'python3';
+      const pythonArgs = [
         pythonScriptPath,
-        dataFilePath,
-        tempConfigPath
-      ]);
+        '--data_file', dataFilePath,
+        '--config_file', tempConfigPath,
+        '--results_file', `./results/model_${modelId}_results.json`
+      ];
+      
+      console.log('Running Python command:', pythonCmd, pythonArgs.join(' '));
+      
+      const pythonProcess = spawn(pythonCmd, pythonArgs);
       
       let stdoutChunks: Buffer[] = [];
       let stderrChunks: Buffer[] = [];
