@@ -11,21 +11,26 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 from datetime import datetime
 import sys
+import argparse
 
 def adstock_transform(spend, alpha=0.7, l_max=8):
     """Apply geometric adstock transformation"""
-    n = len(spend)
+    # Convert to numpy array to ensure consistent handling
+    spend_array = np.array(spend, dtype=float)
+    n = len(spend_array)
     transformed = np.zeros(n)
     for t in range(n):
         for l in range(min(t+1, l_max)):
-            transformed[t] += (alpha ** l) * spend[max(0, t-l)]
+            transformed[t] += (alpha ** l) * spend_array[max(0, t-l)]
     return transformed
 
 def saturation_transform(spend, L=1.0, k=0.001, x0=None):
     """Apply logistic saturation transformation"""
+    # Convert to numpy array to ensure consistent handling
+    spend_array = np.array(spend, dtype=float)
     if x0 is None:
-        x0 = spend.mean()
-    return L / (1 + np.exp(-k * (spend - x0)))
+        x0 = np.mean(spend_array)
+    return L / (1 + np.exp(-k * (spend_array - x0)))
 
 def fit_mmm_ridge(data_file, config_file, results_file=None):
     """Fit a real MMM using Ridge regression"""
@@ -109,19 +114,29 @@ def fit_mmm_ridge(data_file, config_file, results_file=None):
     }
     
     # Calculate actual spend
-    channel_spend = {ch: df[ch].sum() for ch in channels}
+    channel_spend = {}
+    for ch in channels:
+        # Convert to numpy array and sum to avoid pandas issues
+        channel_spend[ch] = float(np.sum(np.array(df[ch].values, dtype=float)))
     
     # Calculate ROI (contribution per dollar spent)
     channel_roi = {}
+    y_sum = float(np.sum(np.array(y, dtype=float)))  # Convert to float to avoid ExtensionArray issues
     for ch in channels:
         if channel_spend[ch] > 0:
             # This is REAL ROI based on the model's fitted coefficients
-            roi = (contributions[ch] * y.sum() / total_contribution) / channel_spend[ch]
+            roi = (contributions[ch] * y_sum / total_contribution) / channel_spend[ch]
             channel_roi[ch] = roi
         else:
             channel_roi[ch] = 0.0
     
     # Prepare results in the same format as the original
+    # Convert all values to Python native types to avoid NumPy/Pandas serialization issues
+    total_sales = float(np.sum(np.array(y, dtype=float)))
+    base_sales = float(model.intercept_ * len(y))
+    incremental_sales = total_sales - base_sales
+    base_percent = (base_sales / total_sales * 100) if total_sales > 0 else 0
+    
     results = {
         "success": True,
         "channel_analysis": {
@@ -132,22 +147,22 @@ def fit_mmm_ridge(data_file, config_file, results_file=None):
         },
         "model_quality": {
             "r_squared": r2,  # This is REAL R-squared!
-            "mape": np.mean(np.abs((y - y_pred) / y)) * 100
+            "mape": float(np.mean(np.abs((y - y_pred) / y)) * 100)
         },
         "model_results": {
-            "intercept": model.intercept_,
-            "coefficients": dict(zip(feature_names, model.coef_))
+            "intercept": float(model.intercept_),
+            "coefficients": dict(zip(feature_names, [float(coef) for coef in model.coef_]))
         },
         "config": {
             "channels": config['channels']
         },
         "analytics": {
             "sales_decomposition": {
-                "total_sales": float(y.sum()),
-                "base_sales": float(model.intercept_ * len(y)),
-                "incremental_sales": float(y.sum() - model.intercept_ * len(y)),
+                "total_sales": total_sales,
+                "base_sales": base_sales,
+                "incremental_sales": incremental_sales,
                 "percent_decomposition": {
-                    "base": float(model.intercept_ * len(y) / y.sum() * 100),
+                    "base": base_percent,
                     "channels": contribution_percentage
                 }
             }

@@ -228,8 +228,8 @@ export const startModelTraining = async (req: AuthRequest, res: Response) => {
 const executeModelTraining = async (modelId: number, dataFilePath: string, modelConfig: any) => {
   return new Promise<void>((resolve, reject) => {
     try {
-      // Use our fixed parameter implementation instead of the original train_mmm.py
-      const pythonScriptPath = path.join(process.cwd(), 'python_scripts', 'fit_mmm_fixed_params.py');
+      // Use Ridge regression MMM for legitimate statistical modeling
+      const pythonScriptPath = path.join(process.cwd(), 'python_scripts', 'fit_mmm_ridge.py');
       
       // Transform the UI model configuration to our fixed parameter format
       // Log the model config for debugging
