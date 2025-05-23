@@ -785,6 +785,26 @@ function transformMMMResults(ourResults: any, modelId: number) {
     // Debug: Log what we're returning
     console.log('Transformer returning data with channels:', Array.from(allChannels).length);
     
+    // Log detailed structure before returning
+    console.log('Transformed results structure:', JSON.stringify({
+      model_id: transformedResults.model_id,
+      analytics: {
+        sales_decomposition: {
+          percent_decomposition: transformedResults.analytics.sales_decomposition.percent_decomposition
+        },
+        channel_count: Object.keys(transformedResults.analytics.channel_effectiveness_detail).length
+      }
+    }, null, 2));
+    
+    // Debug: Log what we're returning to ensure all required fields are present
+    console.log('Transformer returning:', {
+      has_analytics: !!transformedResults.analytics,
+      has_config: !!transformedResults.config,
+      config_channels: Object.keys(transformedResults.config?.channels || {}),
+      sales_decomp_total: transformedResults.analytics?.sales_decomposition?.total_sales,
+      base_percent: transformedResults.analytics?.sales_decomposition?.percent_decomposition?.base
+    });
+    
     return transformedResults;
   } catch (error) {
     console.error('Error transforming MMM results:', error);
@@ -794,27 +814,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
   
-  console.log('Transformed results structure:', JSON.stringify({
-    model_id: transformedResults.model_id,
-    analytics: {
-      sales_decomposition: {
-        percent_decomposition: transformedResults.analytics.sales_decomposition.percent_decomposition
-      },
-      channel_count: Object.keys(transformedResults.analytics.channel_effectiveness_detail).length
-    }
-  }, null, 2));
-  
-  // Debug: Log what we're returning to ensure all required fields are present
-  console.log('Transformer returning:', {
-    has_analytics: !!transformedResults.analytics,
-    has_config: !!transformedResults.config,
-    config_channels: Object.keys(transformedResults.config?.channels || {}),
-    sales_decomp_total: transformedResults.analytics?.sales_decomposition?.total_sales,
-    base_percent: transformedResults.analytics?.sales_decomposition?.percent_decomposition?.base
-  });
 
-  return transformedResults;
-}
 
 /**
  * Generate recommendations based on channel analysis
