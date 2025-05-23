@@ -583,7 +583,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
   }
   
   // Make sure we have results to transform
-  if (!ourResults.summary?.analytics?.sales_decomposition) {
+  if (!ourResults.summary?.channel_analysis) {
     console.warn('Invalid results format from fixed parameter MMM');
     return {
       success: false,
@@ -591,30 +591,31 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
 
-  // Debug the sales_decomposition structure we're using
-  console.log('Sales decomposition data:', JSON.stringify(ourResults.summary.analytics.sales_decomposition, null, 2));
+  // Debug the channel_analysis structure we're using
+  console.log('Channel analysis data:', JSON.stringify(ourResults.summary.channel_analysis, null, 2));
   
   // Extract metrics from the results
   const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
   console.log('Model accuracy (R-squared):', modelAccuracy);
   
-  // Get sales data directly from the analytics section
+  // Estimate totalSales from the channel spend and ROI
   let totalSales = 0;
   let totalSpend = 0;
   
-  if (ourResults.summary.analytics?.sales_decomposition?.total_sales) {
-    totalSales = ourResults.summary.analytics.sales_decomposition.total_sales;
-    console.log('Using total sales from analytics:', totalSales);
-  } else if (ourResults.summary.channel_analysis?.spend) {
-    // Fallback: calculate from spend
+  if (ourResults.summary.channel_analysis?.spend) {
     Object.values(ourResults.summary.channel_analysis.spend).forEach((spend: any) => {
       totalSpend += Number(spend || 0);
     });
     console.log('Total spend calculated:', totalSpend);
     
-    // Estimate if needed
-    totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
-    console.log('Estimated total sales (3x spend):', totalSales);
+    // Get actual sales from summary if available, otherwise estimate
+    if (ourResults.summary && ourResults.summary.total_sales) {
+      totalSales = ourResults.summary.total_sales;
+      console.log('Using actual total sales from summary:', totalSales);
+    } else {
+      totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
+      console.log('Estimated total sales (3x spend):', totalSales);
+    }
   } else {
     totalSales = 1000000; // Fallback value if no spend data
     console.log('Using fallback total sales value:', totalSales);
@@ -624,51 +625,32 @@ function transformMMMResults(ourResults: any, modelId: number) {
   console.log('  Total spend:', totalSpend);
   console.log('  Total sales:', totalSales);
   
-  // Get sales values directly from analytics if available
-  let baseSales = 0;
-  let incrementalSales = 0;
-  let basePercent = 0;
-  const channelContributions: Record<string, number> = {};
-  const percentChannelContributions: Record<string, number> = {};
+  // Calculate base sales (could be from intercept or a percentage)
+  const baseSales = ourResults.summary?.baseline_sales || 
+                   ourResults.model_results?.intercept || 
+                   totalSales * 0.3; // 30% baseline
+  console.log('Base sales:', baseSales);
   
-  if (ourResults.summary.analytics?.sales_decomposition) {
-    // Use actual values from analytics
-    baseSales = ourResults.summary.analytics.sales_decomposition.base_sales || 0;
-    incrementalSales = ourResults.summary.analytics.sales_decomposition.incremental_sales || 0;
-    basePercent = ourResults.summary.analytics.sales_decomposition.percent_decomposition?.base || 0;
-    
-    // Convert marketing percent breakdown to channel contributions
-    // The Python model outputs percent_decomposition with base, marketing, control
-    // The frontend expects base and channels
-    if (ourResults.summary.channel_analysis?.contribution_percentage) {
-      Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
-        const contribution = incrementalSales * (Number(percentage) / 100);
-        channelContributions[channel] = contribution;
-        percentChannelContributions[channel] = Number(percentage);
-      });
-    }
-  } else {
-    // Fallback to old method if analytics not available
-    baseSales = ourResults.summary?.baseline_sales || 
-                ourResults.model_results?.intercept || 
-                totalSales * 0.3; // 30% baseline
-    incrementalSales = totalSales - baseSales;
-    basePercent = (baseSales / totalSales) * 100;
-    
-    // Calculate channel contributions using old method
-    if (ourResults.summary.channel_analysis?.contribution_percentage) {
-      Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
-        const contribution = incrementalSales * (Number(percentage) / 100);
-        channelContributions[channel] = contribution;
-        percentChannelContributions[channel] = Number(percentage);
-      });
-    }
-  }
+  const incrementalSales = totalSales - baseSales;
+  console.log('Incremental sales:', incrementalSales);
   
   console.log('  Base sales:', baseSales);
   console.log('  Incremental sales:', incrementalSales);
-  console.log('  Channel contributions:', channelContributions);
-  console.log('  Contribution percentages:', percentChannelContributions);
+  
+  // Calculate channel contributions in absolute values and percentages
+  const channelContributions: Record<string, number> = {};
+  const percentChannelContributions: Record<string, number> = {};
+  
+  if (ourResults.summary.channel_analysis?.contribution_percentage) {
+    Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
+      const contribution = incrementalSales * (Number(percentage) / 100);
+      channelContributions[channel] = contribution;
+      percentChannelContributions[channel] = Number(percentage);
+    });
+    
+    console.log('  Channel contributions:', channelContributions);
+    console.log('  Contribution percentages:', percentChannelContributions);
+  }
   
   // Generate recommendations based on ROI and contribution
   const recommendations = generateRecommendations(ourResults.summary.channel_analysis);
@@ -712,7 +694,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
         base_sales: baseSales,
         incremental_sales: incrementalSales,
         percent_decomposition: {
-          base: basePercent,
+          base: (baseSales / totalSales) * 100,
           channels: percentChannelContributions
         }
       },
@@ -755,7 +737,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
             channel, 
             { 
               contribution: Number(contribution), 
-              roi: Number(ourResults.summary.channel_analysis?.roi?.[channel] || 0)
+              roi: Number(ourResults.channel_analysis?.roi?.[channel] || 0)
             }
           ]
         )
