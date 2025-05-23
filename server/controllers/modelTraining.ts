@@ -842,6 +842,15 @@ function transformMMMResults(ourResults: any, modelId: number) {
     }
   }, null, 2));
   
+  // Debug: Log what we're returning to ensure all required fields are present
+  console.log('Transformer returning:', {
+    has_analytics: !!transformedResults.analytics,
+    has_config: !!transformedResults.config,
+    config_channels: Object.keys(transformedResults.config?.channels || {}),
+    sales_decomp_total: transformedResults.analytics?.sales_decomposition?.total_sales,
+    base_percent: transformedResults.analytics?.sales_decomposition?.percent_decomposition?.base
+  });
+
   return transformedResults;
 }
 
