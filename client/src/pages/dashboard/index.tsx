@@ -162,27 +162,51 @@ export default function Dashboard() {
           </TabsContent>
           
           <TabsContent value="upcoming" className="mt-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <CalendarDays className="h-6 w-6 text-primary" />
-                  <div>
-                    <h4 className="font-medium">Create your first marketing mix model</h4>
-                    <p className="text-sm text-slate-600 mt-1">
-                      Upload your marketing data and create a model to analyze channel effectiveness
-                    </p>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="mt-4"
-                      onClick={() => navigate("/projects/create")}
-                    >
-                      Get started
-                    </Button>
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <CalendarDays className="h-6 w-6 text-primary" />
+                    <div>
+                      <h4 className="font-medium">Create your first marketing mix model</h4>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Upload your marketing data and create a model to analyze channel effectiveness
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-4"
+                        onClick={() => navigate("/projects/create")}
+                      >
+                        Get started
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <DollarSign className="h-6 w-6 text-green-600" />
+                    <div>
+                      <h4 className="font-medium">Optimize your marketing budget</h4>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Use our MMM Budget Optimizer to maximize ROI and improve channel allocation
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-4"
+                        onClick={() => navigate("/dashboard/optimization")}
+                      >
+                        Optimize now
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
