@@ -565,6 +565,9 @@ const executeModelTraining = async (modelId: number, dataFilePath: string, model
  * Transform our fixed parameter MMM results to match UI expectations
  */
 function transformMMMResults(ourResults: any, modelId: number) {
+  // Debug log the raw results from Python
+  console.log('Raw results from Python:', JSON.stringify(ourResults, null, 2));
+  
   // Make sure we have results to transform
   if (!ourResults || !ourResults.channel_analysis) {
     console.warn('Invalid results format from fixed parameter MMM');
@@ -574,8 +577,23 @@ function transformMMMResults(ourResults: any, modelId: number) {
     };
   }
 
+  // Debug the channel_analysis structure
+  console.log('Channel analysis data:', JSON.stringify(ourResults.channel_analysis, null, 2));
+  
   // Extract metrics from the results
   const modelAccuracy = ourResults.model_quality?.r_squared || 0.034;
+  console.log('Model accuracy (R-squared):', modelAccuracy);
+  
+  // Check if we have a summary with richer data
+  if (ourResults.summary && ourResults.summary.channel_contributions) {
+    console.log('Found detailed channel contributions in summary');
+    // Use the more detailed data from the summary if available
+    ourResults.channel_analysis = {
+      contribution_percentage: ourResults.summary.channel_contributions || {},
+      roi: ourResults.summary.channel_roi || {},
+      spend: ourResults.summary.channel_spend || {}
+    };
+  }
   
   // Estimate totalSales from the channel spend and ROI
   let totalSales = 0;
@@ -585,14 +603,29 @@ function transformMMMResults(ourResults: any, modelId: number) {
     Object.values(ourResults.channel_analysis.spend).forEach((spend: any) => {
       totalSpend += Number(spend || 0);
     });
-    totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
+    console.log('Total spend calculated:', totalSpend);
+    
+    // Get actual sales from summary if available, otherwise estimate
+    if (ourResults.summary && ourResults.summary.total_sales) {
+      totalSales = ourResults.summary.total_sales;
+      console.log('Using actual total sales from summary:', totalSales);
+    } else {
+      totalSales = totalSpend * 3; // Rough estimate, about 3x total spend
+      console.log('Estimated total sales (3x spend):', totalSales);
+    }
   } else {
     totalSales = 1000000; // Fallback value if no spend data
+    console.log('Using fallback total sales value:', totalSales);
   }
   
   // Calculate base sales (could be from intercept or a percentage)
-  const baseSales = ourResults.model_results?.intercept || totalSales * 0.3; // 30% baseline
+  const baseSales = ourResults.summary?.baseline_sales || 
+                   ourResults.model_results?.intercept || 
+                   totalSales * 0.3; // 30% baseline
+  console.log('Base sales:', baseSales);
+  
   const incrementalSales = totalSales - baseSales;
+  console.log('Incremental sales:', incrementalSales);
   
   // Calculate channel contributions in absolute values and percentages
   const channelContributions: Record<string, number> = {};
