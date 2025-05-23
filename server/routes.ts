@@ -301,6 +301,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Budget optimization routes
   apiRouter.post('/models/:modelId/optimize-budget', isAuthenticated, budgetOptimizationRoutes.optimizeBudget);
   
+  // MMM Optimizer routes
+  apiRouter.post('/mmm-optimizer/run', isAuthenticated, runMMMOptimizer);
+  apiRouter.get('/mmm-optimizer/status', getOptimizationStatus);
+  
   // OAuth connector routes
   apiRouter.get('/oauth/:provider/:projectId', isAuthenticated, initializeOAuth);
   apiRouter.get('/oauth/:provider/callback', isAuthenticated, handleOAuthCallback);
