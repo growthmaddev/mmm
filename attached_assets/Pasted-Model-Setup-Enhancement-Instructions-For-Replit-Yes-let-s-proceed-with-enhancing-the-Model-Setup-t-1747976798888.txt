@@ -1,0 +1,129 @@
+Model Setup Enhancement Instructions
+For Replit: Yes, let's proceed with enhancing the Model Setup to properly capture saturation parameters (L, k, x0) that our fixed parameter solution needs.
+COMPLETE THE FOLLOWING TASKS IN ORDER:
+
+First, examine the current model setup component to understand how saturation is currently captured:
+
+bashgrep -A20 -B5 "saturation" client/src/pages/projects/*/model-setup.tsx
+
+Open client/src/pages/projects/[id]/model-setup.tsx
+Look for where saturation values are defined and update the structure to capture L, k, and x0. Find the section that handles channel-specific settings and replace the simple saturation input with:
+
+typescript// Replace simple saturation input with advanced parameters
+<div className="space-y-4">
+  <Label>Saturation Parameters</Label>
+  <div className="grid grid-cols-3 gap-2">
+    <div>
+      <Label className="text-xs">L (Max Effect)</Label>
+      <Input
+        type="number"
+        step="0.1"
+        value={channelSettings[channel]?.saturation?.L || 1.0}
+        onChange={(e) => updateChannelSetting(channel, 'saturation', {
+          ...channelSettings[channel]?.saturation,
+          L: parseFloat(e.target.value)
+        })}
+        placeholder="1.0"
+      />
+    </div>
+    <div>
+      <Label className="text-xs">k (Slope)</Label>
+      <Input
+        type="number"
+        step="0.00001"
+        value={channelSettings[channel]?.saturation?.k || 0.0001}
+        onChange={(e) => updateChannelSetting(channel, 'saturation', {
+          ...channelSettings[channel]?.saturation,
+          k: parseFloat(e.target.value)
+        })}
+        placeholder="0.0001"
+      />
+    </div>
+    <div>
+      <Label className="text-xs">x0 (Inflection)</Label>
+      <Input
+        type="number"
+        step="1000"
+        value={channelSettings[channel]?.saturation?.x0 || 50000}
+        onChange={(e) => updateChannelSetting(channel, 'saturation', {
+          ...channelSettings[channel]?.saturation,
+          x0: parseFloat(e.target.value)
+        })}
+        placeholder="50000"
+      />
+    </div>
+  </div>
+  <p className="text-xs text-muted-foreground">
+    L: Maximum effect level, k: Growth rate, x0: Spend at half-saturation
+  </p>
+</div>
+
+Update the initial state/defaults for channel settings to include the new saturation structure:
+
+typescriptconst defaultChannelSettings = {
+  adstock: {
+    alpha: 0.5,
+    l_max: 7
+  },
+  saturation: {
+    L: 1.0,
+    k: 0.0001,
+    x0: 50000
+  }
+};
+
+Find where the configuration is saved and ensure it includes the new saturation parameters. Look for the submit/save function and verify it includes:
+
+typescriptconst modelConfig = {
+  channels: Object.entries(channelSettings).reduce((acc, [channel, settings]) => {
+    acc[channel] = {
+      alpha: settings.adstock?.alpha || 0.5,
+      l_max: settings.adstock?.l_max || 7,
+      L: settings.saturation?.L || 1.0,
+      k: settings.saturation?.k || 0.0001,
+      x0: settings.saturation?.x0 || 50000
+    };
+    return acc;
+  }, {}),
+  data: {
+    date_column: dateColumn,
+    response_column: targetColumn,
+    control_columns: controlColumns
+  }
+};
+
+Create a migration helper for existing projects that only have simple saturation values:
+
+typescript// Add this function to convert old saturation format to new
+function migrateSaturationValue(oldValue: number | undefined): { L: number; k: number; x0: number } {
+  // If old value exists, use it to estimate parameters
+  if (typeof oldValue === 'number') {
+    return {
+      L: oldValue || 1.0,
+      k: 0.0001,  // Default slope
+      x0: 50000   // Default inflection point
+    };
+  }
+  // Return defaults for new format
+  return {
+    L: 1.0,
+    k: 0.0001,
+    x0: 50000
+  };
+}
+
+Save the file and create a test to verify the changes:
+
+bash# Check if our changes are reflected
+grep -n "saturation.*L\|saturation.*k\|saturation.*x0" client/src/pages/projects/*/model-setup.tsx
+
+Report whether the model setup enhancement was successful and if any TypeScript errors occurred
+
+DO NOT:
+
+Change the overall UI layout drastically
+Modify other workflow steps
+Remove backward compatibility
+Change unrelated parameters
+
+STOP after updating the model setup component and reporting the results.

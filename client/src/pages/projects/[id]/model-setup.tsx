@@ -28,7 +28,14 @@ export default function ModelSetup() {
   const [modelName, setModelName] = useState("Default Model");
   const [targetVariable, setTargetVariable] = useState("");
   const [adstock, setAdstock] = useState<Record<string, number>>({});
-  const [saturation, setSaturation] = useState<Record<string, number>>({});
+  
+  // Enhanced saturation state with L, k, x0 parameters
+  const [saturation, setSaturation] = useState<Record<string, {
+    L: number,
+    k: number,
+    x0: number
+  } | number>>({});
+  
   const [controlVariables, setControlVariables] = useState({
     Temperature: true,
     Holiday: true,
@@ -83,16 +90,31 @@ export default function ModelSetup() {
         });
         setAdstock(newAdstock);
         
-        // Default saturation values (0.5-0.8)
-        const newSaturation: Record<string, number> = {};
+        // Enhanced default saturation values with L, k, x0 parameters
+        const newSaturation: Record<string, {L: number, k: number, x0: number}> = {};
         channelNames.forEach(channel => {
-          // Assign different default saturation values based on channel type
+          // Default values based on channel type
           if (channel.toLowerCase().includes('search')) {
-            newSaturation[channel] = 0.8; // Search typically has higher saturation
+            // Search typically has higher saturation
+            newSaturation[channel] = {
+              L: 1.0,
+              k: 0.0002, // Slightly faster saturation
+              x0: 40000  // Lower inflection point
+            };
           } else if (channel.toLowerCase().includes('social') || channel.toLowerCase().includes('fb')) {
-            newSaturation[channel] = 0.6; // Social medium saturation
+            // Social media has medium saturation
+            newSaturation[channel] = {
+              L: 1.0,
+              k: 0.0001, // Medium saturation rate
+              x0: 50000  // Medium inflection point
+            };
           } else {
-            newSaturation[channel] = 0.5; // Other channels lower saturation
+            // Traditional channels have lower saturation
+            newSaturation[channel] = {
+              L: 1.0,
+              k: 0.00005, // Slower saturation
+              x0: 60000   // Higher inflection point
+            };
           }
         });
         setSaturation(newSaturation);
@@ -164,11 +186,27 @@ export default function ModelSetup() {
     
     setLoading(true);
     
+    // Process saturation settings to ensure they're in the right format
+    const processedSaturation = Object.entries(saturation).reduce((acc, [channel, value]) => {
+      // Handle both old and new format
+      if (typeof value === 'number') {
+        // Convert old format to new
+        acc[channel] = migrateSaturationValue(value);
+      } else if (value) {
+        // Already in new format
+        acc[channel] = value;
+      } else {
+        // Use defaults
+        acc[channel] = migrateSaturationValue(undefined);
+      }
+      return acc;
+    }, {} as Record<string, {L: number, k: number, x0: number}>);
+    
     const modelConfig = {
       name: modelName,
       projectId: parseInt(id),
       adstockSettings: adstock,
-      saturationSettings: saturation,
+      saturationSettings: processedSaturation,
       controlVariables: controlVariables,
       responseVariables: { target: targetVariable },
       useAI
@@ -189,11 +227,47 @@ export default function ModelSetup() {
     }));
   };
   
-  const handleSaturationChange = (channel: string, value: number[]) => {
-    setSaturation(prev => ({
-      ...prev,
-      [channel]: value[0] / 100
-    }));
+  // Add migration helper for converting old saturation format to new
+  function migrateSaturationValue(oldValue: number | undefined): { L: number; k: number; x0: number } {
+    // If old value exists, use it to estimate parameters
+    if (typeof oldValue === 'number') {
+      return {
+        L: 1.0,
+        k: oldValue * 0.0002, // Scale k based on old saturation value
+        x0: 50000 * (1 - oldValue)  // Higher saturation = lower inflection point
+      };
+    }
+    // Return defaults for new format
+    return {
+      L: 1.0,
+      k: 0.0001,
+      x0: 50000
+    };
+  }
+  
+  // Updated handler for saturation changes
+  const handleSaturationChange = (channel: string, param: string, value: number) => {
+    setSaturation(prev => {
+      const current = prev[channel];
+      let updatedValue: {L: number, k: number, x0: number};
+      
+      // Handle the case where we might have old format data
+      if (typeof current === 'number') {
+        updatedValue = migrateSaturationValue(current);
+      } else if (!current) {
+        updatedValue = migrateSaturationValue(undefined);
+      } else {
+        updatedValue = { ...current };
+      }
+      
+      // Update the specific parameter
+      updatedValue[param as keyof typeof updatedValue] = value;
+      
+      return {
+        ...prev,
+        [channel]: updatedValue
+      };
+    });
   };
   
   const handleControlVariableChange = (variable: string, checked: boolean) => {
@@ -454,25 +528,62 @@ export default function ModelSetup() {
                       <div className="flex items-start gap-2 mb-4">
                         <InfoIcon className="h-5 w-5 text-slate-400" />
                         <p className="text-sm text-slate-600">
-                          Saturation determines the diminishing returns of marketing spending. Higher values mean faster diminishing returns.
+                          Saturation determines how marketing spend effectiveness diminishes at higher levels. Configure the three key parameters: L (maximum effect), k (growth rate), and x0 (inflection point).
                         </p>
                       </div>
                       
-                      {Object.entries(saturation).map(([channel, value]) => (
-                        <div key={channel} className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <Label>{channel.replace('_', ' ')}</Label>
-                            <span className="text-sm font-medium">{Math.round(value * 100)}%</span>
+                      {Object.entries(saturation).map(([channel, value]) => {
+                        // Convert old format to new if needed
+                        const satParams = typeof value === 'number' 
+                          ? migrateSaturationValue(value) 
+                          : (value || migrateSaturationValue(undefined));
+                          
+                        return (
+                          <div key={channel} className="space-y-4 p-4 border border-slate-200 rounded-md mb-4">
+                            <div className="flex justify-between items-center border-b pb-2 mb-2">
+                              <Label className="text-base font-medium">{channel.replace('_', ' ')}</Label>
+                            </div>
+                            
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <Label className="text-xs">L (Max Effect)</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.1"
+                                    value={satParams.L}
+                                    onChange={(e) => handleSaturationChange(channel, 'L', parseFloat(e.target.value))}
+                                    placeholder="1.0"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">k (Slope)</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.00001"
+                                    value={satParams.k}
+                                    onChange={(e) => handleSaturationChange(channel, 'k', parseFloat(e.target.value))}
+                                    placeholder="0.0001"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">x0 (Inflection)</Label>
+                                  <Input
+                                    type="number"
+                                    step="1000"
+                                    value={satParams.x0}
+                                    onChange={(e) => handleSaturationChange(channel, 'x0', parseFloat(e.target.value))}
+                                    placeholder="50000"
+                                  />
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                L: Maximum effect level, k: Growth rate, x0: Spend at half-saturation
+                              </p>
+                            </div>
                           </div>
-                          <Slider 
-                            defaultValue={[value * 100]} 
-                            max={100}
-                            min={10}
-                            step={5}
-                            onValueChange={(val) => handleSaturationChange(channel, val)}
-                          />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </TabsContent>
                   
