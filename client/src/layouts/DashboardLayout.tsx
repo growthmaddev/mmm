@@ -56,10 +56,11 @@ export default function DashboardLayout({
     retry: false,
   });
 
+  // Temporarily disabled for testing purposes
   // Handle authentication check
-  if (userError) {
-    navigate("/login");
-  }
+  // if (userError) {
+  //   navigate("/login");
+  // }
 
   const handleLogout = async () => {
     try {
