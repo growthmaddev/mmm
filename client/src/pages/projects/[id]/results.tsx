@@ -464,10 +464,16 @@ export default function ModelResults() {
                         
                         {/* Chart container with increased height for better visibility */}
                         <div className="h-96 mb-4">
+                          {console.log('Sales Decomposition Data:', {
+                            basePercent: model.results?.analytics?.sales_decomposition?.percent_decomposition?.base,
+                            channelContributions: model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels,
+                            salesDecompPercent: model.results?.salesDecomposition?.percent_decomposition,
+                            totalSales: model.results?.analytics?.sales_decomposition?.total_sales
+                          })}
                           <SalesCompositionChart 
-                            basePercent={model.results?.salesDecomposition?.percent_decomposition?.base || 0}
-                            channelContributions={model.results?.salesDecomposition?.percent_decomposition?.channels || {}}
-                            totalSales={model.results?.salesDecomposition?.total_sales || 0}
+                            basePercent={model.results?.analytics?.sales_decomposition?.percent_decomposition?.base || 0}
+                            channelContributions={model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {}}
+                            totalSales={model.results?.analytics?.sales_decomposition?.total_sales || 0}
                           />
                         </div>
                         
