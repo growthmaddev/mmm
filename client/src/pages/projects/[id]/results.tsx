@@ -465,9 +465,9 @@ export default function ModelResults() {
                         {/* Chart container with increased height for better visibility */}
                         <div className="h-96 mb-4">
                           <SalesCompositionChart 
-                            basePercent={model.results?.analytics?.sales_decomposition?.percent_decomposition?.base || 0}
-                            channelContributions={model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels || {}}
-                            totalSales={model.results?.analytics?.sales_decomposition?.total_sales || 0}
+                            basePercent={model.results?.salesDecomposition?.percent_decomposition?.base || 0}
+                            channelContributions={model.results?.salesDecomposition?.percent_decomposition?.channels || {}}
+                            totalSales={model.results?.salesDecomposition?.total_sales || 0}
                           />
                         </div>
                         
@@ -713,7 +713,7 @@ export default function ModelResults() {
                           <tbody className="bg-white divide-y divide-gray-200">
                             {(() => {
                               const channels = model.results?.analytics?.channel_effectiveness_detail || {};
-                              const salesDecomp = model.results?.analytics?.sales_decomposition || {};
+                              const salesDecomp = model.results?.salesDecomposition || {};
                               
                               // If there's no data, show a placeholder row
                               if (Object.keys(channels).length === 0) {
@@ -734,7 +734,7 @@ export default function ModelResults() {
                                   return {
                                     channel,
                                     spend: 0,
-                                    contribution: salesDecomp.incremental_sales?.[channel] || 0,
+                                    contribution: salesDecomp.incremental_sales_by_channel?.[channel] || 0,
                                     contributionPercent: salesDecomp.percent_decomposition?.channels?.[channel] || 0,
                                     roi: 0,
                                     costPerOutcome: 0,
@@ -747,8 +747,8 @@ export default function ModelResults() {
                                 const channelSpend = 
                                   typeof data.actual_spend === 'number' ? data.actual_spend : 
                                   typeof data.spend === 'number' ? data.spend : 
-                                  (data.roi && salesDecomp.incremental_sales?.[channel]) ? 
-                                    (salesDecomp.incremental_sales[channel] / data.roi) : 50000;
+                                  (data.roi && salesDecomp.incremental_sales_by_channel?.[channel]) ? 
+                                    (salesDecomp.incremental_sales_by_channel[channel] / data.roi) : 50000;
                                 
                                 return {
                                   channel,
@@ -823,15 +823,15 @@ export default function ModelResults() {
                         {(() => {
                           // Prepare channel efficiency data
                           const channels = model.results?.analytics?.channel_effectiveness_detail || {};
-                          const salesDecomp = model.results?.analytics?.sales_decomposition || {};
+                          const salesDecomp = model.results?.salesDecomposition || {};
                           
                           const channelData = Object.entries(channels).map(([channel, data]) => {
                             // Get actual spend from either property, with intelligent fallback
                             const actualSpend = 
                               typeof data.actual_spend === 'number' ? data.actual_spend : 
                               typeof data.spend === 'number' ? data.spend : 
-                              (data.roi && salesDecomp.incremental_sales?.[channel]) ? 
-                                (salesDecomp.incremental_sales[channel] / data.roi) : 50000;
+                              (data.roi && salesDecomp.incremental_sales_by_channel?.[channel]) ? 
+                                (salesDecomp.incremental_sales_by_channel[channel] / data.roi) : 50000;
                                 
                             return {
                               channel,
