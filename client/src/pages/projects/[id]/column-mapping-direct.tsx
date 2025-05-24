@@ -48,16 +48,29 @@ export default function ColumnMappingDirect() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  // Get dataSourceId from session storage
+  // Get dataSourceId from URL parameters first, then fall back to session storage
   const [dataSourceId, setDataSourceId] = useState<string | null>(null);
+  const [location] = useLocation();
   
   useEffect(() => {
-    const storedId = sessionStorage.getItem('activeDataSourceId');
-    if (storedId) {
-      console.log("Retrieved data source ID from session:", storedId);
-      setDataSourceId(storedId);
+    // First try to get dataSourceId from URL parameters
+    const urlParams = new URLSearchParams(location.split('?')[1] || '');
+    const dataSourceIdParam = urlParams.get('dataSourceId');
+    
+    if (dataSourceIdParam) {
+      console.log("Retrieved data source ID from URL:", dataSourceIdParam);
+      setDataSourceId(dataSourceIdParam);
+      // Also store in session for backup
+      sessionStorage.setItem('activeDataSourceId', dataSourceIdParam);
+    } else {
+      // Fall back to session storage
+      const storedId = sessionStorage.getItem('activeDataSourceId');
+      if (storedId) {
+        console.log("Retrieved data source ID from session:", storedId);
+        setDataSourceId(storedId);
+      }
     }
-  }, []);
+  }, [location]);
   
   // Fetch the data source to get the actual columns from the uploaded file
   const { data: dataSource, isLoading } = useQuery({
