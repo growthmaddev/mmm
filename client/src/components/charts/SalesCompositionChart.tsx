@@ -93,24 +93,27 @@ const SalesCompositionChart: React.FC<SalesCompositionChartProps> = ({
     
     // Add channel contributions
     if (Object.keys(channelContributions || {}).length === 0) {
-      // Add sample data if no real data exists
-      ['Channel 1', 'Channel 2', 'Channel 3'].forEach((channel, i) => {
-        data.push({
-          name: channel,
-          value: 0.25 - (i * 0.05),
-          isBase: false
-        });
-      });
+      // Nothing to add if no channel data exists
+      console.log("No channel data available for pie chart");
     } else {
       // Add real channel data
       Object.entries(channelContributions || {}).forEach(([channel, percent]) => {
-        if (percent > 0) {
-          data.push({
-            name: channel,
-            value: percent,
-            isBase: false
-          });
-        }
+        // Format channel names for display
+        const displayName = channel
+          .replace('_Spend', '')
+          .replace(/([A-Z])/g, ' $1') // Add space before capital letters
+          .replace(/^TV/i, 'TV ') // Add space after TV prefix
+          .replace(/^npp$/i, 'NPP') // Fix abbreviations
+          .replace(/^ooh$/i, 'OOH') // Fix abbreviations
+          .trim();
+          
+        // Include channels with positive or negative contributions
+        data.push({
+          name: displayName,
+          value: percent,
+          isBase: false,
+          originalChannel: channel
+        });
       });
     }
     
