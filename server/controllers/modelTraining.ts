@@ -770,7 +770,22 @@ function transformMMMResults(ourResults: any, modelId: number) {
     recommendations: recommendations,
 
     // Create config information for UI components
-    config: ourResults.config || {}
+    config: {
+      ...(ourResults.config || {}),
+      // Add config data for Media Mix Curves
+      channels: Object.fromEntries(
+        Object.keys(channelContributions).map(channel => [
+          channel,
+          {
+            L: 1.0, // Default values since we don't have them from Python
+            k: 0.0001,
+            x0: 50000,
+            alpha: 0.6,
+            l_max: 8
+          }
+        ])
+      )
+    }
   };
 
   console.log('Transformed results structure:', JSON.stringify({
