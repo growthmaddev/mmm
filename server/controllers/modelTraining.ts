@@ -652,6 +652,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
 
   // For percentages, use the contribution_percentage directly
   Object.entries(contributionPercentData).forEach(([channel, percentage]) => {
+    // Python already sends these as percentages of total sales
     percentChannelContributions[channel] = Number(percentage) || 0;
   });
 
@@ -743,7 +744,12 @@ function transformMMMResults(ourResults: any, modelId: number) {
           ([channel, roi]) => {
             // Get spend from roi_detailed if available
             const roiDetailed = ourResults.roi_detailed?.[channel] || ourResults.summary?.roi_detailed?.[channel];
-            const spend = roiDetailed?.total_spend || 0;
+            let spend = roiDetailed?.total_spend || 0;
+            
+            // If no spend data from Python, calculate it from contribution and ROI
+            if (spend === 0 && roi && channelContributions[channel]) {
+              spend = channelContributions[channel] / Number(roi);
+            }
             
             return [
               channel,
@@ -751,6 +757,7 @@ function transformMMMResults(ourResults: any, modelId: number) {
                 roi: Number(roi),
                 spend: spend,
                 actual_spend: spend, // Add both for compatibility
+                // If no spend data from Python, calculate it from contribution and ROI
                 contribution: channelContributions[channel] || 0,
                 contribution_percent: percentChannelContributions[channel] || 0
               }
