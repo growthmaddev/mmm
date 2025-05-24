@@ -757,7 +757,6 @@ function transformMMMResults(ourResults: any, modelId: number) {
                 roi: Number(roi),
                 spend: spend,
                 actual_spend: spend, // Add both for compatibility
-                // If no spend data from Python, calculate it from contribution and ROI
                 contribution: channelContributions[channel] || 0,
                 contribution_percent: percentChannelContributions[channel] || 0
               }
@@ -779,18 +778,21 @@ function transformMMMResults(ourResults: any, modelId: number) {
     // Create config information for UI components
     config: {
       ...(ourResults.config || {}),
-      // Add config data for Media Mix Curves
       channels: Object.fromEntries(
-        Object.keys(channelContributions).map(channel => [
-          channel,
-          {
-            L: 1.0, // Default values since we don't have them from Python
-            k: 0.0001,
-            x0: 50000,
-            alpha: 0.6,
-            l_max: 8
-          }
-        ])
+        Object.keys(channelContributions).map(channel => {
+          // Try to get the actual parameters from the model configuration
+          const modelParams = ourResults.fixed_parameters || {};
+          return [
+            channel,
+            {
+              L: modelParams.L?.[channel] || ourResults.summary?.analytics?.channel_params?.[channel]?.L || 1.0,
+              k: modelParams.k?.[channel] || ourResults.summary?.analytics?.channel_params?.[channel]?.k || 0.0001,
+              x0: modelParams.x0?.[channel] || ourResults.summary?.analytics?.channel_params?.[channel]?.x0 || 50000,
+              alpha: modelParams.alpha?.[channel] || 0.6,
+              l_max: modelParams.l_max?.[channel] || 8
+            }
+          ];
+        })
       )
     }
   };
