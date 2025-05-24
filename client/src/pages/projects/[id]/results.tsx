@@ -836,7 +836,7 @@ export default function ModelResults() {
                             return {
                               channel,
                               spend: actualSpend,
-                              contribution: salesDecomp.incremental_sales?.[channel] || 0,
+                              contribution: salesDecomp.incremental_sales_by_channel?.[channel] || 0,
                               roi: data.roi || 0
                             };
                           });
@@ -900,7 +900,7 @@ export default function ModelResults() {
                         k: model.results.config?.channels?.[channel]?.k || 0.0001,
                         x0: model.results.config?.channels?.[channel]?.x0 || 50000,
                         currentSpend: data.spend || 0,
-                        currentResponse: model.results.analytics.sales_decomposition?.incremental_sales_by_channel?.[channel] || 0,
+                        currentResponse: model.results.salesDecomposition?.incremental_sales_by_channel?.[channel] || 0,
                         roi: data.roi || 1.0
                       }))}
                       modelId={model.id.toString()}
