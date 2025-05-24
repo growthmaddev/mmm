@@ -23,6 +23,8 @@ export default function ModelResults() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [pollingInterval, setPollingInterval] = useState(5000); // 5 seconds
+  
+
 
   // Get the model ID from the URL query params
   const searchParams = new URLSearchParams(window.location.search);
@@ -879,18 +881,15 @@ export default function ModelResults() {
                 </TabsContent>
                 
                 <TabsContent value="curves" className="pt-4">
-                  {model?.analytics && model?.config ? (
+                  {model?.results?.analytics && model?.results?.config ? (
                     <MediaMixCurves
-                      channelData={Object.entries(model.analytics.channel_effectiveness_detail || {}).map(([channel, data]: [string, any]) => ({
+                      channelData={Object.entries(model.results.analytics.channel_effectiveness_detail || {}).map(([channel, data]: [string, any]) => ({
                         channel,
-                        L: model.config?.channels?.[channel]?.L || 1.0,
-                        k: model.config?.channels?.[channel]?.k || 0.0001,
-                        x0: model.config?.channels?.[channel]?.x0 || 50000,
+                        L: model.results.config?.channels?.[channel]?.L || 1.0,
+                        k: model.results.config?.channels?.[channel]?.k || 0.0001,
+                        x0: model.results.config?.channels?.[channel]?.x0 || 50000,
                         currentSpend: data.spend || 0,
-                        currentResponse: model.analytics.sales_decomposition?.percent_decomposition?.channels?.[channel] 
-                          ? (model.analytics.sales_decomposition.incremental_sales || 0) * 
-                            (model.analytics.sales_decomposition.percent_decomposition.channels[channel] / 100)
-                          : 0,
+                        currentResponse: model.results.analytics.sales_decomposition?.incremental_sales_by_channel?.[channel] || 0,
                         roi: data.roi || 1.0
                       }))}
                       modelId={model.id.toString()}
