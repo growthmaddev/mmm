@@ -651,19 +651,9 @@ function transformMMMResults(ourResults: any, modelId: number) {
   });
 
   // For percentages, use the contribution_percentage directly
-  // These values from Python are already percentages (not decimals), so we don't need to multiply by 100
   Object.entries(contributionPercentData).forEach(([channel, percentage]) => {
     percentChannelContributions[channel] = Number(percentage) || 0;
   });
-  
-  // If we're getting data from the fixed parameter MMM version with direct incremental_sales_by_channel
-  if (ourResults.summary.analytics?.sales_decomposition?.incremental_sales_by_channel) {
-    console.log('Using direct incremental_sales_by_channel data');
-    const incrementalByChannel = ourResults.summary.analytics.sales_decomposition.incremental_sales_by_channel;
-    Object.entries(incrementalByChannel).forEach(([channel, value]) => {
-      channelContributions[channel] = Number(value) || 0;
-    });
-  }
 
   if (ourResults.summary.analytics?.sales_decomposition) {
     // Use actual values from analytics
@@ -782,24 +772,18 @@ function transformMMMResults(ourResults: any, modelId: number) {
     // Create config information for UI components
     config: {
       ...(ourResults.config || {}),
-      // Add config data for Media Mix Curves - use actual parameters if available
+      // Add config data for Media Mix Curves
       channels: Object.fromEntries(
-        Object.keys(channelContributions).map(channel => {
-          // Try to get the actual parameters from the Python output
-          const channelConfig = ourResults.config?.channels?.[channel] || {};
-          
-          return [
-            channel,
-            {
-              // Use actual values if available, otherwise use sensible defaults
-              L: channelConfig.L || 1.0,
-              k: channelConfig.k || 0.0001,
-              x0: channelConfig.x0 || 50000,
-              alpha: channelConfig.alpha || 0.6,
-              l_max: channelConfig.l_max || 8
-            }
-          ];
-        })
+        Object.keys(channelContributions).map(channel => [
+          channel,
+          {
+            L: 1.0, // Default values since we don't have them from Python
+            k: 0.0001,
+            x0: 50000,
+            alpha: 0.6,
+            l_max: 8
+          }
+        ])
       )
     }
   };
