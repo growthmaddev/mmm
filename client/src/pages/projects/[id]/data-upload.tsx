@@ -208,8 +208,11 @@ export default function ProjectDataUpload() {
       const latestDataSource = dataSources[dataSources.length - 1];
       sessionStorage.setItem('activeDataSourceId', latestDataSource.id.toString());
       console.log("Storing data source ID in session:", latestDataSource.id);
+      // Pass dataSourceId directly in the URL to ensure it's available on page load
+      navigate(`/projects/${id}/column-mapping-direct?dataSourceId=${latestDataSource.id}`);
+    } else {
+      navigate(`/projects/${id}/column-mapping-direct`);
     }
-    navigate(`/projects/${id}/column-mapping-direct`);
   };
   
   // Handle error states
