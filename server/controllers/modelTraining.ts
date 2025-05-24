@@ -635,8 +635,25 @@ function transformMMMResults(ourResults: any, modelId: number) {
   let baseSales = 0;
   let incrementalSales = 0;
   let basePercent = 0;
+  
+  // Calculate channel contributions in absolute values and percentages
   const channelContributions: Record<string, number> = {};
   const percentChannelContributions: Record<string, number> = {};
+
+  // First try to get contributions from the Python output directly
+  const contributionData = ourResults.summary?.channel_analysis?.contribution || ourResults.contributions || {};
+  const contributionPercentData = ourResults.summary?.channel_analysis?.contribution_percentage || {};
+
+  Object.entries(contributionData).forEach(([channel, contribution]) => {
+    if (channel !== 'base' && channel !== 'total') {
+      channelContributions[channel] = Number(contribution) || 0;
+    }
+  });
+
+  // For percentages, use the contribution_percentage directly
+  Object.entries(contributionPercentData).forEach(([channel, percentage]) => {
+    percentChannelContributions[channel] = Number(percentage) || 0;
+  });
 
   if (ourResults.summary.analytics?.sales_decomposition) {
     // Use actual values from analytics
@@ -644,12 +661,10 @@ function transformMMMResults(ourResults: any, modelId: number) {
     incrementalSales = ourResults.summary.analytics.sales_decomposition.incremental_sales || 0;
     basePercent = ourResults.summary.analytics.sales_decomposition.percent_decomposition?.base || 0;
 
-    // Convert marketing percent breakdown to channel contributions
-    if (ourResults.summary.channel_analysis?.contribution_percentage) {
-      Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
-        const contribution = incrementalSales * (Number(percentage) / 100);
-        channelContributions[channel] = contribution;
-        percentChannelContributions[channel] = Number(percentage);
+    // If we don't have direct contribution data, calculate from percentages
+    if (Object.keys(channelContributions).length === 0 && Object.keys(percentChannelContributions).length > 0) {
+      Object.entries(percentChannelContributions).forEach(([channel, percentage]) => {
+        channelContributions[channel] = incrementalSales * (percentage / 100);
       });
     }
   } else {
@@ -660,12 +675,11 @@ function transformMMMResults(ourResults: any, modelId: number) {
     incrementalSales = totalSales - baseSales;
     basePercent = (baseSales / totalSales) * 100;
 
-    // Calculate channel contributions using old method
-    if (ourResults.summary.channel_analysis?.contribution_percentage) {
-      Object.entries(ourResults.summary.channel_analysis.contribution_percentage).forEach(([channel, percentage]: [string, any]) => {
-        const contribution = incrementalSales * (Number(percentage) / 100);
-        channelContributions[channel] = contribution;
-        percentChannelContributions[channel] = Number(percentage);
+    // Calculate channel contributions using old method if needed
+    if (Object.keys(channelContributions).length === 0 && 
+        Object.keys(percentChannelContributions).length > 0) {
+      Object.entries(percentChannelContributions).forEach(([channel, percentage]) => {
+        channelContributions[channel] = incrementalSales * (percentage / 100);
       });
     }
   }
@@ -716,6 +730,9 @@ function transformMMMResults(ourResults: any, modelId: number) {
         total_sales: totalSales,
         base_sales: baseSales,
         incremental_sales: incrementalSales,
+        incremental_sales_by_channel: Object.fromEntries(
+          Object.entries(channelContributions).map(([channel, contribution]) => [channel, contribution])
+        ),
         percent_decomposition: {
           base: basePercent,
           channels: percentChannelContributions
