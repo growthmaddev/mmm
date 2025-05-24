@@ -23,8 +23,6 @@ export default function ModelResults() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [pollingInterval, setPollingInterval] = useState(5000); // 5 seconds
-  
-
 
   // Get the model ID from the URL query params
   const searchParams = new URLSearchParams(window.location.search);
@@ -96,6 +94,19 @@ export default function ModelResults() {
       return pollingInterval;
     }
   });
+  
+  // For debugging - log model data when it's available
+  useEffect(() => {
+    if (model) {
+      console.log('===== DEBUGGING MODEL DATA STRUCTURE =====');
+      console.log('Model data structure:', model);
+      console.log('Model results:', model.results);
+      console.log('Model analytics:', model.results?.analytics);
+      console.log('Sales decomposition:', model.results?.analytics?.sales_decomposition);
+      console.log('Channel effectiveness:', model.results?.analytics?.channel_effectiveness_detail);
+      console.log('Config data:', model.results?.config);
+    }
+  }, [model]);
 
   // Fetch model status with higher frequency polling
   const {
