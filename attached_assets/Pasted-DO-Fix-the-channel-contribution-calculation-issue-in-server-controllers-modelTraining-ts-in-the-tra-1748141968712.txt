@@ -1,0 +1,27 @@
+DO: Fix the channel contribution calculation issue in server/controllers/modelTraining.ts in the transformMMMResults function.
+The Problems Identified:
+
+Channel contributions in raw are showing values like 0.6719 (67%) and even negative values (-0.0656), which don't sum to 1.0. These are NOT proper percentages of total sales.
+All config parameters are showing identical default values (L: 1, k: 0.0001, x0: 50000) instead of model-specific parameters
+Base sales is 97% of total sales, which is extremely high and suggests the model isn't properly attributing sales to channels
+
+FIND the section in transformMMMResults where we calculate percentChannelContributions and FIX it to:
+javascript// Calculate channel contributions in absolute values and percentages
+const channelContributions: Record<string, number> = {};
+const percentChannelContributions: Record<string, number> = {};
+
+// Get the incremental sales by channel from the Python output
+const incrementalSalesByChannel = ourResults.summary?.analytics?.sales_decomposition?.incremental_sales_by_channel || {};
+
+// Calculate total incremental sales (sum of all channel contributions)
+const totalIncrementalSales = Object.values(incrementalSalesByChannel).reduce((sum, val) => sum + Number(val), 0);
+
+// Calculate percentage contributions
+Object.entries(incrementalSalesByChannel).forEach(([channel, sales]) => {
+  channelContributions[channel] = Number(sales);
+  // Calculate as percentage of total incremental sales, not total sales
+  percentChannelContributions[channel] = totalIncrementalSales > 0 ? Number(sales) / totalIncrementalSales : 0;
+});
+ALSO FIND the section where we populate the config parameters and UPDATE it to properly extract model-specific parameters from the Python results instead of using hardcoded defaults.
+DO NOT change any other logic - focus only on fixing these calculation issues.
+Expected Result: After this fix, channel contributions should sum to 1.0 (100%) and represent the proportion of incremental sales (not total sales) attributed to each channel.

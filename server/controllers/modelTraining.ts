@@ -640,20 +640,17 @@ function transformMMMResults(ourResults: any, modelId: number) {
   const channelContributions: Record<string, number> = {};
   const percentChannelContributions: Record<string, number> = {};
 
-  // First try to get contributions from the Python output directly
-  const contributionData = ourResults.summary?.channel_analysis?.contribution || ourResults.contributions || {};
-  const contributionPercentData = ourResults.summary?.channel_analysis?.contribution_percentage || {};
+  // Get the incremental sales by channel from the Python output
+  const incrementalSalesByChannel = ourResults.summary?.analytics?.sales_decomposition?.incremental_sales_by_channel || {};
 
-  Object.entries(contributionData).forEach(([channel, contribution]) => {
-    if (channel !== 'base' && channel !== 'total') {
-      channelContributions[channel] = Number(contribution) || 0;
-    }
-  });
+  // Calculate total incremental sales (sum of all channel contributions)
+  const totalIncrementalSales = Object.values(incrementalSalesByChannel).reduce((sum: number, val) => sum + Number(val), 0);
 
-  // For percentages, use the contribution_percentage directly
-  Object.entries(contributionPercentData).forEach(([channel, percentage]) => {
-    // Python already sends these as percentages of total sales
-    percentChannelContributions[channel] = Number(percentage) || 0;
+  // Calculate percentage contributions
+  Object.entries(incrementalSalesByChannel).forEach(([channel, sales]) => {
+    channelContributions[channel] = Number(sales);
+    // Calculate as percentage of total incremental sales, not total sales
+    percentChannelContributions[channel] = totalIncrementalSales > 0 ? Number(sales) / totalIncrementalSales * 100 : 0;
   });
 
   if (ourResults.summary.analytics?.sales_decomposition) {
@@ -780,16 +777,52 @@ function transformMMMResults(ourResults: any, modelId: number) {
       ...(ourResults.config || {}),
       channels: Object.fromEntries(
         Object.keys(channelContributions).map(channel => {
-          // Try to get the actual parameters from the model configuration
-          const modelParams = ourResults.fixed_parameters || {};
+          // Get channel parameters from various possible sources in the Python output
+          const channelKey = channel.replace('_Spend', '');
+          const paramSources = [
+            // Check for parameters in the model results
+            ourResults.model_results?.parameters?.[channelKey],
+            ourResults.model_results?.parameters?.[channel],
+            // Check channel params in analytics
+            ourResults.summary?.analytics?.channel_params?.[channel],
+            // Check fixed parameters structure
+            {
+              L: ourResults.fixed_parameters?.channels?.[channel]?.L,
+              k: ourResults.fixed_parameters?.channels?.[channel]?.k,
+              x0: ourResults.fixed_parameters?.channels?.[channel]?.x0
+            },
+            // Check original config input that was sent to Python
+            {
+              L: ourResults.config?.channels?.[channel]?.L,
+              k: ourResults.config?.channels?.[channel]?.k, 
+              x0: ourResults.config?.channels?.[channel]?.x0
+            }
+          ];
+          
+          // Find first non-null parameter values from sources
+          const getFirstValidParam = (paramName) => {
+            for (const source of paramSources) {
+              if (source && source[paramName] !== undefined && source[paramName] !== null) {
+                return source[paramName];
+              }
+            }
+            // Fallback defaults if no valid parameter found
+            if (paramName === 'L') return 1.0;
+            if (paramName === 'k') return 0.0001;
+            if (paramName === 'x0') return 50000;
+            if (paramName === 'alpha') return 0.6;
+            if (paramName === 'l_max') return 8;
+            return null;
+          };
+          
           return [
             channel,
             {
-              L: modelParams.L?.[channel] || ourResults.summary?.analytics?.channel_params?.[channel]?.L || 1.0,
-              k: modelParams.k?.[channel] || ourResults.summary?.analytics?.channel_params?.[channel]?.k || 0.0001,
-              x0: modelParams.x0?.[channel] || ourResults.summary?.analytics?.channel_params?.[channel]?.x0 || 50000,
-              alpha: modelParams.alpha?.[channel] || 0.6,
-              l_max: modelParams.l_max?.[channel] || 8
+              L: getFirstValidParam('L'),
+              k: getFirstValidParam('k'),
+              x0: getFirstValidParam('x0'),
+              alpha: getFirstValidParam('alpha'),
+              l_max: getFirstValidParam('l_max')
             }
           ];
         })
