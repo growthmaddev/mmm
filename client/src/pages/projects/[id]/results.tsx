@@ -105,6 +105,21 @@ export default function ModelResults() {
       console.log('Sales decomposition:', model.results?.analytics?.sales_decomposition);
       console.log('Channel effectiveness:', model.results?.analytics?.channel_effectiveness_detail);
       console.log('Config data:', model.results?.config);
+      
+      console.log('=== BUDGET OPTIMIZER FIX VERIFICATION ===');
+      console.log('1. Channel Contributions from Python:', {
+        raw: model.results?.analytics?.sales_decomposition?.percent_decomposition?.channels,
+        processed: model.results?.analytics?.channel_effectiveness_detail
+      });
+      console.log('2. Spend Data Check:', Object.entries(model.results?.analytics?.channel_effectiveness_detail || {}).map(([ch, data]) => ({
+        channel: ch,
+        spend: data.spend,
+        actual_spend: data.actual_spend,
+        roi: data.roi,
+        contribution: data.contribution
+      })));
+      console.log('3. Config Parameters:', model.results?.config?.channels);
+      console.log('=== END VERIFICATION ===');
     }
   }, [model]);
 
@@ -900,15 +915,19 @@ export default function ModelResults() {
                 <TabsContent value="curves" className="pt-4">
                   {model?.results?.analytics && model?.results?.config ? (
                     <MediaMixCurves
-                      channelData={Object.entries(model.results.analytics.channel_effectiveness_detail || {}).map(([channel, data]: [string, any]) => ({
-                        channel,
-                        L: model.results.config?.channels?.[channel]?.L || 1.0,
-                        k: model.results.config?.channels?.[channel]?.k || 0.0001,
-                        x0: model.results.config?.channels?.[channel]?.x0 || 50000,
-                        currentSpend: data.spend || 0,
-                        currentResponse: model.results.salesDecomposition?.incremental_sales_by_channel?.[channel] || 0,
-                        roi: data.roi || 1.0
-                      }))}
+                      channelData={Object.entries(model.results.analytics.channel_effectiveness_detail || {}).map(([channel, data]: [string, any]) => {
+                        const configData = {
+                          channel,
+                          L: model.results.config?.channels?.[channel]?.L || 1.0,
+                          k: model.results.config?.channels?.[channel]?.k || 0.0001,
+                          x0: model.results.config?.channels?.[channel]?.x0 || 50000,
+                          currentSpend: data.spend || 0,
+                          currentResponse: model.results.salesDecomposition?.incremental_sales_by_channel?.[channel] || 0,
+                          roi: data.roi || 1.0
+                        };
+                        console.log(`MediaMixCurve config for ${channel}:`, configData);
+                        return configData;
+                      })}
                       modelId={model.id.toString()}
                     />
                   ) : (
